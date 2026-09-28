@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
@@ -24,17 +26,6 @@ type Recipient = {
   fallback: boolean;
   status: string;
 };
-type Delivery = {
-  id: string;
-  recipientHint: string;
-  subjectHint: string;
-  kind: string;
-  status: string;
-  attempts: number;
-  lastError?: string;
-  createdAt: string;
-};
-
 const CATEGORIES = ["all", ...ADMIN_ALERT_CATEGORIES.map((category) => category.id)] as const;
 
 function deliveryTone(status: string): AdminStatusTone {
@@ -63,8 +54,10 @@ export function AlertSettings({
   ensureStepUpToken: () => Promise<{ ok: true; token: string } | { ok: false }>;
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
-  const [recipients, setRecipients] = useState<Recipient[]>([]);
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const queryClient = useQueryClient();
+  const alertsQuery = useQuery(adminAlertSettingsQuery);
+  const recipients = alertsQuery.data?.recipients ?? [];
+  const deliveries = alertsQuery.data?.deliveries ?? [];
   const [email, setEmail] = useState("");
   const [categories, setCategories] = useState<string[]>(["all"]);
   const [eventSlugs, setEventSlugs] = useState("");
@@ -76,36 +69,9 @@ export function AlertSettings({
   const [fallback, setFallback] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loading = alertsQuery.isPending;
+  const loadError = alertsQuery.error?.message ?? null;
   const { prompt, dialog } = useActionDialog();
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/operations/alerts");
-      const body = (await response.json().catch(() => ({}))) as {
-        recipients?: Recipient[];
-        deliveries?: Delivery[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(body.error ?? "Alert settings could not be loaded");
-      setRecipients(body.recipients ?? []);
-      setDeliveries(body.deliveries ?? []);
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Alert settings could not be loaded");
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    void load().catch((error) =>
-      onError(error instanceof Error ? error.message : "Alert settings could not be loaded"),
-    );
-  }, [load, onError]);
 
   function toggleCategory(category: string) {
     setCategories((current) =>
@@ -144,7 +110,7 @@ export function AlertSettings({
       onStatus("Alert recipient saved.");
       setEmail("");
       setReason("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminAlertSettingsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Alert recipient could not be saved");
     } finally {
@@ -166,7 +132,7 @@ export function AlertSettings({
       };
       if (!response.ok) throw new Error(body.error ?? "Test alert could not be sent");
       onStatus(body.queued ? "Test alert queued." : "Test alert failed; review delivery history.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminAlertSettingsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Test alert could not be sent");
     } finally {
@@ -201,7 +167,7 @@ export function AlertSettings({
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Alert recipient could not be removed");
       onStatus("Alert recipient removed.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminAlertSettingsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Alert recipient could not be removed");
     } finally {
@@ -408,7 +374,7 @@ export function AlertSettings({
           <p className={`font-mono text-xs ${adminToneTextClass("danger")}`}>error · {loadError}</p>
           <button
             type="button"
-            onClick={() => void load().catch(() => undefined)}
+            onClick={() => void alertsQuery.refetch()}
             className="inline-flex min-h-11 items-center font-mono text-xs underline"
           >
             retry

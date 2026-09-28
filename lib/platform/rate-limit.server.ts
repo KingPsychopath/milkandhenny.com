@@ -1,3 +1,7 @@
+import { createHmac } from "node:crypto";
+import type { PoolClient } from "pg";
+
+import { query, transaction } from "@/lib/platform/postgres-provider-context.server";
 import { getRedis } from "@/lib/platform/redis.server";
 
 /**
@@ -12,9 +16,9 @@ import { getRedis } from "@/lib/platform/redis.server";
  * verify a credential should reserve first, then `clearRateLimit` on success
  * so legitimate users never accumulate failures.
  *
- * Backend posture follows the persistence rule in AGENTS.md: production
- * fails closed when Redis is unavailable (the guarded actions are the ones
- * worth protecting precisely when infrastructure is misbehaving); the
+ * RATE_LIMIT_STORE=postgres selects the relational backend during migration.
+ * The default Redis path remains until active windows are reconciled at cutover.
+ * Production fails closed when the selected backend is unavailable; the
  * in-memory fallback exists for local development and tests only.
  */
 
@@ -70,6 +74,99 @@ type MemoryWindow = { attempts: number; resetAtMs: number };
 
 export const memoryWindows = new Map<string, MemoryWindow>();
 
+function postgresSelected(): boolean {
+  return process.env.RATE_LIMIT_STORE === "postgres";
+}
+
+function rateSubjectHash(name: string, scope: "identity" | "global", identity: string): string {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret || secret.length < 32) throw new Error("Rate limit hash secret is unavailable");
+  return createHmac("sha256", secret).update(`${name}\0${scope}\0${identity}`).digest("hex");
+}
+
+function validRateLimitOptions(options: RateLimitOptions): boolean {
+  return (
+    options.name.length > 0 &&
+    options.name.length <= 120 &&
+    options.identity.length > 0 &&
+    Number.isInteger(options.limit) &&
+    options.limit > 0 &&
+    options.limit <= 2_147_483_647 &&
+    Number.isInteger(options.windowSeconds) &&
+    options.windowSeconds > 0 &&
+    options.windowSeconds <= 90 * 86_400 &&
+    (options.globalLimit === undefined ||
+      (Number.isInteger(options.globalLimit) &&
+        options.globalLimit > 0 &&
+        options.globalLimit <= 2_147_483_647))
+  );
+}
+
+async function reservePostgresWindow(
+  client: PoolClient,
+  name: string,
+  scope: "identity" | "global",
+  subjectHash: string,
+  windowSeconds: number,
+): Promise<{ attempts: number; retry_seconds: number }> {
+  const result = await client.query<{ attempts: number; retry_seconds: number }>(
+    `insert into rate_limit_windows as current_window
+       (policy, scope, subject_hash, attempts, expires_at)
+     values ($1, $2, $3, 1, clock_timestamp() + ($4::integer * interval '1 second'))
+     on conflict (policy, scope, subject_hash) do update
+       set attempts = case
+             when current_window.expires_at <= clock_timestamp() then 1
+             else current_window.attempts + 1
+           end,
+           expires_at = case
+             when current_window.expires_at <= clock_timestamp()
+             then clock_timestamp() + ($4::integer * interval '1 second')
+             else current_window.expires_at
+           end
+     returning attempts,
+       greatest(0, ceil(extract(epoch from expires_at - clock_timestamp()))::integer)
+         as retry_seconds`,
+    [name, scope, subjectHash, windowSeconds],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error("Rate limit reservation returned no row");
+  return row;
+}
+
+async function reserveInPostgres(options: RateLimitOptions): Promise<RateLimitDecision> {
+  const { name, identity, limit, windowSeconds, globalLimit } = options;
+  const identityHash = rateSubjectHash(name, "identity", identity);
+  const globalHash =
+    globalLimit === undefined ? null : rateSubjectHash(name, "global", "all-identities");
+  return transaction(async (client) => {
+    const individual = await reservePostgresWindow(
+      client,
+      name,
+      "identity",
+      identityHash,
+      windowSeconds,
+    );
+    const global =
+      globalHash === null
+        ? null
+        : await reservePostgresWindow(client, name, "global", globalHash, windowSeconds);
+    const identityBlocked = individual.attempts > limit;
+    const globalBlocked =
+      global !== null && globalLimit !== undefined && global.attempts > globalLimit;
+    return {
+      allowed: !identityBlocked && !globalBlocked,
+      remaining: Math.max(0, limit - individual.attempts),
+      retryAfterSeconds:
+        identityBlocked && globalBlocked
+          ? Math.max(individual.retry_seconds, global.retry_seconds)
+          : globalBlocked
+            ? global.retry_seconds
+            : individual.retry_seconds,
+      backendAvailable: true,
+    };
+  });
+}
+
 function reserveInMemory(key: string, limit: number, windowSeconds: number): RateLimitDecision {
   const now = Date.now();
   const existing = memoryWindows.get(key);
@@ -91,6 +188,22 @@ function reserveInMemory(key: string, limit: number, windowSeconds: number): Rat
 export async function reserveRateLimit(options: RateLimitOptions): Promise<RateLimitDecision> {
   const { name, identity, limit, windowSeconds, globalLimit } = options;
   const key = identityKey(name, identity);
+
+  if (postgresSelected()) {
+    if (validRateLimitOptions(options)) {
+      try {
+        return await reserveInPostgres(options);
+      } catch {
+        // A failed transaction is not an admission decision.
+      }
+    }
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: windowSeconds,
+      backendAvailable: false,
+    };
+  }
 
   const redis = getRedis();
   if (!redis) {
@@ -137,6 +250,18 @@ export async function reserveRateLimit(options: RateLimitOptions): Promise<RateL
 /** Forgive an identity's window — call after a successful verification. */
 export async function clearRateLimit(name: string, identity: string): Promise<void> {
   const key = identityKey(name, identity);
+  if (postgresSelected()) {
+    try {
+      const hash = rateSubjectHash(name, "identity", identity);
+      await query(
+        "delete from rate_limit_windows where policy = $1 and scope = 'identity' and subject_hash = $2",
+        [name, hash],
+      );
+    } catch {
+      // A failed clear leaves the protective window in place until expiry.
+    }
+    return;
+  }
   const redis = getRedis();
   if (!redis) {
     memoryWindows.delete(key);
@@ -147,4 +272,41 @@ export async function clearRateLimit(name: string, identity: string): Promise<vo
   } catch {
     // A failed clear only means the window expires on its own.
   }
+}
+
+/** Bounded physical cleanup; expiry is enforced by reservation even if cleanup is delayed. */
+export async function cleanupRateLimitWindows(
+  batchSize = 1_000,
+  maxBatches = 10,
+): Promise<{ removed: number; batches: number }> {
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 1_000) {
+    throw new Error("Invalid rate-limit cleanup batch size");
+  }
+  if (!Number.isInteger(maxBatches) || maxBatches < 1 || maxBatches > 10) {
+    throw new Error("Invalid rate-limit cleanup batch count");
+  }
+  let removed = 0;
+  let batches = 0;
+  for (; batches < maxBatches; batches += 1) {
+    const rows = await query<{ removed: number }>(
+      `with expired as (
+         select ctid from rate_limit_windows
+          where expires_at <= clock_timestamp()
+          order by expires_at
+          limit $1
+          for update skip locked
+       )
+       delete from rate_limit_windows as windows
+        using expired
+        where windows.ctid = expired.ctid
+       returning 1 as removed`,
+      [batchSize],
+    );
+    removed += rows.length;
+    if (rows.length < batchSize) {
+      batches += 1;
+      break;
+    }
+  }
+  return { removed, batches };
 }

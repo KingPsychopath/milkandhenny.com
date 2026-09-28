@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { JourneyRail } from "@/components/SiteFooter";
-import { getAlbumPageFn } from "@/features/media/albums.functions";
+import { albumPageQuery } from "@/features/media/albums.queries";
 import { getOgUrl } from "@/features/media/storage";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -9,9 +10,20 @@ import { Breadcrumbs } from "@/components/Breadcrumbs";
 
 export const Route = createFileRoute("/pics/$album/")({
   component: AlbumPage,
-  loader: ({ params }) => getAlbumPageFn({ data: params }),
+  loader: async ({ context, params }) => {
+    const { album } = await context.queryClient.fetchQuery(albumPageQuery(params.album));
+    return {
+      title: album.title,
+      slug: album.slug,
+      description: album.description,
+      photoCount: album.photos.length,
+      cover: album.cover,
+      coverVersion: album.photos.find((photo) => photo.id === album.cover)?.version,
+    };
+  },
+  preloadStaleTime: 0,
   head: ({ loaderData }) => {
-    const album = loaderData?.album;
+    const album = loaderData;
     if (!album) {
       return buildSeoHead({
         title: `Album — ${SITE_NAME}`,
@@ -20,13 +32,12 @@ export const Route = createFileRoute("/pics/$album/")({
         robots: "noindex, nofollow",
       });
     }
-    const description = album.description ?? `${album.photos.length} photos from ${album.title}`;
-    const coverPhoto = album.photos.find((photo) => photo.id === album.cover);
+    const description = album.description ?? `${album.photoCount} photos from ${album.title}`;
     return buildSeoHead({
       title: `${album.title} — Pics — ${SITE_NAME}`,
       description,
       path: `/pics/${album.slug}`,
-      image: getOgUrl(album.slug, album.cover, coverPhoto?.version),
+      image: getOgUrl(album.slug, album.cover, album.coverVersion),
       imageAlt: `${album.title} — Milk & Henny photos`,
     });
   },
@@ -43,7 +54,9 @@ function formatDate(dateStr: string) {
 }
 
 function AlbumPage() {
-  const { album, olderAlbum, newerAlbum } = Route.useLoaderData();
+  const { album, olderAlbum, newerAlbum } = useSuspenseQuery(
+    albumPageQuery(Route.useParams().album),
+  ).data;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">

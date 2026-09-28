@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import type { QueryResultRow } from "pg";
 
 import type { PitchDocumentSchemaInventory } from "./database-readiness.server";
 import { log } from "./logger.server";
+import { HISTORICAL_MIGRATION_SHA256 } from "./migration-baseline.server";
 import { getPool, query, transaction } from "./postgres.server";
 
 /**
@@ -17,6 +19,7 @@ import { getPool, query, transaction } from "./postgres.server";
  */
 
 const ADVISORY_LOCK_KEY = 8_147_231;
+const LEGACY_PRODUCTION_MIGRATION_IDS = new Set(["0025_site_settings"]);
 
 type Migration = { id: string; sql: string };
 
@@ -4298,6 +4301,709 @@ const MIGRATIONS: Migration[] = [
         where survey_invitation_id is not null;
     `,
   },
+  {
+    id: "0096_pitch_thumbnail_ownership",
+    sql: `
+      create unique index pitch_assets_deck_id_id_uq
+        on pitch_assets (deck_id, id);
+
+      alter table pitch_decks
+        add constraint pitch_decks_thumbnail_same_deck_fkey
+        foreign key (id, thumbnail_asset_id)
+        references pitch_assets (deck_id, id)
+        on delete set null (thumbnail_asset_id);
+    `,
+  },
+  {
+    id: "0097_ticket_event_ownership",
+    sql: `
+      create unique index tickets_event_slug_id_uq
+        on tickets (event_slug, id);
+
+      alter table tickets drop constraint tickets_parent_ticket_id_fkey;
+      alter table tickets
+        add constraint tickets_parent_same_event_fkey
+        foreign key (event_slug, parent_ticket_id)
+        references tickets (event_slug, id)
+        on update cascade
+        on delete set null (parent_ticket_id);
+
+      alter table event_participants drop constraint event_participants_ticket_id_fkey;
+      alter table event_participants
+        add constraint event_participants_ticket_same_event_fkey
+        foreign key (event_slug, ticket_id)
+        references tickets (event_slug, id)
+        on update cascade
+        on delete restrict;
+    `,
+  },
+  {
+    id: "0098_rate_limit_windows",
+    sql: `
+      create table rate_limit_windows (
+        policy       text not null check (char_length(policy) between 1 and 120),
+        scope        text not null check (scope in ('identity', 'global')),
+        subject_hash text not null check (subject_hash ~ '^[a-f0-9]{64}$'),
+        attempts     integer not null check (attempts > 0),
+        expires_at   timestamptz not null,
+        primary key (policy, scope, subject_hash)
+      );
+
+      create index rate_limit_windows_expiry_idx
+        on rate_limit_windows (expires_at);
+    `,
+  },
+  {
+    id: "0099_upload_access_window",
+    sql: `
+      create table upload_access_window (
+        singleton        boolean primary key default true check (singleton),
+        id               uuid not null,
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce      bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag   bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id     text not null check (token_key_id = 'auth-secret-v1'),
+        opened_at        timestamptz not null,
+        expires_at       timestamptz not null,
+        duration_minutes integer not null check (duration_minutes in (15, 60)),
+        check (expires_at > opened_at)
+      );
+
+      create table upload_access_audit (
+        window_id        uuid not null,
+        action           text not null check (action in ('opened', 'closed')),
+        at               timestamptz not null,
+        duration_minutes integer check (duration_minutes in (15, 60)),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        ),
+        source_list_index integer check (source_list_index is null or source_list_index >= 0),
+        check ((source_rdb_sha256 is null) = (source_list_index is null)),
+        primary key (window_id, action)
+      );
+      create index upload_access_audit_recent_idx on upload_access_audit (at desc);
+      create unique index upload_access_audit_source_idx
+        on upload_access_audit (source_rdb_sha256, source_list_index)
+        where source_rdb_sha256 is not null;
+    `,
+  },
+  {
+    id: "0100_auth_token_state",
+    sql: `
+      create table auth_role_token_versions (
+        role text primary key check (role in ('admin', 'upload', 'staff')),
+        version integer not null check (version >= 1),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        )
+      );
+
+      create table auth_token_sessions (
+        jti text primary key check (char_length(jti) between 1 and 128),
+        role text not null check (role in ('admin', 'upload')),
+        issued_at timestamptz not null,
+        expires_at timestamptz not null,
+        token_version integer not null check (token_version >= 1),
+        ip text,
+        ua text,
+        source text not null check (source in ('browser', 'cli', 'unknown')),
+        check (expires_at > issued_at)
+      );
+      create index auth_token_sessions_issued_idx on auth_token_sessions (issued_at desc);
+      create index auth_token_sessions_expiry_idx on auth_token_sessions (expires_at);
+
+      create table auth_revoked_tokens (
+        jti text primary key check (char_length(jti) between 1 and 128),
+        expires_at timestamptz not null
+      );
+      create index auth_revoked_tokens_expiry_idx on auth_revoked_tokens (expires_at);
+
+      create table auth_recent_logins (
+        role text not null check (role in ('admin', 'upload')),
+        fingerprint text not null check (fingerprint ~ '^[a-f0-9]{24}$'),
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id text not null check (token_key_id = 'auth-secret-v1'),
+        expires_at timestamptz not null,
+        primary key (role, fingerprint)
+      );
+      create index auth_recent_logins_expiry_idx on auth_recent_logins (expires_at);
+    `,
+  },
+  {
+    id: "0101_attendee_sessions",
+    sql: `
+      create table attendee_session_versions (
+        person_id uuid primary key,
+        version text not null check (char_length(version) between 32 and 64),
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        )
+      );
+
+      create table attendee_sessions (
+        id_hash text primary key check (id_hash ~ '^[a-f0-9]{64}$'),
+        session_data jsonb not null check (jsonb_typeof(session_data) = 'object'),
+        person_id uuid,
+        pending_person_id uuid,
+        created_at timestamptz not null,
+        last_seen_at timestamptz not null,
+        authenticated_at timestamptz,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (
+          source_rdb_sha256 is null or source_rdb_sha256 ~ '^[a-f0-9]{64}$'
+        ),
+        check (expires_at > created_at)
+      );
+      create index attendee_sessions_person_idx
+        on attendee_sessions (person_id, expires_at) where person_id is not null;
+      create index attendee_sessions_pending_person_idx
+        on attendee_sessions (pending_person_id, expires_at)
+        where pending_person_id is not null;
+      create index attendee_sessions_expiry_idx on attendee_sessions (expires_at);
+    `,
+  },
+  {
+    id: "0102_cli_authorization",
+    sql: `
+      create table auth_cli_requests (
+        request_hash text primary key check (request_hash ~ '^[a-f0-9]{64}$'),
+        request_data jsonb not null check (jsonb_typeof(request_data) = 'object'),
+        status text not null default 'pending' check (status in ('pending', 'approved', 'denied')),
+        redirect_ciphertext bytea,
+        redirect_nonce bytea,
+        redirect_auth_tag bytea,
+        redirect_key_id text,
+        expires_at timestamptz not null,
+        check (
+          (status = 'pending' and redirect_ciphertext is null and redirect_nonce is null
+            and redirect_auth_tag is null and redirect_key_id is null)
+          or
+          (status <> 'pending' and coalesce(octet_length(redirect_ciphertext), 0) > 0
+            and coalesce(octet_length(redirect_nonce), 0) = 12
+            and coalesce(octet_length(redirect_auth_tag), 0) = 16
+            and coalesce(redirect_key_id, '') = 'auth-secret-v1')
+        )
+      );
+      create index auth_cli_requests_expiry_idx on auth_cli_requests (expires_at);
+
+      create table auth_cli_codes (
+        code_hash text primary key check (code_hash ~ '^[a-f0-9]{64}$'),
+        token_ciphertext bytea not null check (octet_length(token_ciphertext) > 0),
+        token_nonce bytea not null check (octet_length(token_nonce) = 12),
+        token_auth_tag bytea not null check (octet_length(token_auth_tag) = 16),
+        token_key_id text not null check (token_key_id = 'auth-secret-v1'),
+        code_challenge text not null check (char_length(code_challenge) = 43),
+        expires_at timestamptz not null,
+        consumed_at timestamptz
+      );
+      create index auth_cli_codes_expiry_idx on auth_cli_codes (expires_at);
+    `,
+  },
+  {
+    id: "0103_passkey_ceremonies",
+    sql: `
+      create table attendee_passkey_ceremonies (
+        id_hash text primary key check (id_hash ~ '^[a-f0-9]{64}$'),
+        ceremony_data jsonb not null check (jsonb_typeof(ceremony_data) = 'object'),
+        expires_at timestamptz not null
+      );
+      create index attendee_passkey_ceremonies_expiry_idx
+        on attendee_passkey_ceremonies (expires_at);
+    `,
+  },
+  {
+    id: "0104_diagnostic_reports",
+    sql: `
+      create table diagnostic_reports (
+        id uuid primary key,
+        type text not null check (type in ('client_error', 'site_feedback', 'draw_country_result_issue', 'things_room_issue', 'pitch_issue', 'upload_issue')),
+        subject_key text not null,
+        severity text not null check (severity in ('low', 'medium', 'high')),
+        status text not null check (status in ('new', 'investigating', 'resolved', 'ignored', 'duplicate')),
+        source text not null check (source in ('user', 'automatic')),
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        expires_at timestamptz not null,
+        record jsonb not null check (jsonb_typeof(record) = 'object'),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_key text,
+        check (expires_at > created_at)
+      );
+      create index diagnostic_reports_recent_idx on diagnostic_reports (created_at desc);
+      create index diagnostic_reports_group_idx on diagnostic_reports (type, subject_key, created_at desc);
+      create index diagnostic_reports_expiry_idx on diagnostic_reports (expires_at);
+
+      create table diagnostic_report_receipts (
+        key_hash text primary key check (key_hash ~ '^[a-f0-9]{64}$'),
+        kind text not null check (kind in ('idempotency', 'duplicate')),
+        report_id uuid not null references diagnostic_reports (id) on delete cascade,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index diagnostic_report_receipts_expiry_idx on diagnostic_report_receipts (expires_at);
+
+      create table diagnostic_report_rates (
+        fingerprint_hash text primary key check (fingerprint_hash ~ '^[a-f0-9]{64}$'),
+        count integer not null check (count between 1 and 8),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index diagnostic_report_rates_expiry_idx on diagnostic_report_rates (expires_at);
+
+      create table diagnostic_legacy_reports (
+        source_key text primary key,
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        original_record jsonb not null check (jsonb_typeof(original_record) = 'object'),
+        expires_at timestamptz not null
+      );
+      create index diagnostic_legacy_reports_expiry_idx on diagnostic_legacy_reports (expires_at);
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'mah_app_runtime') then
+          revoke all on table diagnostic_legacy_reports from mah_app_runtime;
+        end if;
+      end
+      $$;
+    `,
+  },
+  {
+    id: "0105_best_dressed",
+    sql: `
+      create table best_dressed_state (
+        singleton boolean primary key default true check (singleton),
+        session text not null,
+        open_until timestamptz,
+        runtime_revision bigint not null default 0 check (runtime_revision >= 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      insert into best_dressed_state (singleton, session) values (true, 'initial');
+
+      create table best_dressed_totals (
+        session text not null,
+        candidate_name text not null,
+        vote_count integer not null check (vote_count >= 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        primary key (session, candidate_name)
+      );
+      create table best_dressed_voters (
+        session text not null,
+        voter_hash text not null check (voter_hash ~ '^[a-f0-9]{64}$'),
+        candidate_name text not null,
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        primary key (session, voter_hash)
+      );
+      create index best_dressed_voters_expiry_idx on best_dressed_voters (expires_at);
+      create table best_dressed_tokens (
+        token_hash text primary key check (token_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index best_dressed_tokens_expiry_idx on best_dressed_tokens (expires_at);
+      create table best_dressed_codes (
+        code_hash text primary key check (code_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index best_dressed_codes_expiry_idx on best_dressed_codes (expires_at);
+
+      create table best_dressed_legacy_votes (
+        singleton boolean primary key default true check (singleton),
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        original_value text not null
+      );
+      do $$
+      begin
+        if exists (select 1 from pg_roles where rolname = 'mah_app_runtime') then
+          revoke all on table best_dressed_legacy_votes from mah_app_runtime;
+        end if;
+      end
+      $$;
+    `,
+  },
+  {
+    id: "0106_gallery_albums",
+    sql: `
+      create table gallery_albums (
+        slug text primary key check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        title text not null check (length(trim(title)) > 0),
+        album_date date not null,
+        description text,
+        cover_photo_id text,
+        status text not null check (status in ('draft', 'published')),
+        updated_at timestamptz not null,
+        revision integer not null default 1 check (revision >= 1),
+        source_manifest_key text,
+        source_manifest_sha256 text check (source_manifest_sha256 ~ '^[a-f0-9]{64}$'),
+        check (status = 'draft' or cover_photo_id is not null)
+      );
+      create index gallery_albums_public_date_idx
+        on gallery_albums (album_date desc) where status = 'published';
+
+      create table gallery_album_photos (
+        album_slug text not null references gallery_albums (slug) on delete cascade,
+        photo_id text not null,
+        position integer not null check (position >= 0),
+        width integer not null check (width > 0),
+        height integer not null check (height > 0),
+        version text not null,
+        widths integer[] not null,
+        placeholder jsonb not null check (jsonb_typeof(placeholder) = 'object'),
+        title text,
+        alt text,
+        caption text,
+        size_bytes bigint check (size_bytes >= 0),
+        taken_at text,
+        focal_point text,
+        auto_focal jsonb check (auto_focal is null or jsonb_typeof(auto_focal) = 'object'),
+        primary key (album_slug, photo_id),
+        unique (album_slug, position)
+      );
+      alter table gallery_albums add constraint gallery_albums_cover_owned_fk
+        foreign key (slug, cover_photo_id)
+        references gallery_album_photos (album_slug, photo_id)
+        deferrable initially deferred;
+    `,
+  },
+  {
+    id: "0107_words",
+    sql: `
+      create table words (
+        slug text primary key check (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+        title text not null check (length(trim(title)) > 0),
+        subtitle text,
+        image text,
+        type text not null check (type in ('blog', 'note', 'recipe', 'review')),
+        body_key text not null,
+        visibility text not null check (visibility in ('public', 'unlisted', 'private')),
+        markdown text not null,
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        published_at timestamptz,
+        reading_time integer not null check (reading_time > 0),
+        reading_time_version integer not null check (reading_time_version >= 0),
+        tags text[] not null default '{}',
+        featured boolean not null default false,
+        author_role text not null check (author_role = 'admin'),
+        revision integer not null check (revision >= 1),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_meta_sha256 text check (source_meta_sha256 ~ '^[a-f0-9]{64}$'),
+        source_body_sha256 text check (source_body_sha256 ~ '^[a-f0-9]{64}$'),
+        check (visibility != 'public' or published_at is not null)
+      );
+      create index words_public_updated_idx on words (updated_at desc)
+        where visibility = 'public';
+      create index words_tags_idx on words using gin (tags);
+
+      create table word_revisions (
+        slug text not null references words (slug) on delete cascade,
+        revision integer not null check (revision >= 1),
+        meta jsonb not null,
+        markdown text not null,
+        saved_at timestamptz not null,
+        primary key (slug, revision)
+      );
+    `,
+  },
+  {
+    id: "0108_word_shares",
+    sql: `
+      create table word_share_links (
+        id uuid primary key,
+        slug text not null references words (slug) on delete cascade,
+        token_hash text not null unique check (token_hash ~ '^[a-f0-9]{64}$'),
+        expires_at timestamptz not null,
+        pin_required boolean not null,
+        pin_hash text check (pin_hash is null or pin_hash ~ '^[a-f0-9]{64}$'),
+        pin_updated_at timestamptz,
+        revoked_at timestamptz,
+        created_at timestamptz not null,
+        updated_at timestamptz not null,
+        created_by_role text not null check (created_by_role = 'admin'),
+        revision integer not null check (revision >= 1),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_record_sha256 text check (source_record_sha256 ~ '^[a-f0-9]{64}$'),
+        check (pin_required = false or pin_hash is not null)
+      );
+      create index word_share_links_slug_created_idx
+        on word_share_links (slug, created_at desc);
+      create index word_share_links_expiry_idx
+        on word_share_links (expires_at);
+    `,
+  },
+  {
+    id: "0109_media_object_operations",
+    sql: `
+      create table media_object_operations (
+        id uuid primary key,
+        owner_kind text not null check (owner_kind in ('album', 'word')),
+        owner_id text not null,
+        owner_revision integer not null check (owner_revision >= 1),
+        operation text not null check (operation in ('copy', 'delete')),
+        source_scope text check (source_scope in ('private', 'public')),
+        source_key text,
+        target_scope text not null check (target_scope in ('private', 'public')),
+        target_key text not null,
+        content_type text,
+        cache_control text,
+        status text not null default 'pending'
+          check (status in ('pending', 'claimed', 'completed', 'dead')),
+        available_at timestamptz not null default now(),
+        attempts integer not null default 0 check (attempts >= 0),
+        max_attempts integer not null default 8 check (max_attempts > 0),
+        claim_token uuid,
+        claim_owner text,
+        lease_until timestamptz,
+        last_error text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        completed_at timestamptz,
+        unique (owner_kind, owner_id, owner_revision, operation, target_scope, target_key),
+        check (operation = 'delete' or (source_scope is not null and source_key is not null)),
+        check ((status = 'claimed') = (claim_token is not null and claim_owner is not null and lease_until is not null))
+      );
+      create index media_object_operations_claim_idx
+        on media_object_operations (available_at, id)
+        where status in ('pending', 'claimed');
+      create index media_object_operations_expired_lease_idx
+        on media_object_operations (lease_until)
+        where status = 'claimed';
+      create index media_object_operations_owner_idx
+        on media_object_operations (owner_kind, owner_id, owner_revision, status);
+    `,
+  },
+  {
+    id: "0110_media_worker_instances",
+    sql: `
+      create table media_worker_instances (
+        instance_id uuid primary key,
+        deployment_id text not null,
+        started_at timestamptz not null,
+        last_heartbeat_at timestamptz,
+        last_processed_at timestamptz,
+        last_error_at timestamptz,
+        last_error_message text check (last_error_message is null or length(last_error_message) <= 500),
+        stopped_at timestamptz,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index media_worker_instances_active_idx
+        on media_worker_instances (last_heartbeat_at desc)
+        where stopped_at is null;
+    `,
+  },
+  {
+    id: "0111_transfer_catalogue_and_media_jobs",
+    sql: `
+      create table transfers (
+        id text primary key check (length(id) between 16 and 128),
+        title text not null check (length(title) between 1 and 160),
+        owner_person_id uuid references event_people (id) on delete set null,
+        delete_token_hash text not null check (delete_token_hash ~ '^[a-f0-9]{64}$'),
+        delete_token_ciphertext bytea not null,
+        delete_token_nonce bytea not null check (octet_length(delete_token_nonce) = 12),
+        created_at timestamptz not null,
+        expires_at timestamptz not null check (expires_at > created_at),
+        deleted_at timestamptz,
+        revision bigint not null default 1 check (revision > 0),
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$')
+      );
+      create index transfers_active_expiry_idx on transfers (expires_at)
+        where deleted_at is null;
+      create index transfers_owner_idx on transfers (owner_person_id, created_at desc)
+        where deleted_at is null and owner_person_id is not null;
+
+      create table transfer_files (
+        transfer_id text not null references transfers (id) on delete cascade,
+        id text not null,
+        position integer not null check (position >= 0),
+        filename text not null,
+        kind text not null,
+        size_bytes bigint not null check (size_bytes >= 0),
+        stored_bytes bigint check (stored_bytes >= 0),
+        mime_type text not null,
+        storage_key text not null,
+        original_storage_key text,
+        original_filename text,
+        original_mime_type text,
+        converted_from text,
+        preview_source text,
+        width integer check (width > 0),
+        height integer check (height > 0),
+        taken_at timestamptz,
+        live_photo_content_id text,
+        preview_status text,
+        processing_status text,
+        processing_backend text,
+        processing_route text,
+        processing_generation integer not null default 1 check (processing_generation > 0),
+        enqueued_at timestamptz,
+        processing_started_at timestamptz,
+        processing_completed_at timestamptz,
+        processing_error_code text,
+        processing_error_detail text,
+        retry_count integer check (retry_count >= 0),
+        primary key (transfer_id, id),
+        unique (transfer_id, position),
+        unique (transfer_id, filename)
+      );
+      create index transfer_files_processing_idx
+        on transfer_files (processing_status, enqueued_at)
+        where processing_status in ('queued', 'processing');
+
+      create table transfer_groups (
+        transfer_id text not null references transfers (id) on delete cascade,
+        id text not null,
+        type text not null check (type in ('live_photo', 'raw_pair')),
+        captured_at timestamptz,
+        primary key (transfer_id, id)
+      );
+      create table transfer_group_members (
+        transfer_id text not null,
+        group_id text not null,
+        file_id text not null,
+        role text not null check (role in ('primary', 'raw', 'motion')),
+        mime_type text not null,
+        primary key (transfer_id, group_id, file_id),
+        unique (transfer_id, file_id),
+        foreign key (transfer_id, group_id) references transfer_groups (transfer_id, id)
+          on delete cascade,
+        foreign key (transfer_id, file_id) references transfer_files (transfer_id, id)
+          on delete cascade
+      );
+
+      -- Presign reservations precede transfer creation, so they cannot yet have a transfer FK.
+      create table transfer_upload_reservations (
+        transfer_id text primary key,
+        delete_token_hash text not null check (delete_token_hash ~ '^[a-f0-9]{64}$'),
+        actor_jti_hash text not null check (actor_jti_hash ~ '^[a-f0-9]{64}$'),
+        files_fingerprint_sha256 text not null check (files_fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        reserved_file_count integer not null check (reserved_file_count > 0),
+        reserved_bytes bigint not null check (reserved_bytes >= 0),
+        expires_seconds integer not null check (expires_seconds > 0),
+        created_at timestamptz not null,
+        expires_at timestamptz not null check (expires_at > created_at),
+        finalized_at timestamptz
+      );
+      create index transfer_upload_reservations_expiry_idx
+        on transfer_upload_reservations (expires_at) where finalized_at is null;
+
+      create table transfer_media_jobs (
+        id uuid primary key,
+        transfer_id text not null,
+        file_id text not null,
+        operation text not null check (length(operation) > 0),
+        generation integer not null check (generation > 0),
+        idempotency_key text not null unique,
+        payload jsonb not null check (jsonb_typeof(payload) = 'object'),
+        status text not null default 'pending'
+          check (status in ('pending', 'claimed', 'completed', 'dead', 'cancelled')),
+        available_at timestamptz not null default now(),
+        enqueued_at timestamptz not null,
+        attempts integer not null default 0 check (attempts >= 0),
+        max_attempts integer not null default 5 check (max_attempts > 0),
+        claim_token uuid,
+        claim_owner text,
+        lease_until timestamptz,
+        last_error text,
+        completed_at timestamptz,
+        source_rdb_sha256 text check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        unique (transfer_id, file_id, operation, generation),
+        foreign key (transfer_id, file_id) references transfer_files (transfer_id, id)
+          on delete cascade,
+        check ((status = 'claimed') = (claim_token is not null and claim_owner is not null and lease_until is not null))
+      );
+      create index transfer_media_jobs_pending_idx
+        on transfer_media_jobs (available_at, enqueued_at, id)
+        where status = 'pending';
+      create index transfer_media_jobs_lease_idx
+        on transfer_media_jobs (lease_until) where status = 'claimed';
+      create index transfer_media_jobs_dead_idx
+        on transfer_media_jobs (enqueued_at) where status = 'dead';
+    `,
+  },
+  {
+    id: "0112_transfer_media_import_quarantine",
+    sql: `
+      alter table transfers add column source_payload_sha256 text
+        check (source_payload_sha256 ~ '^[a-f0-9]{64}$');
+      alter table transfer_media_jobs
+        add column source_list text check (source_list in ('queued','processing','dead')),
+        add column source_index integer check (source_index >= 0),
+        add column source_entry_sha256 text check (source_entry_sha256 ~ '^[a-f0-9]{64}$');
+      alter table transfer_media_jobs add constraint transfer_media_jobs_source_complete
+        check ((source_rdb_sha256 is null and source_list is null and source_index is null
+                and source_entry_sha256 is null)
+            or (source_rdb_sha256 is not null and source_list is not null
+                and source_index is not null and source_entry_sha256 is not null));
+      create unique index transfer_media_jobs_source_entry_idx
+        on transfer_media_jobs (source_rdb_sha256,source_list,source_index)
+        where source_rdb_sha256 is not null;
+      create schema if not exists legacy_archive;
+      create table legacy_archive.transfer_media_job_quarantine (
+        source_rdb_sha256 text not null check (source_rdb_sha256 ~ '^[a-f0-9]{64}$'),
+        source_list text not null check (source_list in ('queued','processing','dead')),
+        source_index integer not null check (source_index >= 0),
+        entry_sha256 text not null check (entry_sha256 ~ '^[a-f0-9]{64}$'),
+        reason text not null check (length(reason) between 1 and 100),
+        payload jsonb not null,
+        imported_at timestamptz not null default now(),
+        primary key (source_rdb_sha256,source_list,source_index)
+      );
+    `,
+  },
+  {
+    id: "0113_transfer_object_deletions",
+    sql: `
+      alter table media_object_operations
+        drop constraint media_object_operations_owner_kind_check;
+      alter table media_object_operations
+        add constraint media_object_operations_owner_kind_check
+        check (owner_kind in ('album', 'word', 'transfer'));
+    `,
+  },
+  {
+    id: "0114_transfer_append_reservations",
+    sql: `
+      create table transfer_append_reservations (
+        transfer_id text not null references transfers (id) on delete cascade,
+        fingerprint_sha256 text not null check (fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+        file_ids text[] not null check (cardinality(file_ids) > 0),
+        filenames text[] not null check (cardinality(filenames) > 0),
+        reserved_file_count integer not null check (reserved_file_count > 0),
+        reserved_bytes bigint not null check (reserved_bytes >= 0),
+        created_at timestamptz not null default clock_timestamp(),
+        expires_at timestamptz not null check (expires_at > created_at),
+        primary key (transfer_id, fingerprint_sha256)
+      );
+      create index transfer_append_reservations_expiry_idx
+        on transfer_append_reservations (expires_at);
+    `,
+  },
+  {
+    id: "0115_transfer_derivative_generation",
+    sql: `
+      alter table transfer_files add column derivative_generation integer
+        check (derivative_generation > 0 and derivative_generation <= processing_generation);
+    `,
+  },
+  {
+    id: "0116_transfer_attempt_outputs",
+    sql: `
+      alter table transfer_files add column derivative_claim_token uuid;
+      alter table transfer_files add constraint transfer_derivative_claim_pair
+        check ((derivative_generation is null) = (derivative_claim_token is null));
+      create table transfer_media_job_attempt_outputs (
+        job_id uuid not null references transfer_media_jobs (id) on delete cascade,
+        claim_token uuid not null,
+        thumb_key text not null,
+        full_key text,
+        created_at timestamptz not null default clock_timestamp(),
+        primary key (job_id, claim_token)
+      );
+    `,
+  },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {
@@ -4340,6 +5046,85 @@ export type MigrationResult = {
   pitchDocuments?: PitchDocumentSchemaInventory;
 };
 
+interface MigrationLedgerRow extends QueryResultRow {
+  id: string;
+  sql_sha256: string | null;
+}
+
+function migrationHashes(): Map<string, string> {
+  const hashes = new Map<string, string>();
+  for (const migration of MIGRATIONS) {
+    if (hashes.has(migration.id)) throw new Error(`Duplicate migration id: ${migration.id}`);
+    hashes.set(migration.id, createHash("sha256").update(migration.sql).digest("hex"));
+  }
+  for (const [id, pinned] of Object.entries(HISTORICAL_MIGRATION_SHA256)) {
+    if (hashes.get(id) !== pinned) {
+      throw new Error(`Historical migration SQL changed or disappeared: ${id}`);
+    }
+  }
+  return hashes;
+}
+
+async function prepareMigrationLedger(hashes: ReadonlyMap<string, string>): Promise<void> {
+  await transaction(async (client) => {
+    await client.query("select pg_advisory_xact_lock($1)", [ADVISORY_LOCK_KEY]);
+    await client.query(`
+      create table if not exists schema_migrations (
+        id              text primary key,
+        applied_at      timestamptz not null default now(),
+        sql_sha256      text,
+        checksum_origin text
+      )
+    `);
+    await client.query(`
+      alter table schema_migrations
+        add column if not exists sql_sha256 text,
+        add column if not exists checksum_origin text
+    `);
+
+    const { rows } = await client.query<MigrationLedgerRow>(
+      "select id, sql_sha256 from schema_migrations order by id",
+    );
+    const baselineIds: string[] = [];
+    const baselineHashes: string[] = [];
+    for (const row of rows) {
+      const expected = hashes.get(row.id);
+      if (!expected) {
+        if (!LEGACY_PRODUCTION_MIGRATION_IDS.has(row.id)) {
+          throw new Error(`Unknown applied migration: ${row.id}`);
+        }
+        const { rows: siteSettings } = await client.query<{ exists: boolean }>(
+          "select to_regclass('public.site_settings') is not null as exists",
+        );
+        if (!siteSettings[0]?.exists || row.sql_sha256 !== null) {
+          throw new Error("Historical site-settings migration baseline is inconsistent");
+        }
+        continue;
+      }
+      if (row.sql_sha256 !== null && row.sql_sha256 !== expected) {
+        throw new Error(`Applied migration checksum mismatch: ${row.id}`);
+      }
+      if (row.sql_sha256 === null) {
+        baselineIds.push(row.id);
+        baselineHashes.push(expected);
+      }
+    }
+    if (baselineIds.length > 0) {
+      const result = await client.query(
+        `update schema_migrations as ledger
+            set sql_sha256 = pinned.sql_sha256,
+                checksum_origin = 'source-baseline'
+           from unnest($1::text[], $2::text[]) as pinned(id, sql_sha256)
+          where ledger.id = pinned.id and ledger.sql_sha256 is null`,
+        [baselineIds, baselineHashes],
+      );
+      if (result.rowCount !== baselineIds.length) {
+        throw new Error("Migration source baseline changed during installation");
+      }
+    }
+  });
+}
+
 /**
  * Apply any migrations this database has not seen.
  *
@@ -4348,14 +5133,8 @@ export type MigrationResult = {
 export async function runMigrations(): Promise<MigrationResult> {
   if (!getPool()) return { applied: [], alreadyApplied: 0 };
 
-  await transaction(async (client) => {
-    await client.query(`
-      create table if not exists schema_migrations (
-        id         text primary key,
-        applied_at timestamptz not null default now()
-      );
-    `);
-  });
+  const hashes = migrationHashes();
+  await prepareMigrationLedger(hashes);
 
   const applied: string[] = [];
   let alreadyApplied = 0;
@@ -4366,17 +5145,23 @@ export async function runMigrations(): Promise<MigrationResult> {
       // when the transaction ends, so a crash cannot wedge it.
       await client.query("select pg_advisory_xact_lock($1)", [ADVISORY_LOCK_KEY]);
 
-      const { rows } = await client.query<{ id: string }>(
-        "select id from schema_migrations where id = $1",
+      const { rows } = await client.query<MigrationLedgerRow>(
+        "select id, sql_sha256 from schema_migrations where id = $1",
         [migration.id],
       );
       if (rows.length > 0) {
+        if (rows[0]?.sql_sha256 !== hashes.get(migration.id)) {
+          throw new Error(`Applied migration checksum mismatch: ${migration.id}`);
+        }
         alreadyApplied += 1;
         return;
       }
 
       await client.query(migration.sql);
-      await client.query("insert into schema_migrations (id) values ($1)", [migration.id]);
+      await client.query(
+        "insert into schema_migrations (id, sql_sha256, checksum_origin) values ($1, $2, 'applied')",
+        [migration.id, hashes.get(migration.id)],
+      );
       applied.push(migration.id);
       log.info("postgres.migrate", "Applied migration", { id: migration.id });
     });
@@ -4389,6 +5174,45 @@ export async function runMigrations(): Promise<MigrationResult> {
     );
   }
   return { applied, alreadyApplied, pitchDocuments };
+}
+
+/** Read-only startup gate for runtimes using a role without schema privileges. */
+export async function verifyMigrations(): Promise<MigrationResult> {
+  if (!getPool()) throw new Error("DATABASE_URL is not configured");
+  const hashes = migrationHashes();
+  const rows = await query<MigrationLedgerRow>(
+    "select id, sql_sha256 from schema_migrations order by id",
+  );
+  const observed = new Set<string>();
+  for (const row of rows) {
+    const expected = hashes.get(row.id);
+    if (!expected) {
+      if (!LEGACY_PRODUCTION_MIGRATION_IDS.has(row.id) || row.sql_sha256 !== null) {
+        throw new Error(`Unknown applied migration: ${row.id}`);
+      }
+      const siteSettings = await query<{ exists: boolean }>(
+        "select to_regclass('public.site_settings') is not null as exists",
+      );
+      if (!siteSettings[0]?.exists) {
+        throw new Error("Historical site-settings migration baseline is inconsistent");
+      }
+      continue;
+    }
+    if (row.sql_sha256 !== expected) {
+      throw new Error(`Applied migration checksum mismatch: ${row.id}`);
+    }
+    observed.add(row.id);
+  }
+  if (observed.size !== hashes.size) {
+    throw new Error(`Database schema is behind source migrations: ${observed.size}/${hashes.size}`);
+  }
+  const pitchDocuments = await readPitchDocumentSchemaInventory();
+  if (pitchDocuments.unsupported > 0) {
+    throw new Error(
+      `Unsupported pitch document schemas remain: ${JSON.stringify(pitchDocuments.versions)}`,
+    );
+  }
+  return { applied: [], alreadyApplied: observed.size, pitchDocuments };
 }
 
 /** Test helper — the migration list, so tests can build a schema. */

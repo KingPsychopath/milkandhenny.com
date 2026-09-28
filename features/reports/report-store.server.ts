@@ -5,6 +5,7 @@ import { parseCountryDrawing } from "@/features/things/draw-country/drawing-cons
 import { scoreCountryDrawing } from "@/features/things/draw-country/scoring";
 import type { CountryScore } from "@/features/things/draw-country/types";
 import { getRedis } from "@/lib/platform/redis.server";
+import { query, transaction } from "@/lib/platform/postgres.server";
 import {
   decayedReportWeight,
   MIN_USER_REPORT_DETAIL_LENGTH,
@@ -50,6 +51,14 @@ const MAX_REPORT_RETENTION_SECONDS =
 const memoryReports = new Map<string, UserReportRecord>();
 const memoryRateLimits = new Map<string, { count: number; resetAtMs: number }>();
 const memoryReservations = new Map<string, { value: string; expiresAtMs: number }>();
+
+function usePostgresReports() {
+  return process.env.REPORT_STORE === "postgres";
+}
+
+function reportHash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 export class ReportValidationError extends Error {}
 
@@ -683,6 +692,7 @@ async function saveReport(report: UserReportRecord, idempotencyKey: string, dupl
 export async function submitUserReport(value: unknown, request: Request) {
   const report = buildReport(value, request);
   const idempotencyKey = idempotencyHeader(request);
+  if (usePostgresReports()) return submitPostgresReport(report, request, idempotencyKey);
   const idempotencyRedisKey = `${REPORT_IDEMPOTENCY_PREFIX}${idempotencyKey}`;
   const idempotency = await reserve(idempotencyRedisKey, IDEMPOTENCY_WINDOW_SECONDS);
   if (!idempotency.reserved) {
@@ -739,6 +749,113 @@ export async function submitUserReport(value: unknown, request: Request) {
   }
 }
 
+async function submitPostgresReport(
+  report: UserReportDraft,
+  request: Request,
+  idempotencyKey: string,
+) {
+  const fingerprint = requestFingerprint(request);
+  const detailFingerprint = report.context.userNote
+    ? reportHash(report.context.userNote).slice(0, 16)
+    : "no-detail";
+  const idempotencyHash = reportHash(idempotencyKey);
+  const duplicateHash = reportHash(
+    `${fingerprint}:${report.type}:${report.subjectKey}:${detailFingerprint}`,
+  );
+  const rateHash = reportHash(fingerprint);
+  const diagnosticId = report.context.diagnostics.diagnosticId;
+  const newReportId = randomUUID();
+  reportFollowUpToken(newReportId);
+  const outcome = await transaction(async (client) => {
+    // All callers lock in the same order. A rolled-back submission leaves no receipt or rate use.
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [idempotencyHash]);
+    const existingIdempotency = await client.query<{ report_id: string }>(
+      `select report_id from diagnostic_report_receipts where key_hash = $1 and expires_at > now()`,
+      [idempotencyHash],
+    );
+    if (existingIdempotency.rows[0])
+      return { accepted: false as const, reportId: existingIdempotency.rows[0].report_id };
+
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [duplicateHash]);
+    const existingDuplicate = await client.query<{ report_id: string }>(
+      `select report_id from diagnostic_report_receipts where key_hash = $1 and expires_at > now()`,
+      [duplicateHash],
+    );
+    if (existingDuplicate.rows[0])
+      return { accepted: false as const, reportId: existingDuplicate.rows[0].report_id };
+
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [rateHash]);
+    const currentRate = await client.query<{ count: number; retry_after: number }>(
+      `select count, greatest(1, ceil(extract(epoch from expires_at - now())))::integer as retry_after
+         from diagnostic_report_rates where fingerprint_hash = $1 and expires_at > now()`,
+      [rateHash],
+    );
+    if (currentRate.rows[0]?.count >= RATE_LIMIT_MAX)
+      return { limited: currentRate.rows[0].retry_after };
+
+    const now = new Date().toISOString();
+    const record = {
+      ...report,
+      id: newReportId,
+      createdAt: now,
+      updatedAt: now,
+      ...(report.context.userNote ? { userNoteAddedAt: now } : {}),
+      status: "new" as const,
+    } satisfies UserReportRecord;
+    await client.query(
+      `insert into diagnostic_reports
+         (id, type, subject_key, severity, status, source, created_at, updated_at, expires_at, record)
+       values ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9::jsonb)`,
+      [
+        record.id,
+        record.type,
+        record.subjectKey,
+        record.severity,
+        record.status,
+        record.source,
+        record.createdAt,
+        new Date(reportExpiryMs(record)),
+        JSON.stringify(record),
+      ],
+    );
+    await client.query(
+      `insert into diagnostic_report_receipts (key_hash, kind, report_id, expires_at)
+       values ($1, 'idempotency', $3, now() + interval '24 hours'),
+              ($2, 'duplicate', $3, now() + $4::integer * interval '1 hour')
+       on conflict (key_hash) do update set
+         kind = excluded.kind, report_id = excluded.report_id, expires_at = excluded.expires_at,
+         source_rdb_sha256 = null`,
+      [
+        idempotencyHash,
+        duplicateHash,
+        record.id,
+        REPORT_POLICIES[report.type].duplicateWindowHours,
+      ],
+    );
+    await client.query(
+      `insert into diagnostic_report_rates (fingerprint_hash, count, expires_at)
+       values ($1, 1, now() + interval '1 hour')
+       on conflict (fingerprint_hash) do update set
+         count = case when diagnostic_report_rates.expires_at <= now() then 1
+                      else diagnostic_report_rates.count + 1 end,
+         expires_at = case when diagnostic_report_rates.expires_at <= now()
+                           then now() + interval '1 hour'
+                          else diagnostic_report_rates.expires_at end,
+         source_rdb_sha256 = null`,
+      [rateHash],
+    );
+    return { accepted: true as const, reportId: record.id };
+  });
+  if ("limited" in outcome) throw new ReportRateLimitError(outcome.limited);
+  return {
+    accepted: outcome.accepted,
+    duplicate: !outcome.accepted,
+    reportId: outcome.reportId,
+    followUpToken: reportFollowUpToken(outcome.reportId),
+    diagnosticId,
+  };
+}
+
 function isUserReportRecord(value: unknown): value is UserReportRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const report = Object.fromEntries(Object.entries(value));
@@ -759,6 +876,17 @@ function isUserReportRecord(value: unknown): value is UserReportRecord {
 }
 
 async function listReportRecords() {
+  if (usePostgresReports()) {
+    const rows = await query<{ record: UserReportRecord }>(
+      `select record from diagnostic_reports where expires_at > now()
+       order by created_at desc limit $1`,
+      [MAX_ADMIN_REPORTS],
+    );
+    return rows.map(({ record }) => {
+      if (!isUserReportRecord(record)) throw new Error("Invalid stored report");
+      return record;
+    });
+  }
   const redis = getRedis();
   if (!redis) {
     pruneMemoryReports();
@@ -862,6 +990,28 @@ export async function appendUserReportNote(value: unknown) {
     throw new ReportValidationError("Add a little more detail");
   if (!tokensMatch(reportFollowUpToken(reportId), followUpToken))
     throw new ReportFollowUpError("Report unavailable");
+
+  if (usePostgresReports()) {
+    return transaction(async (client) => {
+      const result = await client.query<{ record: UserReportRecord }>(
+        `select record from diagnostic_reports where id::text = $1 and expires_at > now() for update`,
+        [reportId],
+      );
+      const report = result.rows[0]?.record;
+      if (!isUserReportRecord(report)) throw new ReportFollowUpError("Report unavailable");
+      if (report.context.userNote) {
+        if (report.context.userNote === userNote)
+          return { updated: false as const, duplicate: true as const };
+        throw new ReportFollowUpError("A detail has already been added");
+      }
+      const updated = addUserNoteToReport(report, userNote, new Date().toISOString());
+      await client.query(
+        `update diagnostic_reports set record = $2::jsonb, updated_at = $3 where id = $1`,
+        [reportId, JSON.stringify(updated), updated.updatedAt],
+      );
+      return { updated: true as const, duplicate: false as const };
+    });
+  }
 
   const lockKey = `${REPORT_FOLLOW_UP_LOCK_PREFIX}${reportId}`;
   const lock = await reserve(lockKey, FOLLOW_UP_LOCK_SECONDS);
@@ -1053,6 +1203,34 @@ export async function updateAdminReportGroup(id: string, status: ReportStatus, n
   const type = separator > 0 ? id.slice(0, separator) : "";
   const subjectKey = separator > 0 ? id.slice(separator + 1) : "";
   if (!isReportType(type) || !subjectKey) throw new ReportValidationError("Invalid report group");
+  if (usePostgresReports()) {
+    return transaction(async (client) => {
+      const result = await client.query<{ record: UserReportRecord }>(
+        `select record from diagnostic_reports
+         where type = $1 and subject_key = $2 and expires_at > now()
+         order by id for update`,
+        [type, subjectKey],
+      );
+      const updatedAt = new Date().toISOString();
+      for (const { record } of result.rows) {
+        if (!isUserReportRecord(record)) throw new Error("Invalid stored report");
+        const updated = updateReportRecord(record, status, updatedAt, note);
+        await client.query(
+          `update diagnostic_reports
+             set status = $2, updated_at = $3, expires_at = $4, record = $5::jsonb
+           where id = $1`,
+          [
+            record.id,
+            status,
+            updatedAt,
+            new Date(reportExpiryMs(updated)),
+            JSON.stringify(updated),
+          ],
+        );
+      }
+      return result.rows.length;
+    });
+  }
   const reports = (await listReportRecords()).filter(
     (report) => report.type === type && report.subjectKey === subjectKey,
   );
@@ -1074,4 +1252,29 @@ export async function updateAdminReportGroup(id: string, status: ReportStatus, n
     for (const report of nextReports) memoryReports.set(report.id, report);
   }
   return nextReports.length;
+}
+
+/** Expiry checks protect reads; this bounds physical rows after their windows close. */
+export async function cleanupPostgresReports(batchSize = 1_000) {
+  if (!usePostgresReports()) return { reports: 0, receipts: 0, rates: 0 };
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 1_000)
+    throw new Error("Invalid report cleanup batch size");
+  const counts = { reports: 0, receipts: 0, rates: 0 };
+  for (const [table, key] of [
+    ["diagnostic_report_receipts", "receipts"],
+    ["diagnostic_report_rates", "rates"],
+    ["diagnostic_reports", "reports"],
+  ] as const) {
+    const rows = await query(
+      `with expired as (
+         select ctid from ${table} where expires_at <= clock_timestamp()
+          order by expires_at limit $1 for update skip locked
+       )
+       delete from ${table} as target using expired
+        where target.ctid = expired.ctid returning 1`,
+      [batchSize],
+    );
+    counts[key] = rows.length;
+  }
+  return counts;
 }

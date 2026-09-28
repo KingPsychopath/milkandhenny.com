@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 
-import { listPublishedPitchesFn } from "@/features/things/pitches/pitches.functions";
+import { pitchWallQuery } from "@/features/things/pitches/pitches.queries";
 import { PitchGallery } from "@/features/things/pitches/ui/PitchGallery";
 import { PitchOperationalNotice } from "@/features/things/pitches/ui/PitchOperationalNotice";
 import { SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/things/pitches")({
-  loader: () => listPublishedPitchesFn(),
+  loader: async ({ context }) => {
+    await context.queryClient.fetchQuery(pitchWallQuery());
+  },
+  preloadStaleTime: 0,
   component: PitchGalleryRoute,
   head: () =>
     buildSeoHead({
@@ -20,13 +24,9 @@ export const Route = createFileRoute("/things/pitches")({
 });
 
 function PitchGalleryRoute() {
-  const data = Route.useLoaderData();
+  const { data } = useSuspenseQuery(pitchWallQuery());
   return data.operationalStatus.canRead ? (
-    <PitchGallery
-      initialWall={data.wall}
-      operationalStatus={data.operationalStatus}
-      personalPitches={data.personalPitches}
-    />
+    <PitchGallery />
   ) : (
     <PitchOperationalNotice status={data.operationalStatus} />
   );

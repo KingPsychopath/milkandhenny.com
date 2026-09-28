@@ -10,6 +10,8 @@ export const readCommunicationsWorkspaceFn = createServerFn({ method: "GET" })
   .validator((input: CommunicationsWorkspaceInput) => ({
     tab: typeof input.tab === "string" ? input.tab.slice(0, 40) : undefined,
     eventSlug: typeof input.eventSlug === "string" ? input.eventSlug.slice(0, 160) : undefined,
+    query: typeof input.query === "string" ? input.query.slice(0, 200) : undefined,
+    cursor: typeof input.cursor === "string" ? input.cursor.slice(0, 160) : undefined,
   }))
   .handler(async ({ data }) => {
     const access = await getAdminWorkspaceAccess(getRequest());

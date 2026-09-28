@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { rememberBrowserProfile } from "@/lib/client/browser-profile";
+import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
 import {
   cancelTicketOperationFn,
   resendTicketOperationFn,
@@ -18,6 +20,7 @@ import type { AttendeeAccount } from "../types";
 import { TeamBadge } from "@/features/event-operations/ui/TeamBadge";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 import { AchievementCabinet } from "@/features/achievements/ui/AchievementCollection";
+import { myAccountQuery } from "../account.queries";
 
 function ticketGroups(tickets: AttendeeAccount["tickets"]) {
   const groups = new Map<
@@ -138,47 +141,24 @@ function GameHistoryLink({
   );
 }
 
-export function MyAccountPage({
-  account: initialAccount,
-  emailStepUpRequired: initialEmailStepUpRequired,
-  security,
-}: {
-  account: AttendeeAccount;
-  emailStepUpRequired: boolean;
-  security: {
-    passkeys: Array<{
-      id: string;
-      label: string;
-      createdAt: string;
-      lastUsedAt?: string;
-      backedUp: boolean;
-      deviceType: "singleDevice" | "multiDevice";
-    }>;
-    totp: {
-      enabled: boolean;
-      label?: string;
-      createdAt?: string;
-      lastUsedAt?: string;
-      recoveryCodesRemaining: number;
-    };
-  };
-}) {
+export function MyAccountPage() {
   const navigate = useNavigate();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: accountView } = useSuspenseQuery(myAccountQuery);
+  const { account } = accountView;
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
-  const [account, setAccount] = useState(initialAccount);
-  const [name, setName] = useState(initialAccount.name ?? "");
+  const [name, setName] = useState(account.name ?? "");
   const [newEmail, setNewEmail] = useState("");
-  const [emailStepUpRequired, setEmailStepUpRequired] = useState(initialEmailStepUpRequired);
+  const [stepUpRequiredFromCommand, setEmailStepUpRequired] = useState(false);
+  const emailStepUpRequired = accountView.emailStepUpRequired || stepUpRequiredFromCommand;
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    if (initialAccount.name) rememberBrowserProfile({ name: initialAccount.name });
-  }, [initialAccount.name]);
-
-  useEffect(() => setAccount(initialAccount), [initialAccount]);
+    if (account.name) rememberBrowserProfile({ name: account.name });
+  }, [account.name]);
 
   async function saveName(event: FormEvent) {
     event.preventDefault();
@@ -187,8 +167,12 @@ export function MyAccountPage({
     try {
       const result = await updateAttendeeNameFn({ data: { name } });
       setMessage(result.ok ? "Preferred name updated." : result.error);
-      if (result.ok && result.value.name && account) {
-        setAccount({ ...account, name: result.value.name });
+      if (result.ok && result.value.name) {
+        queryClient.setQueryData(myAccountQuery.queryKey, (current) =>
+          current
+            ? { ...current, account: { ...current.account, name: result.value.name } }
+            : current,
+        );
         rememberBrowserProfile({ name: result.value.name });
       }
     } catch {
@@ -224,8 +208,7 @@ export function MyAccountPage({
     try {
       await signOutAttendeeFn();
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not sign out");
       setBusy(false);
@@ -259,8 +242,7 @@ export function MyAccountPage({
         throw new Error(result.error);
       }
       await navigate({ to: "/access", search: { returnTo: "/my" }, replace: true });
-      router.clearCache();
-      await router.invalidate();
+      await resetAuthenticatedData(router);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The sign-in email could not be removed");
       setBusy(false);
@@ -275,7 +257,7 @@ export function MyAccountPage({
       if (!result.ok) setMessage(result.error);
       else {
         setMessage(kind === "return" ? "Return request cancelled." : "Invitation cancelled.");
-        setAccount((current) => {
+        queryClient.setQueryData(myAccountQuery.queryKey, (current) => {
           if (!current) return current;
           const key =
             kind === "assignment"
@@ -285,11 +267,14 @@ export function MyAccountPage({
                 : "returnRequests";
           return {
             ...current,
-            ticketOperations: {
-              ...current.ticketOperations,
-              [key]: current.ticketOperations[key].map((item) =>
-                item.id === operationId ? { ...item, status: "cancelled" } : item,
-              ),
+            account: {
+              ...current.account,
+              ticketOperations: {
+                ...current.account.ticketOperations,
+                [key]: current.account.ticketOperations[key].map((item) =>
+                  item.id === operationId ? { ...item, status: "cancelled" } : item,
+                ),
+              },
             },
           };
         });
@@ -309,16 +294,19 @@ export function MyAccountPage({
       if (!result.ok) setMessage(result.error);
       else {
         setMessage("Invitation resent.");
-        setAccount((current) => {
+        queryClient.setQueryData(myAccountQuery.queryKey, (current) => {
           if (!current || !result.value.expiresAt) return current;
           const key = kind === "assignment" ? "outgoingAssignments" : "outgoingTransfers";
           return {
             ...current,
-            ticketOperations: {
-              ...current.ticketOperations,
-              [key]: current.ticketOperations[key].map((item) =>
-                item.id === operationId ? { ...item, expiresAt: result.value.expiresAt } : item,
-              ),
+            account: {
+              ...current.account,
+              ticketOperations: {
+                ...current.account.ticketOperations,
+                [key]: current.account.ticketOperations[key].map((item) =>
+                  item.id === operationId ? { ...item, expiresAt: result.value.expiresAt } : item,
+                ),
+              },
             },
           };
         });
@@ -700,7 +688,7 @@ export function MyAccountPage({
         </section>
       ) : null}
 
-      <SecuritySettingsPanel initialPasskeys={security.passkeys} initialTotp={security.totp} />
+      <SecuritySettingsPanel />
 
       <details className="mt-10 border-t theme-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">

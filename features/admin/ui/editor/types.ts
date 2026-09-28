@@ -3,14 +3,12 @@ import type { WordType } from "@/features/words/types";
 import type { WordVisibility } from "@/features/words/content-types";
 
 export type NoteVisibility = WordVisibility;
-export type MediaKind = "image" | "video" | "gif" | "audio" | "file";
-
-export interface MediaPreviewItem {
-  key: string;
-  filename: string;
-  kind: MediaKind;
-  url: string;
-}
+export type {
+  MediaKind,
+  MediaPreviewItem,
+  WordMediaItem,
+  WordMediaResponse,
+} from "@/features/words/admin-media-library.types";
 
 export interface NoteMeta {
   slug: string;
@@ -50,19 +48,4 @@ export type ShareStateFilter = "all" | "active" | "expired" | "revoked";
 export interface SharedWordSummary {
   slug: string;
   activeShareCount: number;
-}
-
-export interface WordMediaItem extends MediaPreviewItem {
-  size: number;
-  lastModified?: string;
-  markdown: string;
-  assetId?: string;
-}
-
-export interface WordMediaResponse {
-  slug: string;
-  assetsIncluded?: boolean;
-  pageMedia?: WordMediaItem[];
-  assets?: WordMediaItem[];
-  error?: string;
 }

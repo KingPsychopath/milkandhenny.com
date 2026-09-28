@@ -1,4 +1,9 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import {
+  getPostgresMediaWorkerStatus,
+  stopPostgresMediaWorkerInstance,
+  updatePostgresMediaWorkerStatus,
+} from "./media-worker-status-postgres.server";
 
 const TRANSFER_MEDIA_WORKER_STATUS_KEY = "transfer:media:worker-status";
 
@@ -16,6 +21,8 @@ function getTransferMediaStatusRedis() {
 async function updateTransferMediaWorkerStatus(
   patch: Partial<TransferMediaWorkerStatus>,
 ): Promise<void> {
+  if (process.env.MEDIA_WORKER_STATUS_STORE === "postgres")
+    return updatePostgresMediaWorkerStatus(patch);
   const redis = getTransferMediaStatusRedis();
   if (!redis) return;
 
@@ -27,6 +34,7 @@ async function updateTransferMediaWorkerStatus(
 }
 
 async function getTransferMediaWorkerStatus(): Promise<TransferMediaWorkerStatus> {
+  if (process.env.MEDIA_WORKER_STATUS_STORE === "postgres") return getPostgresMediaWorkerStatus();
   const redis = getTransferMediaStatusRedis();
   if (!redis) return {};
 
@@ -41,5 +49,13 @@ async function getTransferMediaWorkerStatus(): Promise<TransferMediaWorkerStatus
   };
 }
 
-export { getTransferMediaWorkerStatus, updateTransferMediaWorkerStatus };
+async function stopTransferMediaWorkerStatus(): Promise<void> {
+  if (process.env.MEDIA_WORKER_STATUS_STORE === "postgres") await stopPostgresMediaWorkerInstance();
+}
+
+export {
+  getTransferMediaWorkerStatus,
+  stopTransferMediaWorkerStatus,
+  updateTransferMediaWorkerStatus,
+};
 export type { TransferMediaWorkerStatus };

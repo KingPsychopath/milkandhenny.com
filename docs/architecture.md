@@ -70,6 +70,20 @@ shared multiplayer rooms where another device's command must update the current 
 
 ## Browser navigation and state
 
+Ordinary remote snapshots are owned by TanStack Query. A route loader prefetches the critical
+query during SSR and browser navigation; the component observes that same entry after hydration.
+Create the QueryClient with the router so each server request has an isolated cache. Feature query
+keys include every input that changes the result, including filters and non-secret access scope.
+Keep credentials out of keys and independently authorize every server read. Confirmed commands
+update complete exact entries or invalidate the affected query families. Local form drafts retain
+their own base revision and are never overwritten by a background refresh.
+
+Capability-bearing pages, live room projections, checkout outcomes, upload execution, and offline
+recovery have specialized owners. A capability URL may use a route-local loader with zero Router
+cache lifetime so the credential is neither a Query key nor a dehydrated shared snapshot. A live
+controller owns ordered events and reconnect reconciliation; Query may own independent metadata.
+These boundaries are detailed in [server-state-architecture-proposal.md](./server-state-architecture-proposal.md).
+
 The URL owns durable, addressable resources. React state owns live interaction.
 An in-place mode gets a browser-history entry only when Back should undo or
 leave that mode. Local games use this rule for setup-to-round transitions:
@@ -218,17 +232,57 @@ transactions, relational constraints, or durable queryable history. Examples inc
 - Single admission is `update tickets set redeemed_at = now() where id = $1 and redeemed_at is null returning *`. The second scanner gets zero rows.
 - `tickets` references `ticket_types` with `on delete restrict`, so deleting an event that sold tickets fails loudly instead of orphaning receipts.
 
-Migrations are an append-only list in `lib/platform/migrations.server.ts`, applied on boot under an advisory lock so several replicas can start together. A migration failure is logged and surfaced on `/health` rather than killing the process — the rest of the site keeps serving.
+Migrations are an append-only list in `lib/platform/migrations.server.ts`. The default boot mode
+applies them under an advisory lock. `DATABASE_SCHEMA_MODE=verify` checks the ledger without DDL
+for a restricted runtime role after a separate `pnpm database:migrate` step. A migration or
+verification failure is logged and surfaced on `/health` rather than killing the process.
+See [runtime role separation](./postgres-runtime-roles.md).
 
 **Redis** (`REDIS_REST_*`) holds expiring or coordination-heavy state: authentication sessions,
 rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
 records, distributed locks, and the leased media queue. Mutable independently read records use one
 key each. Specialized queues, indexes, and aggregate-adjacent outboxes document why they require an
-atomic structure.
+atomic structure. The fixed-window limiter also has an opt-in Postgres backend selected with
+`RATE_LIMIT_STORE=postgres`; Redis remains its default until active windows are reconciled.
+Upload access windows and their bounded audit history also have an opt-in Postgres backend selected
+with `UPLOAD_ACCESS_STORE=postgres`. The recoverable bearer token is encrypted with a key derived
+from `AUTH_SECRET`; switching this backend requires reconciling the active window and audit list at
+cutover. Redis remains the default until then.
+Admin/upload JWT versions, session records, revocations and 15-second login deduplication have an
+opt-in Postgres backend selected with `AUTH_TOKEN_STORE=postgres`. Recent bearer tokens are
+encrypted with a key derived from `AUTH_SECRET`; version and active-state import is required before
+switching. Attendee sessions have a separate opt-in Postgres backend selected with
+`ATTENDEE_SESSION_STORE=postgres`; it stores hashed cookie lookups and indexed person revocation.
+The source session and person-version keys must be imported with original expiry before switching.
+CLI authorization handshakes have their own opt-in Postgres backend selected with
+`AUTH_CLI_STORE=postgres`; request decisions, encrypted codes and one-time exchange are
+transactional. Redis remains the default until the short-lived source keys are reconciled.
+Passkey challenges have a separate opt-in Postgres store selected with
+`PASSKEY_CEREMONY_STORE=postgres`. Attendee login, passkey and TOTP throttles use the shared
+Postgres limiter when `RATE_LIMIT_STORE=postgres` is selected. Their source expiry windows remain
+a cutover gate.
+Action-link redemption and Pitch recovery also select the shared Postgres limiter through
+`RATE_LIMIT_STORE=postgres`; their source windows must be reconciled before that switch.
+Diagnostic reports have an opt-in Postgres backend selected with `REPORT_STORE=postgres`;
+submission receipts, rate admission, report creation, follow-up and admin updates use
+transactions. Best Dressed has a separate opt-in backend selected with
+`BEST_DRESSED_STORE=postgres`; its vote transaction binds the voter receipt, tally,
+token and code. Select `RATE_LIMIT_STORE=postgres` with it so voting no longer needs
+Redis for network throttling. Both require a final source import before switching;
+see [reports](./diagnostic-report-postgres.md) and
+[Best Dressed](./best-dressed-postgres.md).
 
 **R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
-album manifests, and transfer files. The public bucket contains only intentionally published
-derivatives and editorial media.
+album manifests during migration, and transfer files. The public bucket contains only intentionally
+published derivatives and editorial media. The album repository also has an opt-in Postgres
+catalogue selected with `ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety
+gate are described in [gallery albums](./gallery-albums-postgres.md).
+The word repository also has an opt-in Postgres body and metadata store selected with
+`WORD_STORE=postgres`, and an opt-in Postgres share-link store selected with
+`WORD_SHARE_STORE=postgres`; their imports and remaining media gates are in
+[words](./words-postgres.md).
+The [media object operation ledger](./media-object-operations.md) is an opt-in foundation for
+tracked R2 copy/delete work; it is not yet wired to album or word mutations.
 
 The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
 
@@ -285,9 +339,9 @@ recipient hash and a masked hint until reviewed.
 
 ## Media
 
-R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` is the durable source of truth for album manifests, draft derivatives, originals, private words, pitch assets, and transfers. `R2_PUBLIC_BUCKET` contains only published album display derivatives, published social cards, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
+R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` holds album manifests, draft derivatives, originals, private word bodies during migration, pitch assets, and transfers. `R2_PUBLIC_BUCKET` holds published album display derivatives, published social cards, public word bodies during migration, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
 
-Album manifests are JSON objects in private R2. They are a storage format, not repository content. The admin panel and CLI call the same durable workflows. Upload finalisation keeps an album in draft. Publishing copies only AVIF, WebP, and social-card derivatives to the public bucket; unpublishing removes those public objects. Originals remain private and downloads are authorised against the published manifest.
+Album manifests are currently JSON objects in private R2. They are a storage format, not repository content. The admin panel and CLI call the same durable workflows. The opt-in Postgres album repository stores editable metadata and photo order; R2 keeps binary objects. Upload finalisation keeps an album in draft. Publishing copies only AVIF, WebP, and social-card derivatives to the public bucket; unpublishing removes those public objects. Originals remain private and downloads are authorised against the published catalogue after cutover.
 
 Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
 

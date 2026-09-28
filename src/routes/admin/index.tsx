@@ -1,4 +1,35 @@
-import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
+import { communicationsWorkspaceQuery } from "@/features/communications/admin-workspace.queries";
+import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
+import { adminSystemHealthQuery } from "@/features/system/admin-health.queries";
+import {
+  adminCaseInboxQuery,
+  adminOperationsInboxQuery,
+} from "@/features/attendee-operations/admin-inbox.queries";
+import { adminPeopleQuery } from "@/features/attendee-operations/admin-people.queries";
+import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries";
+import { adminPollsQuery } from "@/features/polls/polls.queries";
+import { adminCreditsQuery } from "@/features/credits/credits.queries";
+import { adminEventsQuery } from "@/features/events/events.queries";
+import { adminEventOperationsQuery } from "@/features/event-operations/admin-event-read.queries";
+import { adminGuestRequestsQuery } from "@/features/tickets/admin-guest-requests.queries";
+import { adminTransfersQuery } from "@/features/transfers/admin.queries";
+import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
+import { adminGamePoolsQuery } from "@/features/things/pool/admin.queries";
+import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
+import { adminSiteSettingsQuery } from "@/features/site/site-settings.queries";
+import { adminReportsQuery } from "@/features/reports/admin-reports.queries";
+import { adminAlbumsQuery } from "@/features/media/admin-albums.queries";
+import {
+  adminPitchRemindersQuery,
+  adminPitchWorkspaceQuery,
+} from "@/features/things/pitches/admin-workspace.queries";
+import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
+import { adminEmailLedgerQuery } from "@/features/email-operations/admin-ledger.queries";
+import { isEmailOutboxStatus } from "@/lib/shared/email-operations";
+import {
+  adminOperationsSettingsQuery,
+  namedAdminGrantsQuery,
+} from "@/features/attendee-operations/admin-settings.queries";
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { AdminDraftProvider } from "@/features/admin/ui/hooks/useAdminDraftState";
@@ -89,23 +120,224 @@ export const Route = createFileRoute("/admin/")({
     view: search.view,
     tab: search.communicationTab,
     eventSlug: search.communicationEvent,
+    eventWorkspace: search.eventWorkspace,
+    emailStatus: search.emailStatus,
+    emailQuery: search.emailQuery,
+    operationsTab: search.operationsTab,
+    person: search.person,
+    ticket: search.ticket,
+    event: search.event,
   }),
   loader: {
-    handler: async ({ deps }) => {
+    handler: async ({ deps, context }) => {
       const access = await getAdminAccessFn();
-      const communications =
+      const communicationsPromise =
         access.isAuthed &&
         access.permissions?.manageCommunications &&
         deps.view === "communications"
-          ? await readCommunicationsWorkspaceFn({ data: deps }).then(
-              (data) => ({ data, error: null }),
-              () => ({
-                data: null,
-                error: "Could not load this communications workspace. Retry below.",
+          ? context.queryClient.prefetchQuery(
+              communicationsWorkspaceQuery({
+                tab: deps.tab ?? "event-plan",
+                eventSlug: deps.eventSlug ?? "",
+                query: "",
               }),
             )
           : null;
-      return { ...access, communications };
+      const pollsPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "polls"
+          ? context.queryClient.prefetchQuery(adminPollsQuery)
+          : null;
+      const creditsPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "credits"
+          ? context.queryClient.prefetchQuery(adminCreditsQuery)
+          : null;
+      const alertsPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "delivery"
+          ? context.queryClient.prefetchQuery(adminAlertSettingsQuery)
+          : null;
+      const emailPromise =
+        access.isAuthed &&
+        access.permissions?.manageCommunications &&
+        deps.view === "communications" &&
+        deps.tab === "delivery"
+          ? context.queryClient.prefetchQuery(
+              adminEmailLedgerQuery({
+                page: 1,
+                limit: 40,
+                sort: "newest",
+                ...(isEmailOutboxStatus(deps.emailStatus ?? null)
+                  ? {
+                      status: deps.emailStatus as NonNullable<
+                        Parameters<typeof adminEmailLedgerQuery>[0]["status"]
+                      >,
+                    }
+                  : {}),
+                ...(deps.emailQuery ? { query: deps.emailQuery } : {}),
+              }),
+            )
+          : null;
+      const eventsPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "events" &&
+        (!deps.eventWorkspace || deps.eventWorkspace === "events")
+          ? context.queryClient.prefetchQuery(adminEventsQuery)
+          : null;
+      const eventOperationsPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "events" &&
+        (!deps.eventWorkspace || deps.eventWorkspace === "events") &&
+        deps.event
+          ? context.queryClient.prefetchQuery(adminEventOperationsQuery(deps.event))
+          : null;
+      const guestRequestsPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "events" &&
+        (!deps.eventWorkspace || deps.eventWorkspace === "events") &&
+        deps.event
+          ? context.queryClient.prefetchQuery(adminGuestRequestsQuery(deps.event))
+          : null;
+      const pitchesPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        deps.view === "events" &&
+        deps.eventWorkspace === "pitches"
+          ? context.queryClient.prefetchQuery(adminPitchWorkspaceQuery)
+          : null;
+      const remindersPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        deps.view === "events" &&
+        deps.eventWorkspace === "pitches"
+          ? context.queryClient.prefetchQuery(adminPitchRemindersQuery)
+          : null;
+      const siteSettingsPromise =
+        access.isAuthed &&
+        access.permissions?.manageGlobalSettings &&
+        deps.view === "events" &&
+        (!deps.eventWorkspace || deps.eventWorkspace === "events")
+          ? context.queryClient.prefetchQuery(adminSiteSettingsQuery)
+          : null;
+      const transfersPromise =
+        access.isAuthed && access.permissions?.manageContent && deps.view === "transfers"
+          ? context.queryClient.prefetchQuery(adminTransfersQuery)
+          : null;
+      const uploadAccessPromise =
+        access.isAuthed && access.permissions?.manageContent && deps.view === "transfers"
+          ? context.queryClient.prefetchQuery(adminUploadAccessQuery)
+          : null;
+      const gamePoolsPromise =
+        access.isAuthed && access.permissions?.manageScoring && deps.view === "games"
+          ? context.queryClient.prefetchQuery(adminGamePoolsQuery)
+          : null;
+      const bestDressedPromise =
+        access.isAuthed && access.permissions?.manageScoring && deps.view === "best-dressed"
+          ? context.queryClient.prefetchQuery(adminBestDressedQuery)
+          : null;
+      const settingsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "settings"
+          ? context.queryClient.prefetchQuery(adminOperationsSettingsQuery)
+          : null;
+      const adminGrantsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "settings"
+          ? context.queryClient.prefetchQuery(namedAdminGrantsQuery)
+          : null;
+      const summaryPromise =
+        access.isAuthed &&
+        access.permissions?.manageContent &&
+        (deps.view === "overview" || deps.view === "content")
+          ? context.queryClient.prefetchQuery(adminContentSummaryQuery)
+          : null;
+      const albumsPromise =
+        access.isAuthed && access.permissions?.manageContent && deps.view === "content"
+          ? context.queryClient.prefetchQuery(adminAlbumsQuery)
+          : null;
+      const healthPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        (deps.view === "overview" || deps.view === "system")
+          ? context.queryClient.prefetchQuery(adminSystemHealthQuery)
+          : null;
+      const reportsPromise =
+        access.isAuthed && access.permissions?.viewAudit && deps.view === "overview"
+          ? context.queryClient.prefetchQuery(adminReportsQuery(false))
+          : null;
+      const sessionsPromise =
+        access.isAuthed && access.permissions?.manageGlobalSettings && deps.view === "system"
+          ? context.queryClient.prefetchQuery(adminTokenSessionsQuery)
+          : null;
+      if (
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        (deps.view === "overview" || deps.view === "operations")
+      ) {
+        // The notification summary is secondary. The SSR Query stream carries its pending result.
+        void context.queryClient.prefetchQuery(adminOperationsInboxQuery);
+        if (deps.view === "overview") {
+          // The overview renders the full support inbox below its primary cards.
+          void context.queryClient.prefetchQuery(
+            adminCaseInboxQuery({ status: "", severity: "", category: "", eventSlug: "" }),
+          );
+        }
+      }
+      const requestedOperationsTab =
+        deps.operationsTab ?? (deps.person || deps.ticket || deps.event ? "people" : "inbox");
+      const caseInboxPromise =
+        access.isAuthed &&
+        access.permissions?.viewOperations &&
+        deps.view === "operations" &&
+        requestedOperationsTab === "inbox"
+          ? context.queryClient.prefetchQuery(
+              adminCaseInboxQuery({ status: "", severity: "", category: "", eventSlug: "" }),
+            )
+          : null;
+      const peoplePromise =
+        access.isAuthed &&
+        access.permissions?.managePeople &&
+        deps.view === "operations" &&
+        requestedOperationsTab === "people"
+          ? context.queryClient.prefetchQuery(
+              adminPeopleQuery(deps.person ?? deps.ticket ?? deps.event ?? ""),
+            )
+          : null;
+      await Promise.all([
+        communicationsPromise,
+        pollsPromise,
+        creditsPromise,
+        alertsPromise,
+        emailPromise,
+        eventsPromise,
+        eventOperationsPromise,
+        guestRequestsPromise,
+        pitchesPromise,
+        remindersPromise,
+        siteSettingsPromise,
+        transfersPromise,
+        uploadAccessPromise,
+        gamePoolsPromise,
+        bestDressedPromise,
+        settingsPromise,
+        adminGrantsPromise,
+        summaryPromise,
+        albumsPromise,
+        healthPromise,
+        reportsPromise,
+        sessionsPromise,
+        caseInboxPromise,
+        peoplePromise,
+      ]);
+      return access;
     },
     staleReloadMode: "blocking",
   },
@@ -126,7 +358,6 @@ function AdminPage() {
   const {
     isAuthed,
     draftScope,
-    communications,
     permissions,
     localDevBypassAvailable,
     namedAdminPasskeyRequired,
@@ -252,7 +483,6 @@ function AdminPage() {
         <Suspense fallback={<AdminDashboardFallback />}>
           <AdminDashboard
             view={availableView}
-            initialCommunications={communications}
             communicationTab={communicationTab ?? "event-plan"}
             communicationEvent={communicationEvent}
             operationsTab={availableOperationsTab}

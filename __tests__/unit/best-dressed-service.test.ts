@@ -32,6 +32,7 @@ describe("best dressed Effect service", () => {
 
     expect(result.opened).toMatchObject({ ok: true, isOpen: true, minutes: 5 });
     expect(result.readBack).toMatchObject({ ok: true, isOpen: true });
+    if (!result.opened.ok || !result.readBack.ok) throw new Error("Expected an open voting window");
     expect(result.readBack.openUntil).toBe(result.opened.openUntil);
     expect(client.set).toHaveBeenCalledOnce();
     expect(client.expire).toHaveBeenCalledOnce();

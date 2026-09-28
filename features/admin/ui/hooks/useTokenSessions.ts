@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { adminTokenSessionsQuery } from "@/features/auth/token-sessions.queries";
 
 export type TokenSession = {
   jti: string;
@@ -14,54 +16,25 @@ export type TokenSession = {
   status: "active" | "expired" | "revoked" | "invalidated";
 };
 
-type TokenSessionsResponse = {
-  success: true;
-  count: number;
-  sessions: TokenSession[];
-  now: number;
-  currentTv: { admin: number; upload: number };
-};
-
-type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+const EMPTY_SESSIONS: TokenSession[] = [];
 
 /**
- * Token sessions are stored server-side (Redis) and keyed by JWT jti.
- * This hook only handles list/filter/paging state; mutation (revoke) is handled elsewhere.
+ * The private Query entry owns the server snapshot. This hook only handles
+ * local filtering and paging; revocation remains a separate command.
  */
-export function useTokenSessions(params: { isAuthed: boolean; authFetch: AuthFetch }) {
-  const { isAuthed, authFetch } = params;
-
-  const [sessions, setSessions] = useState<TokenSession[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+export function useTokenSessions(params: { isAuthed: boolean }) {
+  const sessionsQuery = useQuery({ ...adminTokenSessionsQuery, enabled: params.isAuthed });
+  const sessions: TokenSession[] = sessionsQuery.data?.sessions ?? EMPTY_SESSIONS;
+  const loading = sessionsQuery.isFetching;
+  const loadError = sessionsQuery.error?.message ?? null;
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
+  const refetch = sessionsQuery.refetch;
   const refresh = useCallback(async () => {
-    if (!isAuthed) return;
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res = await authFetch("/api/admin/tokens/sessions");
-      const data = (await res.json().catch(() => ({}))) as Partial<TokenSessionsResponse> & {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.error ?? "Session list could not be loaded");
-      }
-      setSessions(Array.isArray(data.sessions) ? (data.sessions as TokenSession[]) : []);
-    } catch (error) {
-      // Keep the last good snapshot visible while making the stale state explicit.
-      setLoadError(error instanceof Error ? error.message : "Session list could not be loaded");
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, isAuthed]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (params.isAuthed) await refetch();
+  }, [params.isAuthed, refetch]);
 
   const counts = useMemo(() => {
     const usable = sessions.filter((s) => s.status === "active").length;

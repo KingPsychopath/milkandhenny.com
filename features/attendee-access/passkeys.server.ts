@@ -21,10 +21,16 @@ import {
 } from "@/features/attendee-access/session.server";
 import { query, queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit as reserveSharedRateLimit } from "@/lib/platform/rate-limit.server";
 import { getBaseUrlForRequest, SITE_NAME } from "@/lib/shared/config";
 import { requestFingerprint } from "./access.server";
 import { safeReturnTo } from "./types";
 import { sendPersonSecurityNotice } from "./security-notifications.server";
+import {
+  postgresPasskeyCeremoniesSelected,
+  storePostgresPasskeyCeremony,
+  takePostgresPasskeyCeremony,
+} from "./passkey-ceremony-postgres.server";
 
 const CEREMONY_TTL_SECONDS = 5 * 60;
 const MANAGEMENT_STEP_UP_MS = 10 * 60 * 1_000;
@@ -90,6 +96,15 @@ function ceremonyConfig(request: Request): { origin: string; rpId: string } {
 }
 
 async function reserveRateLimit(discriminator: string, maximum = RATE_MAXIMUM): Promise<boolean> {
+  if (process.env.RATE_LIMIT_STORE === "postgres") {
+    const decision = await reserveSharedRateLimit({
+      name: "attendee-passkey",
+      identity: discriminator,
+      limit: maximum,
+      windowSeconds: RATE_WINDOW_SECONDS,
+    });
+    return decision.backendAvailable && decision.allowed;
+  }
   const key = `${RATE_PREFIX}${sha256(discriminator).slice(0, 32)}`;
   const redis = getRedis();
   if (redis) {
@@ -113,6 +128,13 @@ async function reserveRateLimit(discriminator: string, maximum = RATE_MAXIMUM): 
 }
 
 async function storeCeremony(id: string, value: Ceremony): Promise<boolean> {
+  if (postgresPasskeyCeremoniesSelected()) {
+    try {
+      return await storePostgresPasskeyCeremony(id, value);
+    } catch {
+      return false;
+    }
+  }
   const redis = getRedis();
   if (redis) {
     try {
@@ -155,6 +177,13 @@ function parseCeremony(value: unknown): Ceremony | null {
 
 async function takeCeremony(id: string): Promise<Ceremony | null> {
   if (!/^[A-Za-z0-9_-]{24}$/.test(id)) return null;
+  if (postgresPasskeyCeremoniesSelected()) {
+    try {
+      return parseCeremony(await takePostgresPasskeyCeremony(id));
+    } catch {
+      return null;
+    }
+  }
   const key = `${CEREMONY_PREFIX}${id}`;
   const redis = getRedis();
   if (redis) {

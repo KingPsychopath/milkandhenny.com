@@ -1,7 +1,8 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import type { Album } from "@/features/media/albums";
-import { getAlbumsPageFn } from "@/features/media/albums.functions";
+import { albumsPageQuery } from "@/features/media/albums.queries";
 import { getAlbumImageData } from "@/features/media/storage";
 import { imagePlaceholderStyle } from "@/features/media/image";
 import { focalPresetToObjectPosition } from "@/features/media/focal";
@@ -12,7 +13,10 @@ import { AppImage } from "@/components/AppImage";
 
 export const Route = createFileRoute("/pics/")({
   component: PicsPage,
-  loader: () => getAlbumsPageFn(),
+  loader: async ({ context }) => {
+    await context.queryClient.fetchQuery(albumsPageQuery);
+  },
+  preloadStaleTime: 0,
   head: () =>
     buildSeoHead({
       title: `Pics — ${SITE_NAME}`,
@@ -43,7 +47,7 @@ function formatDate(dateStr: string) {
 }
 
 function PicsPage() {
-  const albums = Route.useLoaderData();
+  const { data: albums } = useSuspenseQuery(albumsPageQuery);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">

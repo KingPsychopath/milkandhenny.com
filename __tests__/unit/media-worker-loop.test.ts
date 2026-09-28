@@ -15,8 +15,23 @@ const state = vi.hoisted(() => {
     pendingClaims,
     process: vi.fn(),
     requeue: vi.fn().mockResolvedValue({ permanent: false }),
+    postgresBatch: vi.fn().mockResolvedValue({
+      claimed: 0,
+      completed: 0,
+      retried: 0,
+      obsolete: 0,
+      lostClaim: 0,
+    }),
   };
 });
+
+vi.mock("@/features/transfers/media-job-executor-postgres.server", () => ({
+  runPostgresTransferMediaBatch: state.postgresBatch,
+}));
+
+vi.mock("@/features/transfers/media-jobs-postgres.server", () => ({
+  cancelObsoletePostgresTransferMediaJobs: vi.fn().mockResolvedValue(0),
+}));
 
 vi.mock("@/features/media/config.server", () => ({
   getMediaProcessorMode: () => "hybrid",
@@ -42,11 +57,12 @@ vi.mock("@/features/transfers/media-reconcile.server", () => ({
 }));
 
 vi.mock("@/features/transfers/media-worker-status.server", () => ({
+  stopTransferMediaWorkerStatus: vi.fn().mockResolvedValue(undefined),
   updateTransferMediaWorkerStatus: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/platform/redis-direct.server", () => ({
-  createDirectRedisClient: vi.fn(() => {
+  createBlockingRedisClient: vi.fn(() => {
     const client = {
       disconnect: vi.fn(() => {
         state.pendingClaims.get(client)?.(new Error("connection closed"));
@@ -64,6 +80,7 @@ beforeEach(() => {
   state.markTimedOut.mockClear();
   state.process.mockReset();
   state.requeue.mockClear();
+  state.postgresBatch.mockClear();
 });
 
 afterEach(async () => {
@@ -75,7 +92,53 @@ afterEach(async () => {
 });
 
 describe("long-running media worker", () => {
-  it("uses one bounded blocking claim per concurrency slot while idle", async () => {
+  it("uses Postgres claims without Redis blocking clients in opt-in mode", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("MEDIA_WORKER_STATUS_STORE", "postgres");
+    vi.stubEnv("MEDIA_RECONCILE_INTERVAL_MS", "0");
+    const { startMediaWorkerLoop, stopMediaWorkerLoop } =
+      await import("@/features/system/media-worker-runtime.server");
+
+    await startMediaWorkerLoop({ concurrency: 2 });
+    await vi.waitFor(() => expect(state.postgresBatch).toHaveBeenCalledTimes(2));
+    expect(state.clients).toHaveLength(0);
+    expect(state.claim).not.toHaveBeenCalled();
+
+    await stopMediaWorkerLoop();
+  });
+
+  it("refuses Postgres queue mode without Postgres worker status", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    const { startMediaWorkerLoop } = await import("@/features/system/media-worker-runtime.server");
+    await expect(startMediaWorkerLoop()).rejects.toThrow("MEDIA_WORKER_STATUS_STORE=postgres");
+    expect(state.postgresBatch).not.toHaveBeenCalled();
+  });
+
+  it("drains Postgres jobs and reports their outcomes", async () => {
+    vi.stubEnv("TRANSFER_MEDIA_JOB_STORE", "postgres");
+    vi.stubEnv("MEDIA_WORKER_STATUS_STORE", "postgres");
+    state.postgresBatch.mockResolvedValueOnce({
+      claimed: 1,
+      completed: 1,
+      retried: 0,
+      obsolete: 0,
+      lostClaim: 0,
+    });
+    const { drainMediaQueuesUntilIdle } =
+      await import("@/features/system/media-worker-runtime.server");
+
+    await expect(drainMediaQueuesUntilIdle()).resolves.toMatchObject({
+      disabled: false,
+      recoveredTransferJobs: 0,
+      processedJobs: 1,
+      succeeded: 1,
+      failed: 0,
+      skipped: 0,
+    });
+    expect(state.claim).not.toHaveBeenCalled();
+  });
+
+  it("holds one indefinite blocking claim per concurrency slot while idle", async () => {
     const { startMediaWorkerLoop, stopMediaWorkerLoop } =
       await import("@/features/system/media-worker-runtime.server");
 
@@ -83,7 +146,7 @@ describe("long-running media worker", () => {
 
     await vi.waitFor(() => expect(state.claim).toHaveBeenCalledTimes(2));
     expect(state.clients).toHaveLength(2);
-    expect(state.claim.mock.calls.map(([, timeout]) => timeout)).toEqual([10, 10]);
+    expect(state.claim.mock.calls.map(([, timeout]) => timeout)).toEqual([0, 0]);
     expect(new Set(state.claim.mock.calls.map(([client]) => client)).size).toBe(2);
 
     await stopMediaWorkerLoop();

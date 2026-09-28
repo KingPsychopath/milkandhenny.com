@@ -1,4 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import {
   describeTransferFiles,
@@ -6,6 +8,10 @@ import {
   totalTransferBytes,
 } from "@/features/transfers/presentation";
 import { getTransferPageFn } from "@/features/transfers/transfer.functions";
+import { transferPageQuery } from "@/features/transfers/transfer.queries";
+import { useTransferMetadataEvents } from "@/features/transfers/ui/transfer/useTransferMetadataEvents";
+import type { AssetGroup } from "@/features/transfers/types";
+import type { PublicTransferFile } from "@/features/transfers/public";
 import { SITE_NAME, SITE_BRAND } from "@/lib/shared/config";
 import { formatBytes } from "@/lib/shared/format";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -19,16 +25,28 @@ export const Route = createFileRoute("/t/$id")({
     typeof search.token === "string" ? { token: search.token } : {},
   loaderDeps: ({ search }) => ({ token: search.token }),
   loader: {
-    handler: ({ params, deps }) =>
-      getTransferPageFn({ data: { id: params.id, token: deps.token } }),
+    handler: async ({ context, params, deps }) => {
+      const result = deps.token
+        ? await getTransferPageFn({ data: { id: params.id, token: deps.token } })
+        : await context.queryClient.fetchQuery(transferPageQuery(params.id));
+      const transfer = result.transfer;
+      const head = transfer
+        ? {
+            id: transfer.id,
+            title: inferTransferTitle(transfer.title, transfer.files),
+            description: `${describeTransferFiles(transfer.files)} · ${formatBytes(totalTransferBytes(transfer.files))} · available until ${formatDate(transfer.expiresAt)}. Shared privately via ${SITE_NAME}.`,
+          }
+        : null;
+      return { head, capabilityData: deps.token ? result : null };
+    },
     staleReloadMode: "blocking",
   },
   staleTime: 0,
   gcTime: 0,
   preload: false,
   head: ({ loaderData }) => {
-    const transfer = loaderData?.transfer;
-    if (!transfer) {
+    const head = loaderData?.head;
+    if (!head) {
       return buildSeoHead({
         title: `Transfer not found — ${SITE_NAME}`,
         description: "This private transfer has expired or does not exist.",
@@ -37,14 +55,10 @@ export const Route = createFileRoute("/t/$id")({
         referrer: "no-referrer",
       });
     }
-    const displayTitle = inferTransferTitle(transfer.title, transfer.files);
-    const contents = describeTransferFiles(transfer.files);
-    const totalSize = formatBytes(totalTransferBytes(transfer.files));
-    const description = `${contents} · ${totalSize} · available until ${formatDate(transfer.expiresAt)}. Shared privately via ${SITE_NAME}.`;
     return buildSeoHead({
-      title: `${displayTitle} — ${SITE_NAME}`,
-      description,
-      path: `/t/${transfer.id}`,
+      title: `${head.title} — ${SITE_NAME}`,
+      description: head.description,
+      path: `/t/${head.id}`,
       robots: "noindex, nofollow",
       referrer: "no-referrer",
       imageAlt: `Private transfer shared via ${SITE_NAME}`,
@@ -61,9 +75,166 @@ function formatDate(iso: string) {
   });
 }
 
+type TransferPageResult = Awaited<ReturnType<typeof getTransferPageFn>>;
+const EMPTY_FILES: PublicTransferFile[] = [];
+
+function useTransferExpiryRefresh(expiresAt: string | undefined, refresh: () => Promise<void>) {
+  useEffect(() => {
+    if (!expiresAt) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      const remaining = Date.parse(expiresAt) - Date.now() + 1_000;
+      if (remaining <= 0) {
+        void refresh().catch(() => undefined);
+      } else {
+        timer = setTimeout(schedule, Math.min(remaining, 2_147_483_647));
+      }
+    };
+    schedule();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [expiresAt, refresh]);
+}
+
 function TransferPage() {
-  const { transfer, remainingSeconds, managementMode } = Route.useLoaderData();
+  const { capabilityData } = Route.useLoaderData();
+  const { id } = Route.useParams();
   const { token } = Route.useSearch();
+  return token && capabilityData ? (
+    <CapabilityTransferPage id={id} token={token} initial={capabilityData} />
+  ) : (
+    <QueryTransferPage id={id} />
+  );
+}
+
+function QueryTransferPage({ id }: { id: string }) {
+  const queryClient = useQueryClient();
+  const query = useQuery(transferPageQuery(id));
+  const [deletedId, setDeletedId] = useState<string | null>(null);
+  const refetch = query.refetch;
+  const refresh = useCallback(async () => {
+    const result = await refetch();
+    if (result.isError) throw result.error;
+  }, [refetch]);
+  useTransferExpiryRefresh(query.data?.transfer?.expiresAt, refresh);
+  useTransferMetadataEvents({
+    transferId: id,
+    files: query.data?.transfer?.files ?? EMPTY_FILES,
+    refresh,
+  });
+  const onRemoteChange = useCallback(
+    (files: PublicTransferFile[], groups?: AssetGroup[]) => {
+      const options = transferPageQuery(id);
+      queryClient.setQueryData<TransferPageResult>(options.queryKey, (current) =>
+        current?.transfer
+          ? { ...current, transfer: { ...current.transfer, files, groups } }
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: options.queryKey });
+    },
+    [id, queryClient],
+  );
+  const onDeleted = useCallback(() => {
+    setDeletedId(id);
+    queryClient.setQueryData<TransferPageResult>(transferPageQuery(id).queryKey, (current) =>
+      current ? { ...current, transfer: null, remainingSeconds: 0, managementMode: null } : current,
+    );
+  }, [id, queryClient]);
+  if (!query.data)
+    return (
+      <main id="main" className="p-8 font-mono text-sm">
+        loading transfer…
+      </main>
+    );
+  return (
+    <TransferPageContent
+      data={query.data}
+      deleted={deletedId === id}
+      onRemoteChange={onRemoteChange}
+      onDeleted={onDeleted}
+    />
+  );
+}
+
+function CapabilityTransferPage({
+  id,
+  token,
+  initial,
+}: {
+  id: string;
+  token: string;
+  initial: TransferPageResult;
+}) {
+  const [snapshot, setSnapshot] = useState({ id, token, data: initial });
+  const [deletedFor, setDeletedFor] = useState<{ id: string; token: string } | null>(null);
+  const data = snapshot.id === id && snapshot.token === token ? snapshot.data : initial;
+  useEffect(() => setSnapshot({ id, token, data: initial }), [id, token, initial]);
+  const refresh = useCallback(async () => {
+    setSnapshot({ id, token, data: await getTransferPageFn({ data: { id, token } }) });
+  }, [id, token]);
+  useTransferExpiryRefresh(data.transfer?.expiresAt, refresh);
+  useTransferMetadataEvents({
+    transferId: id,
+    files: data.transfer?.files ?? EMPTY_FILES,
+    refresh,
+  });
+  const onRemoteChange = useCallback(
+    (files: PublicTransferFile[], groups?: AssetGroup[]) =>
+      setSnapshot((current) =>
+        current.id === id && current.token === token && current.data.transfer
+          ? {
+              id,
+              token,
+              data: {
+                ...current.data,
+                transfer: { ...current.data.transfer, files, groups },
+              },
+            }
+          : current,
+      ),
+    [id, token],
+  );
+  const onDeleted = useCallback(() => {
+    setDeletedFor({ id, token });
+    setSnapshot((current) => ({
+      ...current,
+      data: { ...current.data, transfer: null, remainingSeconds: 0, managementMode: null },
+    }));
+  }, [id, token]);
+  return (
+    <TransferPageContent
+      data={data}
+      token={token}
+      deleted={deletedFor?.id === id && deletedFor.token === token}
+      onRemoteChange={onRemoteChange}
+      onDeleted={onDeleted}
+    />
+  );
+}
+
+function TransferPageContent({
+  data,
+  token,
+  deleted,
+  onRemoteChange,
+  onDeleted,
+}: {
+  data: TransferPageResult;
+  token?: string;
+  deleted: boolean;
+  onRemoteChange: (files: PublicTransferFile[], groups?: AssetGroup[]) => void;
+  onDeleted: () => void;
+}) {
+  const { transfer, remainingSeconds, managementMode } = data;
+
+  if (deleted) {
+    return (
+      <main id="main" className="min-h-screen p-8 text-center font-serif text-xl">
+        transfer taken down
+      </main>
+    );
+  }
 
   /* ─── Not found / expired ─── */
   if (!transfer) {
@@ -178,6 +349,8 @@ function TransferPage() {
             groups={transfer.groups}
             canManage={Boolean(managementMode)}
             deleteToken={managementMode === "owner" ? token : undefined}
+            onRemoteChange={onRemoteChange}
+            onTransferDeleted={onDeleted}
           />
         </section>
 
@@ -188,6 +361,7 @@ function TransferPage() {
               <TakedownButton
                 transferId={transfer.id}
                 deleteToken={managementMode === "owner" ? token : undefined}
+                onDeleted={onDeleted}
               />
             </div>
           </section>

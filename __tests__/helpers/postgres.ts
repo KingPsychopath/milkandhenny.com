@@ -55,6 +55,44 @@ export async function applySchema(): Promise<void> {
   }
 
   await query(`
+    drop schema if exists legacy_archive cascade;
+    drop table if exists transfer_media_job_attempt_outputs cascade;
+    drop table if exists transfer_media_jobs cascade;
+    drop table if exists transfer_append_reservations cascade;
+    drop table if exists transfer_group_members cascade;
+    drop table if exists transfer_groups cascade;
+    drop table if exists transfer_files cascade;
+    drop table if exists transfer_upload_reservations cascade;
+    drop table if exists transfers cascade;
+    drop table if exists media_worker_instances cascade;
+    drop table if exists media_object_operations cascade;
+    drop table if exists word_share_links cascade;
+    drop table if exists word_revisions cascade;
+    drop table if exists words cascade;
+    drop table if exists gallery_album_photos cascade;
+    drop table if exists gallery_albums cascade;
+    drop table if exists best_dressed_codes cascade;
+    drop table if exists best_dressed_legacy_votes cascade;
+    drop table if exists best_dressed_tokens cascade;
+    drop table if exists best_dressed_voters cascade;
+    drop table if exists best_dressed_totals cascade;
+    drop table if exists best_dressed_state cascade;
+    drop table if exists diagnostic_report_receipts cascade;
+    drop table if exists diagnostic_report_rates cascade;
+    drop table if exists diagnostic_legacy_reports cascade;
+    drop table if exists diagnostic_reports cascade;
+    drop table if exists attendee_passkey_ceremonies cascade;
+    drop table if exists auth_cli_codes cascade;
+    drop table if exists auth_cli_requests cascade;
+    drop table if exists attendee_sessions cascade;
+    drop table if exists attendee_session_versions cascade;
+    drop table if exists auth_recent_logins cascade;
+    drop table if exists auth_revoked_tokens cascade;
+    drop table if exists auth_token_sessions cascade;
+    drop table if exists auth_role_token_versions cascade;
+    drop table if exists upload_access_audit cascade;
+    drop table if exists upload_access_window cascade;
+    drop table if exists rate_limit_windows cascade;
     drop table if exists application_scheduled_jobs cascade;
     drop table if exists achievement_unlocks cascade;
     drop table if exists achievement_progress cascade;

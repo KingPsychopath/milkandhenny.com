@@ -24,6 +24,7 @@ export interface WordMeta {
   tags: string[];
   featured?: boolean;
   authorRole: "admin";
+  revision?: number;
 }
 
 export interface ShareLink {
@@ -38,6 +39,7 @@ export interface ShareLink {
   createdAt: string;
   updatedAt: string;
   createdByRole: "admin";
+  revision?: number;
 }
 
 export type ShareLinkView = Omit<

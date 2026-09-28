@@ -68,3 +68,13 @@ A blocking queue command is cheap only when it is allowed to remain blocked.
 Finite blocking timeouts are polling, and concurrent blocking consumers cannot
 share a connection. Long-running workers and one-shot drain commands need
 separate lifecycle semantics even when they share job-processing code.
+
+## Follow-up: finite timeout regression
+
+On 1 September, a 15-second ioredis command deadline caused an indefinite idle
+claim to fail, so a change gave long-running claims a 10-second Redis timeout.
+That reintroduced roughly 259,200 claims per 30 days per worker slot when the
+queue was empty. The 23 September review restored indefinite claims using
+dedicated blocking clients without a command deadline. Ordinary direct Redis
+clients retain their 15-second deadline, and the one-shot drain retains its
+finite claim timeout.

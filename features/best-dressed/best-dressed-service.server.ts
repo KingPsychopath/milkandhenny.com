@@ -71,7 +71,7 @@ export class BestDressedService extends Context.Service<
     this,
     Effect.gen(function* () {
       const redis = yield* RedisService;
-      const client = yield* redis.client;
+      const client = process.env.BEST_DRESSED_STORE === "postgres" ? null : yield* redis.client;
       return {
         clear: attempt(client, "clear", clearBestDressedVotes),
         getVotingWindow: attempt(client, "get_voting_window", getBestDressedVotingWindow),

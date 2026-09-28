@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminPitchRemindersQuery } from "@/features/things/pitches/admin-workspace.queries";
 
 import { AppSelect } from "@/components/AppSelect";
 import {
@@ -38,47 +40,36 @@ export function PitchRemindersPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [snapshot, setSnapshot] = useState<PitchReminderAdminSnapshot>();
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const remindersQuery = useQuery(adminPitchRemindersQuery);
+  const snapshot = remindersQuery.data;
+  const loading = remindersQuery.isFetching;
   const [busy, setBusy] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [template, setTemplate] = useState<PitchReminderTemplate>("resume");
-  const [settingsDraft, setSettingsDraft] = useState({
-    enabled: false,
-    inactivityDays: 10,
-    gapDays: 14,
-    maxAutomatic: 3,
-  });
+  const defaultDraft = {
+    enabled: snapshot?.settings.enabled ?? false,
+    inactivityDays: snapshot?.settings.inactivityDays ?? 10,
+    gapDays: snapshot?.settings.gapDays ?? 14,
+    maxAutomatic: snapshot?.settings.maxAutomatic ?? 3,
+  };
+  const [draftOverride, setDraftOverride] = useState<typeof defaultDraft>();
+  const settingsDraft = draftOverride ?? defaultDraft;
+  const setSettingsDraft = (update: (current: typeof defaultDraft) => typeof defaultDraft) =>
+    setDraftOverride((current) => update(current ?? settingsDraft));
   const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     try {
-      const response = await authFetch("/api/admin/pitches?view=reminders");
-      if (!response.ok) throw new Error("Could not load pitch reminders");
-      const body = (await response.json()) as { reminders?: PitchReminderAdminSnapshot };
-      if (!body.reminders) throw new Error("Pitch reminder status was incomplete");
-      setSnapshot(body.reminders);
-      setSettingsDraft({
-        enabled: body.reminders.settings.enabled,
-        inactivityDays: body.reminders.settings.inactivityDays,
-        gapDays: body.reminders.settings.gapDays,
-        maxAutomatic: body.reminders.settings.maxAutomatic,
-      });
+      const next = await queryClient.fetchQuery({ ...adminPitchRemindersQuery, staleTime: 0 });
       setSelected((current) => {
-        const available = new Set(body.reminders?.candidates.map((candidate) => candidate.id));
+        const available = new Set(next.candidates.map((candidate) => candidate.id));
         return new Set([...current].filter((id) => available.has(id)));
       });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not load pitch reminders");
-    } finally {
-      setLoading(false);
     }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  }, [queryClient, onError]);
 
   const selectedCandidates = useMemo(
     () => snapshot?.candidates.filter((candidate) => selected.has(candidate.id)) ?? [],
@@ -118,7 +109,8 @@ export function PitchRemindersPanel({
       if (!response.ok || !body.reminders) {
         throw new Error(body.error ?? "Could not save reminder settings");
       }
-      setSnapshot(body.reminders);
+      queryClient.setQueryData(adminPitchRemindersQuery.queryKey, body.reminders);
+      setDraftOverride(undefined);
       onStatus(
         body.reminders.settings.enabled
           ? "Automatic pitch nudges are on."
@@ -173,6 +165,11 @@ export function PitchRemindersPanel({
   return (
     <section className="border-y theme-border py-6" aria-labelledby="pitch-reminders-heading">
       {dialog}
+      {remindersQuery.error ? (
+        <p role="alert" className="font-mono text-xs">
+          {remindersQuery.error.message}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="font-mono text-micro uppercase tracking-[0.14em] theme-muted">

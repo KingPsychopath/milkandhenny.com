@@ -1,9 +1,13 @@
 import type Redis from "ioredis";
+import { randomUUID } from "node:crypto";
 import { Cause, Context, Data, Deferred, Effect, Fiber, Layer, Ref, Schedule } from "effect";
 
 import { AlbumOperationsService } from "@/features/media/album-operations-service.server";
 import { getMediaProcessorMode } from "@/features/media/config.server";
 import { getWorkerProcessingTimeoutMs } from "@/features/transfers/media-processing-config.server";
+import { runPostgresTransferMediaBatch } from "@/features/transfers/media-job-executor-postgres.server";
+import { cancelObsoletePostgresTransferMediaJobs } from "@/features/transfers/media-jobs-postgres.server";
+import { runTransferObjectDeletionBatch } from "@/features/transfers/object-deletions.server";
 import {
   markWorkerJobTimedOut,
   processWorkerJob,
@@ -15,7 +19,10 @@ import {
   requeueTransferMediaJob,
 } from "@/features/transfers/media-queue.server";
 import { reconcileTransferMedia } from "@/features/transfers/media-reconcile.server";
-import { updateTransferMediaWorkerStatus } from "@/features/transfers/media-worker-status.server";
+import {
+  stopTransferMediaWorkerStatus,
+  updateTransferMediaWorkerStatus,
+} from "@/features/transfers/media-worker-status.server";
 import { summarizeMediaWorkerError } from "@/features/transfers/media-worker-health";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { TransferMediaOperationsService } from "@/features/transfers/transfer-media-operations-service.server";
@@ -23,7 +30,7 @@ import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
 import { ObjectStorageService, RedisService } from "@/lib/platform/provider-services.server";
-import { createDirectRedisClient } from "@/lib/platform/redis-direct.server";
+import { createBlockingRedisClient } from "@/lib/platform/redis-direct.server";
 import { log } from "@/lib/platform/logger.server";
 import { makeManagedRuntimeHost } from "@/lib/platform/managed-runtime.server";
 import { withOperationSignal } from "@/lib/platform/operation-context.server";
@@ -57,6 +64,7 @@ type ConsumeResult = Pick<
 >;
 
 const DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS = 10;
+const transferDeletionOwner = `transfer-delete:${randomUUID()}`;
 
 function positiveInteger(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
@@ -116,7 +124,7 @@ async function recordWorkerError(error: unknown): Promise<void> {
 }
 
 function createBlockingClients(concurrency: number): Redis[] {
-  return Array.from({ length: concurrency }, () => createDirectRedisClient());
+  return Array.from({ length: concurrency }, () => createBlockingRedisClient());
 }
 
 const disconnectedBlockingClients = new WeakSet<Redis>();
@@ -151,14 +159,12 @@ function workerAttempt<A>(operation: string, run: (signal: AbortSignal) => Promi
   }).pipe(Effect.withSpan(`media.worker.${operation}`, { attributes: { operation } }));
 }
 
-function claimJob(client: Redis, timeoutSeconds = DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS) {
+function claimJob(client: Redis, timeoutSeconds = 0) {
   return workerAttempt("claim", async (signal) => {
     const disconnect = () => disconnectBlockingClient(client);
     signal.addEventListener("abort", disconnect, { once: true });
     try {
-      // The direct Redis client has a 15-second command deadline. A finite
-      // Redis-side block returns normally before that deadline and keeps an
-      // idle worker from reporting a false infrastructure failure.
+      // Worker clients have no command deadline, so an empty queue stays blocked.
       return await claimTransferMediaJobBlocking(client, timeoutSeconds);
     } finally {
       signal.removeEventListener("abort", disconnect);
@@ -231,6 +237,85 @@ function workerSlot(client: Redis, errorBackoffMs: number, storage: ObjectStorag
   );
 }
 
+function postgresWorkerSlot(errorBackoffMs: number, storage: ObjectStorageProvider) {
+  const owner = `transfer-media:${randomUUID()}`;
+  return Effect.forever(
+    workerAttempt("postgres_claim", (signal) =>
+      withObjectStorageProvider(storage, () => runPostgresTransferMediaBatch(owner, 1, signal)),
+    ).pipe(
+      Effect.flatMap((result) =>
+        result.claimed > 0
+          ? workerAttempt("status", () => markMediaJobProcessed())
+          : Effect.sleep(1_000),
+      ),
+      Effect.catch((error) =>
+        workerAttempt("record_postgres_claim_error", () => recordWorkerError(error)).pipe(
+          Effect.andThen(Effect.sleep(errorBackoffMs)),
+        ),
+      ),
+    ),
+  );
+}
+
+function requirePostgresWorkerStatus(): void {
+  if (process.env.MEDIA_WORKER_STATUS_STORE !== "postgres")
+    throw new Error("Postgres transfer media jobs require MEDIA_WORKER_STATUS_STORE=postgres");
+}
+
+function drainPostgresMediaQueues(
+  concurrency: number,
+  storage: ObjectStorageProvider,
+  maxJobs?: number,
+): Effect.Effect<DrainMediaQueuesResult, MediaWorkerError> {
+  requirePostgresWorkerStatus();
+  return Effect.gen(function* () {
+    const remaining =
+      maxJobs === undefined ? undefined : yield* Ref.make(Math.max(0, Math.floor(maxJobs)));
+    yield* workerAttempt("heartbeat", () => heartbeat());
+    const results = yield* Effect.forEach(
+      Array.from({ length: concurrency }),
+      () =>
+        Effect.gen(function* () {
+          const owner = `transfer-media-drain:${randomUUID()}`;
+          const summary: ConsumeResult = {
+            processedJobs: 0,
+            succeeded: 0,
+            failed: 0,
+            skipped: 0,
+          };
+          while (true) {
+            if (remaining) {
+              const allowed = yield* Ref.modify(remaining, (count) =>
+                count > 0 ? [true, count - 1] : [false, 0],
+              );
+              if (!allowed) return summary;
+            }
+            const result = yield* workerAttempt("postgres_drain", (signal) =>
+              withObjectStorageProvider(storage, () =>
+                runPostgresTransferMediaBatch(owner, 1, signal),
+              ),
+            );
+            if (result.claimed === 0) return summary;
+            summary.processedJobs += result.claimed;
+            summary.succeeded += result.completed;
+            summary.failed += result.retried;
+            summary.skipped += result.obsolete + result.lostClaim;
+            yield* workerAttempt("status", () => markMediaJobProcessed());
+          }
+        }),
+      { concurrency },
+    );
+    return {
+      disabled: false,
+      recoveredTransferJobs: 0,
+      processedJobs: results.reduce((sum, result) => sum + result.processedJobs, 0),
+      succeeded: results.reduce((sum, result) => sum + result.succeeded, 0),
+      failed: results.reduce((sum, result) => sum + result.failed, 0),
+      skipped: results.reduce((sum, result) => sum + result.skipped, 0),
+    };
+  });
+}
+
 function drainWorkerSlot(
   client: Redis,
   claimTimeoutSeconds: number,
@@ -277,6 +362,8 @@ function drainMediaQueues(
     options.concurrency ?? DEFAULT_WORKER_CONCURRENCY,
     DEFAULT_WORKER_CONCURRENCY,
   );
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres")
+    return drainPostgresMediaQueues(concurrency, storage, maxJobs);
   const claimTimeoutSeconds = Math.max(
     1,
     options.transferClaimTimeoutSeconds ?? DEFAULT_TRANSFER_CLAIM_TIMEOUT_SECONDS,
@@ -330,29 +417,60 @@ function maintenance(recoverStuckJobs: boolean, storage: ObjectStorageProvider) 
   const reconcileLoop =
     reconcileIntervalMs <= 0
       ? Effect.never
-      : Effect.gen(function* () {
-          const recovered = recoverStuckJobs
-            ? yield* workerAttempt("recover", () => recoverTransferMediaProcessingJobs())
-            : 0;
-          const swept = yield* workerAttempt("reconcile", () =>
-            withObjectStorageProvider(storage, reconcileTransferMedia),
-          );
-          if (recovered > 0 || swept.transfersRepaired > 0) {
-            yield* Effect.sync(() =>
-              log.info("media.worker", "Media queue recovery completed", {
-                recoveredJobs: recovered,
-                repairedFiles: swept.filesRepaired,
-                repairedTransfers: swept.transfersRepaired,
-              }),
+      : process.env.TRANSFER_MEDIA_JOB_STORE === "postgres"
+        ? workerAttempt("postgres_reconcile", () => cancelObsoletePostgresTransferMediaJobs()).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_postgres_reconcile_error", () => recordWorkerError(error)),
+            ),
+            Effect.repeat(Schedule.spaced(reconcileIntervalMs)),
+          )
+        : Effect.gen(function* () {
+            const recovered = recoverStuckJobs
+              ? yield* workerAttempt("recover", () => recoverTransferMediaProcessingJobs())
+              : 0;
+            const swept = yield* workerAttempt("reconcile", () =>
+              withObjectStorageProvider(storage, reconcileTransferMedia),
             );
-          }
-        }).pipe(
-          Effect.catch((error) =>
-            workerAttempt("record_reconcile_error", () => recordWorkerError(error)),
+            if (recovered > 0 || swept.transfersRepaired > 0) {
+              yield* Effect.sync(() =>
+                log.info("media.worker", "Media queue recovery completed", {
+                  recoveredJobs: recovered,
+                  repairedFiles: swept.filesRepaired,
+                  repairedTransfers: swept.transfersRepaired,
+                }),
+              );
+            }
+          }).pipe(
+            Effect.catch((error) =>
+              workerAttempt("record_reconcile_error", () => recordWorkerError(error)),
+            ),
+            Effect.repeat(Schedule.spaced(reconcileIntervalMs)),
+          );
+  const transferDeletionLoop =
+    process.env.TRANSFER_OBJECT_DELETION_RUNNER === "postgres"
+      ? Effect.repeat(
+          workerAttempt("transfer_object_deletions", () =>
+            withObjectStorageProvider(storage, () =>
+              runTransferObjectDeletionBatch(transferDeletionOwner),
+            ),
+          ).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                if (result.claimed > 0)
+                  log.info("media.worker", "Transfer object deletion batch completed", result);
+              }),
+            ),
+            Effect.catch((error) =>
+              workerAttempt("record_transfer_deletion_error", () => recordWorkerError(error)),
+            ),
           ),
-          Effect.repeat(Schedule.spaced(reconcileIntervalMs)),
-        );
-  return Effect.all([heartbeatLoop, reconcileLoop], { concurrency: 2, discard: true });
+          Schedule.spaced(30_000),
+        )
+      : Effect.never;
+  return Effect.all([heartbeatLoop, reconcileLoop, transferDeletionLoop], {
+    concurrency: 3,
+    discard: true,
+  });
 }
 
 export class MediaWorkerService extends Context.Service<
@@ -383,6 +501,18 @@ export class MediaWorkerService extends Context.Service<
           Effect.andThen(
             Effect.scoped(
               Effect.gen(function* () {
+                if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") {
+                  requirePostgresWorkerStatus();
+                  return yield* Effect.all(
+                    [
+                      ...Array.from({ length: concurrency }, () =>
+                        postgresWorkerSlot(errorBackoffMs, storage.port),
+                      ),
+                      maintenance(options.recoverStuckJobs !== false, storage.port),
+                    ],
+                    { concurrency: "unbounded", discard: true },
+                  );
+                }
                 const clients = yield* Effect.acquireRelease(
                   Effect.sync(() => createBlockingClients(concurrency)),
                   (active) => Effect.sync(() => active.forEach(disconnectBlockingClient)),
@@ -452,6 +582,7 @@ export function runMediaEffect<A, E>(
 
 async function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): Promise<void> {
   if (getMediaProcessorMode() === "local") return;
+  if (process.env.TRANSFER_MEDIA_JOB_STORE === "postgres") requirePostgresWorkerStatus();
   if (options.concurrency !== undefined || options.errorBackoffMs !== undefined) {
     // Custom startup settings are used by isolated worker hosts and tests. Release the existing
     // scoped runtime before replacing it so there is still exactly one Media runtime and no idle
@@ -467,11 +598,15 @@ async function startMediaWorkerLoop(options: DrainMediaQueuesOptions = {}): Prom
 }
 
 async function stopMediaWorkerLoop(): Promise<void> {
-  await mediaWorkerRuntime.run(
-    Effect.gen(function* () {
-      yield* (yield* MediaWorkerService).stop;
-    }),
-  );
+  try {
+    await mediaWorkerRuntime.run(
+      Effect.gen(function* () {
+        yield* (yield* MediaWorkerService).stop;
+      }),
+    );
+  } finally {
+    await stopTransferMediaWorkerStatus();
+  }
 }
 
 function disposeMediaWorkerRuntime(): Promise<void> {

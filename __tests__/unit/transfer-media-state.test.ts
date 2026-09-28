@@ -5,6 +5,7 @@ import {
   canRetryTransferProcessing,
   classifyTransferProcessingRoute,
   getTransferFileId,
+  getGenerationTransferAssetKeys,
   isHeifUploadLike,
   isTransferProcessingStale,
 } from "@/features/transfers/media-state";
@@ -26,6 +27,36 @@ describe("transfer media state helpers", () => {
     expect(classifyTransferProcessingRoute("capture.hif")).toBe("local_image");
     expect(classifyTransferProcessingRoute("capture.dng")).toBe("raw_try_local");
     expect(classifyTransferProcessingRoute("notes.pdf")).toBeNull();
+  });
+
+  it("isolates Postgres worker outputs by processing generation", () => {
+    expect(
+      getGenerationTransferAssetKeys("capability", "photo.jpg", "worker_image", "photo", 2),
+    ).toEqual({
+      thumbKey: "transfers/capability/thumb/photo/g2.webp",
+      fullKey: "transfers/capability/full/photo/g2.webp",
+    });
+    expect(
+      getGenerationTransferAssetKeys("capability", "clip.gif", "worker_gif", "clip", 1),
+    ).toEqual({
+      thumbKey: "transfers/capability/thumb/clip/g1.webp",
+    });
+    expect(
+      getGenerationTransferAssetKeys(
+        "capability",
+        "photo.jpg",
+        "worker_image",
+        "photo",
+        2,
+        "00000000-0000-0000-0000-000000000123",
+      ),
+    ).toEqual({
+      thumbKey: "transfers/capability/thumb/photo/g2/00000000-0000-0000-0000-000000000123.webp",
+      fullKey: "transfers/capability/full/photo/g2/00000000-0000-0000-0000-000000000123.webp",
+    });
+    expect(() =>
+      getGenerationTransferAssetKeys("capability", "photo.jpg", "worker_image", "photo", 0),
+    ).toThrow("Invalid transfer processing generation");
   });
 
   it("detects raw heif uploads so transfer routes can reject them", () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { playFeedback } from "@/lib/client/feedback";
 import { SITE_NAME } from "@/lib/shared/config";
 import { getStored, setStored, removeStored } from "@/lib/client/storage";
@@ -13,12 +14,10 @@ import {
   searchBestDressedGuestsFn,
   voteBestDressedFn,
 } from "@/features/best-dressed/best-dressed.functions";
+import { bestDressedLeaderboardQuery } from "@/features/best-dressed/best-dressed.queries";
 
-type LeaderboardEntry = { name: string; count: number };
 type StoredVote = { session: string; name: string };
 type BestDressedSnapshot = {
-  leaderboard: LeaderboardEntry[];
-  totalVotes: number;
   session: string;
   voteToken: string;
   votedFor: string | null;
@@ -33,6 +32,8 @@ type BestDressedClientProps = {
 const LEADERBOARD_REFRESH_INTERVAL_MS = 30_000;
 
 export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
+  const queryClient = useQueryClient();
+  const leaderboardQuery = useQuery(bestDressedLeaderboardQuery);
   const hasMounted = useHasMounted();
   const [hasVoted, setHasVoted] = useState<string | null>(initialSnapshot.votedFor);
   const [currentSession, setCurrentSession] = useState<string>(
@@ -45,10 +46,8 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     typeof initialSnapshot.openUntil === "number" ? initialSnapshot.openUntil : null,
   );
   const [filteredGuests, setFilteredGuests] = useState<string[]>([]);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(
-    initialSnapshot.leaderboard || [],
-  );
-  const [totalVotes, setTotalVotes] = useState(initialSnapshot.totalVotes || 0);
+  const leaderboard = leaderboardQuery.data?.leaderboard ?? [];
+  const totalVotes = leaderboardQuery.data?.totalVotes ?? 0;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedName, setSelectedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -86,6 +85,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     // This covers cases where localStorage was cleared or the user switched devices.
     if (
       !hasVoted &&
+      initialSnapshot.session === currentSession &&
       typeof initialSnapshot.votedFor === "string" &&
       initialSnapshot.votedFor.trim()
     ) {
@@ -97,7 +97,27 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
       };
       setStored("bestDressedVote", JSON.stringify(vote));
     }
-  }, [currentSession, hasVoted, initialSnapshot.votedFor]);
+  }, [currentSession, hasVoted, initialSnapshot.session, initialSnapshot.votedFor]);
+
+  useEffect(() => {
+    const observedSession = leaderboardQuery.data?.session;
+    if (!observedSession || observedSession === currentSession) return;
+    let active = true;
+    void getBestDressedSnapshotFn()
+      .then((snapshot) => {
+        if (!active || snapshot.session !== observedSession) return;
+        setCurrentSession(snapshot.session);
+        setHasVoted(snapshot.votedFor);
+        setVoteToken(snapshot.votedFor ? "" : snapshot.voteToken);
+        setCodeRequired(snapshot.codeRequired);
+        setOpenUntil(snapshot.openUntil);
+        removeStored("bestDressedVote");
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [currentSession, leaderboardQuery.data?.session]);
 
   useVisibilityReconciler({
     enabled: Boolean(hasVoted),
@@ -107,8 +127,7 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
     reconcile: async (isCurrent) => {
       const data = await getBestDressedLeaderboardFn();
       if (!isCurrent()) return;
-      setLeaderboard(data.leaderboard || []);
-      setTotalVotes(data.totalVotes || 0);
+      queryClient.setQueryData(bestDressedLeaderboardQuery.queryKey, data);
     },
   });
 
@@ -149,8 +168,13 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
         const vote: StoredVote = { session: result.session || currentSession, name: selectedName };
         setStored("bestDressedVote", JSON.stringify(vote));
         setHasVoted(selectedName);
-        setLeaderboard(result.leaderboard || []);
-        setTotalVotes(result.totalVotes || 0);
+        queryClient.setQueryData(bestDressedLeaderboardQuery.queryKey, {
+          leaderboard: result.leaderboard || [],
+          totalVotes: result.totalVotes || 0,
+          session: result.session || currentSession,
+          codeRequired: result.codeRequired !== false,
+          openUntil: typeof result.openUntil === "number" ? result.openUntil : null,
+        });
         setVoteToken(""); // Token is consumed
         setVoteCode("");
         setCurrentSession(result.session || currentSession);
@@ -174,8 +198,14 @@ export function BestDressedClient({ initialSnapshot }: BestDressedClientProps) {
           setCodeRequired(true);
         }
 
-        if (result.leaderboard) setLeaderboard(result.leaderboard);
-        if (typeof result.totalVotes === "number") setTotalVotes(result.totalVotes);
+        if (result.leaderboard || typeof result.totalVotes === "number")
+          queryClient.setQueryData(bestDressedLeaderboardQuery.queryKey, {
+            leaderboard: result.leaderboard ?? leaderboard,
+            totalVotes: result.totalVotes ?? totalVotes,
+            session: result.session ?? currentSession,
+            codeRequired: leaderboardQuery.data?.codeRequired ?? codeRequired,
+            openUntil: leaderboardQuery.data?.openUntil ?? openUntil,
+          });
 
         // If the token was invalid/expired, refresh snapshot to get a fresh token.
         if (result.status === 403) {

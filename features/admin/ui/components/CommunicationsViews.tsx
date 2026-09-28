@@ -1367,6 +1367,8 @@ export function FeedbackView(props: {
   selectedSurvey: string | null;
   responses: SurveyResponse[];
   invitations: SurveyInvitation[];
+  responseLoading: boolean;
+  responseError: string | null;
   busy: boolean;
 }) {
   const {
@@ -1380,6 +1382,8 @@ export function FeedbackView(props: {
     selectedSurvey,
     responses,
     invitations,
+    responseLoading,
+    responseError,
     busy,
   } = props;
   const updateQuestion = (index: number, patch: Partial<SurveyQuestion>) =>
@@ -1448,11 +1452,21 @@ export function FeedbackView(props: {
         </div>
         <div className="space-y-5">
           {selectedSurvey ? (
-            <ResponseList
-              survey={surveys.find((survey) => survey.id === selectedSurvey)}
-              responses={responses}
-              invitations={invitations}
-            />
+            responseLoading ? (
+              <p role="status" className="font-mono text-xs theme-muted">
+                Loading responses…
+              </p>
+            ) : responseError ? (
+              <p role="alert" className="font-mono text-xs theme-danger">
+                {responseError}
+              </p>
+            ) : (
+              <ResponseList
+                survey={surveys.find((survey) => survey.id === selectedSurvey)}
+                responses={responses}
+                invitations={invitations}
+              />
+            )
           ) : null}
           <form onSubmit={save} className="space-y-4 border-t theme-border pt-6">
             <p className="font-mono text-sm font-bold">{draft.id ? "edit survey" : "new survey"}</p>

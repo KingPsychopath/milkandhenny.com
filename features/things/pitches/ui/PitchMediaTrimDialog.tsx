@@ -96,8 +96,8 @@ export function PitchMediaTrimDialog({
           />
         </label>
         <p className="font-mono text-micro leading-relaxed theme-muted">
-          The original file stays on your device. Only this selected section is optimized and
-          uploaded.
+          Your pitch plays the selected section. The uploaded clip may retain surrounding frames
+          needed for playback. The original file stays on your device.
         </p>
         <div className="flex flex-wrap justify-end gap-3 border-t theme-border pt-4">
           <button

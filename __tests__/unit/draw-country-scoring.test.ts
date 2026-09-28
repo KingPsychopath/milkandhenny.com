@@ -231,14 +231,9 @@ describe("draw-country scoring", () => {
     expect(drawingIsValid(outline)).toBe(true);
   });
 
-  it(
-    "scores every translated and uniformly scaled reference outline at 100",
-    { timeout: 30_000 },
-    () => {
-      for (const outline of COUNTRIES)
-        expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
-    },
-  );
+  it.each(COUNTRIES)("scores translated and uniformly scaled reference $id at 100", (outline) => {
+    expect(scoreCountryDrawing(outline, exactDrawing(outline)).score, outline.id).toBe(100);
+  });
 
   it("does not penalise an exact outline drawn at a different position or size", () => {
     const namibia = COUNTRIES.find(({ id }) => id === "NA");
@@ -254,17 +249,14 @@ describe("draw-country scoring", () => {
     ).toEqual([100, 100, 100]);
   });
 
-  // Scores every country against every fault, so it runs a few seconds and
-  // sat on vitest's 5s default — it failed only under full-suite parallel
-  // load, which reads as a flaky scoring bug rather than a slow test.
-  it("keeps every near-exact country high despite small human faults", { timeout: 30_000 }, () => {
-    for (const outline of COUNTRIES) {
-      for (const [fault, drawing] of Object.entries(nearExactDrawings(outline)))
-        expect(
-          scoreCountryDrawing(outline, drawing).score,
-          `${outline.id} ${fault}`,
-        ).toBeGreaterThanOrEqual(70);
-    }
+  // Keep each country's evidence separate so coverage instrumentation does not
+  // put the entire catalogue under one timeout and failures identify the country.
+  it.each(COUNTRIES)("keeps near-exact $id high despite small human faults", (outline) => {
+    for (const [fault, drawing] of Object.entries(nearExactDrawings(outline)))
+      expect(
+        scoreCountryDrawing(outline, drawing).score,
+        `${outline.id} ${fault}`,
+      ).toBeGreaterThanOrEqual(70);
   });
 
   it("forgives slight hand tilt without correcting a wrong orientation", () => {

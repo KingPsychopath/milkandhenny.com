@@ -6,6 +6,7 @@ import { AttendeeOperationsService } from "@/features/attendee-operations/attend
 import type { AdminInboxItem } from "@/features/attendee-operations/notifications.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
+import { loadAdminInbox } from "@/features/attendee-operations/admin-inbox.server";
 
 function runInbox<A>(
   request: Request,
@@ -30,9 +31,9 @@ async function handleGET(request: Request) {
     const severity = url.searchParams.get("severity");
     const validSeverity = ["info", "prompt", "warning", "critical"].includes(severity ?? "");
     return Response.json(
-      await runInbox(request, (service) =>
-        service.loadInbox({
-          viewer,
+      await loadAdminInbox(
+        viewer,
+        {
           status: valid ? (status ?? undefined) : undefined,
           severity: validSeverity
             ? (severity as "info" | "prompt" | "warning" | "critical")
@@ -40,7 +41,8 @@ async function handleGET(request: Request) {
           category: url.searchParams.get("category") || undefined,
           eventSlug: url.searchParams.get("event") || undefined,
           active: url.searchParams.get("active") === "1",
-        }),
+        },
+        request.signal,
       ),
     );
   } catch (error) {

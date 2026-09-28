@@ -1,4 +1,5 @@
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit as reserveSharedRateLimit } from "@/lib/platform/rate-limit.server";
 import { log } from "@/lib/platform/logger.server";
 import { refreshPersonAchievements } from "@/features/achievements/achievements.server";
 import {
@@ -326,6 +327,15 @@ export async function readPublishedPitch(
 }
 
 export async function allowPitchRecovery(ip: string, email: string): Promise<boolean> {
+  if (process.env.RATE_LIMIT_STORE === "postgres") {
+    const decision = await reserveSharedRateLimit({
+      name: "pitches-recover",
+      identity: `${ip}:${email.trim().toLowerCase()}`,
+      limit: 4,
+      windowSeconds: 60 * 60,
+    });
+    return decision.backendAvailable && decision.allowed;
+  }
   const redis = getRedis();
   if (!redis) return process.env.NODE_ENV !== "production";
   try {

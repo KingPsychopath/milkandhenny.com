@@ -120,6 +120,65 @@ describeWithDatabase("pitch storage (postgres)", () => {
     await query("truncate pitch_decks restart identity cascade");
   });
 
+  it("keeps a thumbnail attached only to its owning deck", async () => {
+    const create = async (suffix: string) => {
+      const result = await createPitchDeck({
+        createRequestId: `thumbnail_owner_${suffix}`,
+        ownerName: "Owner",
+        ownerEmail: "owner@example.com",
+        ownerToken: createPitchOwnerToken(),
+        title: `Deck ${suffix}`,
+        document: documentWith([]),
+      });
+      if (!result.ok) throw new Error(result.error);
+      return result.value.deck.id;
+    };
+    const ownDeck = await create("one");
+    const otherDeck = await create("two");
+    const asset = await insertPitchAsset({
+      id: "pa_ownershiptest123456789",
+      deckId: ownDeck,
+      objectKey: `pitches/${ownDeck}/thumbnail/ownership.png`,
+      fileId: "thumbnail_ownership",
+      kind: "thumbnail",
+      fileName: "ownership.png",
+      mimeType: "image/png",
+      bytes: 123,
+    });
+
+    await expect(
+      query("update pitch_decks set thumbnail_asset_id = $2 where id = $1", [otherDeck, asset.id]),
+    ).rejects.toMatchObject({ code: "23503" });
+
+    await query("update pitch_decks set thumbnail_asset_id = $2 where id = $1", [
+      ownDeck,
+      asset.id,
+    ]);
+    await query("delete from pitch_assets where id = $1", [asset.id]);
+    const rows = await query<{ thumbnail_asset_id: string | null }>(
+      "select thumbnail_asset_id from pitch_decks where id = $1",
+      [ownDeck],
+    );
+    expect(rows[0]?.thumbnail_asset_id).toBeNull();
+
+    const nextAsset = await insertPitchAsset({
+      id: "pa_ownershiptest987654321",
+      deckId: ownDeck,
+      objectKey: `pitches/${ownDeck}/thumbnail/second.png`,
+      fileId: "thumbnail_second",
+      kind: "thumbnail",
+      fileName: "second.png",
+      mimeType: "image/png",
+      bytes: 123,
+    });
+    await query("update pitch_decks set thumbnail_asset_id = $2 where id = $1", [
+      ownDeck,
+      nextAsset.id,
+    ]);
+    await query("delete from pitch_decks where id = $1", [ownDeck]);
+    expect(await query("select id from pitch_assets where id = $1", [nextAsset.id])).toEqual([]);
+  });
+
   it("serialises media reservations so concurrent uploads cannot exceed the deck allowance", async () => {
     const ownerToken = createPitchOwnerToken();
     const created = await createPitchDeck({

@@ -93,10 +93,15 @@ import { Route as ApiAttendeeSessionRouteRouteImport } from './routes/api/attend
 import { Route as ApiAttendeeTicketOperationsRouteRouteImport } from './routes/api/attendee/ticket-operations/route'
 import { Route as ApiCommunicationsClickRouteRouteImport } from './routes/api/communications/click/route'
 import { Route as ApiCronCleanupAttendeeAccessRouteRouteImport } from './routes/api/cron/cleanup-attendee-access/route'
+import { Route as ApiCronCleanupAttendeeSessionsRouteRouteImport } from './routes/api/cron/cleanup-attendee-sessions/route'
+import { Route as ApiCronCleanupAuthStateRouteRouteImport } from './routes/api/cron/cleanup-auth-state/route'
+import { Route as ApiCronCleanupBestDressedRouteRouteImport } from './routes/api/cron/cleanup-best-dressed/route'
 import { Route as ApiCronCleanupCommunicationLinksRouteRouteImport } from './routes/api/cron/cleanup-communication-links/route'
 import { Route as ApiCronCleanupEmailRouteRouteImport } from './routes/api/cron/cleanup-email/route'
 import { Route as ApiCronCleanupGamePoolsRouteRouteImport } from './routes/api/cron/cleanup-game-pools/route'
 import { Route as ApiCronCleanupPitchesRouteRouteImport } from './routes/api/cron/cleanup-pitches/route'
+import { Route as ApiCronCleanupRateLimitsRouteRouteImport } from './routes/api/cron/cleanup-rate-limits/route'
+import { Route as ApiCronCleanupReportsRouteRouteImport } from './routes/api/cron/cleanup-reports/route'
 import { Route as ApiCronCleanupTransfersRouteRouteImport } from './routes/api/cron/cleanup-transfers/route'
 import { Route as ApiCronCleanupWordMediaOrphansRouteRouteImport } from './routes/api/cron/cleanup-word-media-orphans/route'
 import { Route as ApiCronCleanupWordSharesRouteRouteImport } from './routes/api/cron/cleanup-word-shares/route'
@@ -663,6 +668,24 @@ const ApiCronCleanupAttendeeAccessRouteRoute =
     path: '/api/cron/cleanup-attendee-access',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCronCleanupAttendeeSessionsRouteRoute =
+  ApiCronCleanupAttendeeSessionsRouteRouteImport.update({
+    id: '/api/cron/cleanup-attendee-sessions',
+    path: '/api/cron/cleanup-attendee-sessions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupAuthStateRouteRoute =
+  ApiCronCleanupAuthStateRouteRouteImport.update({
+    id: '/api/cron/cleanup-auth-state',
+    path: '/api/cron/cleanup-auth-state',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupBestDressedRouteRoute =
+  ApiCronCleanupBestDressedRouteRouteImport.update({
+    id: '/api/cron/cleanup-best-dressed',
+    path: '/api/cron/cleanup-best-dressed',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCronCleanupCommunicationLinksRouteRoute =
   ApiCronCleanupCommunicationLinksRouteRouteImport.update({
     id: '/api/cron/cleanup-communication-links',
@@ -685,6 +708,18 @@ const ApiCronCleanupPitchesRouteRoute =
   ApiCronCleanupPitchesRouteRouteImport.update({
     id: '/api/cron/cleanup-pitches',
     path: '/api/cron/cleanup-pitches',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupRateLimitsRouteRoute =
+  ApiCronCleanupRateLimitsRouteRouteImport.update({
+    id: '/api/cron/cleanup-rate-limits',
+    path: '/api/cron/cleanup-rate-limits',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiCronCleanupReportsRouteRoute =
+  ApiCronCleanupReportsRouteRouteImport.update({
+    id: '/api/cron/cleanup-reports',
+    path: '/api/cron/cleanup-reports',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiCronCleanupTransfersRouteRoute =
@@ -1547,10 +1582,15 @@ export interface FileRoutesByFullPath {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
+  '/api/cron/cleanup-rate-limits': typeof ApiCronCleanupRateLimitsRouteRoute
+  '/api/cron/cleanup-reports': typeof ApiCronCleanupReportsRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -1774,10 +1814,15 @@ export interface FileRoutesByTo {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
+  '/api/cron/cleanup-rate-limits': typeof ApiCronCleanupRateLimitsRouteRoute
+  '/api/cron/cleanup-reports': typeof ApiCronCleanupReportsRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -2002,10 +2047,15 @@ export interface FileRoutesById {
   '/api/attendee/ticket-operations': typeof ApiAttendeeTicketOperationsRouteRoute
   '/api/communications/click': typeof ApiCommunicationsClickRouteRoute
   '/api/cron/cleanup-attendee-access': typeof ApiCronCleanupAttendeeAccessRouteRoute
+  '/api/cron/cleanup-attendee-sessions': typeof ApiCronCleanupAttendeeSessionsRouteRoute
+  '/api/cron/cleanup-auth-state': typeof ApiCronCleanupAuthStateRouteRoute
+  '/api/cron/cleanup-best-dressed': typeof ApiCronCleanupBestDressedRouteRoute
   '/api/cron/cleanup-communication-links': typeof ApiCronCleanupCommunicationLinksRouteRoute
   '/api/cron/cleanup-email': typeof ApiCronCleanupEmailRouteRoute
   '/api/cron/cleanup-game-pools': typeof ApiCronCleanupGamePoolsRouteRoute
   '/api/cron/cleanup-pitches': typeof ApiCronCleanupPitchesRouteRoute
+  '/api/cron/cleanup-rate-limits': typeof ApiCronCleanupRateLimitsRouteRoute
+  '/api/cron/cleanup-reports': typeof ApiCronCleanupReportsRouteRoute
   '/api/cron/cleanup-transfers': typeof ApiCronCleanupTransfersRouteRoute
   '/api/cron/cleanup-word-media-orphans': typeof ApiCronCleanupWordMediaOrphansRouteRoute
   '/api/cron/cleanup-word-shares': typeof ApiCronCleanupWordSharesRouteRoute
@@ -2231,10 +2281,15 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-attendee-sessions'
+    | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
+    | '/api/cron/cleanup-rate-limits'
+    | '/api/cron/cleanup-reports'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -2458,10 +2513,15 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-attendee-sessions'
+    | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
+    | '/api/cron/cleanup-rate-limits'
+    | '/api/cron/cleanup-reports'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -2685,10 +2745,15 @@ export interface FileRouteTypes {
     | '/api/attendee/ticket-operations'
     | '/api/communications/click'
     | '/api/cron/cleanup-attendee-access'
+    | '/api/cron/cleanup-attendee-sessions'
+    | '/api/cron/cleanup-auth-state'
+    | '/api/cron/cleanup-best-dressed'
     | '/api/cron/cleanup-communication-links'
     | '/api/cron/cleanup-email'
     | '/api/cron/cleanup-game-pools'
     | '/api/cron/cleanup-pitches'
+    | '/api/cron/cleanup-rate-limits'
+    | '/api/cron/cleanup-reports'
     | '/api/cron/cleanup-transfers'
     | '/api/cron/cleanup-word-media-orphans'
     | '/api/cron/cleanup-word-shares'
@@ -2899,10 +2964,15 @@ export interface RootRouteChildren {
   ApiAttendeeTicketOperationsRouteRoute: typeof ApiAttendeeTicketOperationsRouteRoute
   ApiCommunicationsClickRouteRoute: typeof ApiCommunicationsClickRouteRoute
   ApiCronCleanupAttendeeAccessRouteRoute: typeof ApiCronCleanupAttendeeAccessRouteRoute
+  ApiCronCleanupAttendeeSessionsRouteRoute: typeof ApiCronCleanupAttendeeSessionsRouteRoute
+  ApiCronCleanupAuthStateRouteRoute: typeof ApiCronCleanupAuthStateRouteRoute
+  ApiCronCleanupBestDressedRouteRoute: typeof ApiCronCleanupBestDressedRouteRoute
   ApiCronCleanupCommunicationLinksRouteRoute: typeof ApiCronCleanupCommunicationLinksRouteRoute
   ApiCronCleanupEmailRouteRoute: typeof ApiCronCleanupEmailRouteRoute
   ApiCronCleanupGamePoolsRouteRoute: typeof ApiCronCleanupGamePoolsRouteRoute
   ApiCronCleanupPitchesRouteRoute: typeof ApiCronCleanupPitchesRouteRoute
+  ApiCronCleanupRateLimitsRouteRoute: typeof ApiCronCleanupRateLimitsRouteRoute
+  ApiCronCleanupReportsRouteRoute: typeof ApiCronCleanupReportsRouteRoute
   ApiCronCleanupTransfersRouteRoute: typeof ApiCronCleanupTransfersRouteRoute
   ApiCronCleanupWordMediaOrphansRouteRoute: typeof ApiCronCleanupWordMediaOrphansRouteRoute
   ApiCronCleanupWordSharesRouteRoute: typeof ApiCronCleanupWordSharesRouteRoute
@@ -3553,6 +3623,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronCleanupAttendeeAccessRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/cleanup-attendee-sessions': {
+      id: '/api/cron/cleanup-attendee-sessions'
+      path: '/api/cron/cleanup-attendee-sessions'
+      fullPath: '/api/cron/cleanup-attendee-sessions'
+      preLoaderRoute: typeof ApiCronCleanupAttendeeSessionsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-auth-state': {
+      id: '/api/cron/cleanup-auth-state'
+      path: '/api/cron/cleanup-auth-state'
+      fullPath: '/api/cron/cleanup-auth-state'
+      preLoaderRoute: typeof ApiCronCleanupAuthStateRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-best-dressed': {
+      id: '/api/cron/cleanup-best-dressed'
+      path: '/api/cron/cleanup-best-dressed'
+      fullPath: '/api/cron/cleanup-best-dressed'
+      preLoaderRoute: typeof ApiCronCleanupBestDressedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/cleanup-communication-links': {
       id: '/api/cron/cleanup-communication-links'
       path: '/api/cron/cleanup-communication-links'
@@ -3579,6 +3670,20 @@ declare module '@tanstack/react-router' {
       path: '/api/cron/cleanup-pitches'
       fullPath: '/api/cron/cleanup-pitches'
       preLoaderRoute: typeof ApiCronCleanupPitchesRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-rate-limits': {
+      id: '/api/cron/cleanup-rate-limits'
+      path: '/api/cron/cleanup-rate-limits'
+      fullPath: '/api/cron/cleanup-rate-limits'
+      preLoaderRoute: typeof ApiCronCleanupRateLimitsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/cron/cleanup-reports': {
+      id: '/api/cron/cleanup-reports'
+      path: '/api/cron/cleanup-reports'
+      fullPath: '/api/cron/cleanup-reports'
+      preLoaderRoute: typeof ApiCronCleanupReportsRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/cron/cleanup-transfers': {
@@ -5068,11 +5173,17 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCommunicationsClickRouteRoute: ApiCommunicationsClickRouteRoute,
   ApiCronCleanupAttendeeAccessRouteRoute:
     ApiCronCleanupAttendeeAccessRouteRoute,
+  ApiCronCleanupAttendeeSessionsRouteRoute:
+    ApiCronCleanupAttendeeSessionsRouteRoute,
+  ApiCronCleanupAuthStateRouteRoute: ApiCronCleanupAuthStateRouteRoute,
+  ApiCronCleanupBestDressedRouteRoute: ApiCronCleanupBestDressedRouteRoute,
   ApiCronCleanupCommunicationLinksRouteRoute:
     ApiCronCleanupCommunicationLinksRouteRoute,
   ApiCronCleanupEmailRouteRoute: ApiCronCleanupEmailRouteRoute,
   ApiCronCleanupGamePoolsRouteRoute: ApiCronCleanupGamePoolsRouteRoute,
   ApiCronCleanupPitchesRouteRoute: ApiCronCleanupPitchesRouteRoute,
+  ApiCronCleanupRateLimitsRouteRoute: ApiCronCleanupRateLimitsRouteRoute,
+  ApiCronCleanupReportsRouteRoute: ApiCronCleanupReportsRouteRoute,
   ApiCronCleanupTransfersRouteRoute: ApiCronCleanupTransfersRouteRoute,
   ApiCronCleanupWordMediaOrphansRouteRoute:
     ApiCronCleanupWordMediaOrphansRouteRoute,

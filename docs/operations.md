@@ -1,5 +1,12 @@
 # Operations
 
+## Database schema access
+
+The default web boot applies database migrations. A restricted runtime can set
+`DATABASE_SCHEMA_MODE=verify` after the administrator runs `pnpm database:migrate`.
+Use `pnpm database:verify` with the runtime credential before switching production.
+The role grants and production gates are in [the Postgres runtime-role runbook](./postgres-runtime-roles.md).
+
 ## Daily maintenance
 
 Run once per day:
@@ -17,8 +24,26 @@ deployment mode.
 The daily runner invokes Pitch reminders, email delivery, transfer and Pitch cleanup, game-pool
 cleanup, official-result recovery, operations digests, communication-link and email retention,
 attendee-access cleanup, word-share and orphaned-word-media cleanup, and transfer-media
-reconciliation. It is the independent housekeeping and recovery backstop. Each request emits one
+reconciliation. It also removes expired Postgres rate-limit windows in bounded batches. It is
+the independent housekeeping and recovery backstop. Each request emits one
 structured result, and the runner exits non-zero if any job fails.
+The rate-limit cleanup removes at most 10,000 expired rows per daily run. Check its reported
+`removed` count and raise the schedule or batch budget if it repeatedly reaches that ceiling.
+When `AUTH_TOKEN_STORE=postgres`, the runner also removes up to 10,000 expired login dedupe and
+revocation rows and token-session records older than 60 days past expiry. Check the reported
+counts if any category reaches that bound repeatedly.
+When `AUTH_CLI_STORE=postgres`, the same auth cleanup call also removes up to 10,000 expired CLI
+request and one-time code rows. Monitor both counts for repeated batch saturation.
+With `ATTENDEE_SESSION_STORE=postgres`, the runner also removes up to 10,000 expired attendee
+session rows per daily pass. The person-version rows remain until a separate account-retention
+decision because they preserve person-wide revocation semantics.
+When `PASSKEY_CEREMONY_STORE=postgres`, the same attendee cleanup call also removes up to 10,000
+expired passkey ceremonies and reports `ceremoniesRemoved`.
+With `REPORT_STORE=postgres`, daily maintenance also removes up to 1,000 expired
+current report rows, report receipts and report rate windows per category. With
+`BEST_DRESSED_STORE=postgres`, it removes up to 1,000 expired voter receipts,
+vote tokens and codes per category. Read and vote paths enforce expiry even if a
+cleanup pass is delayed. Check for repeated batch saturation.
 
 ## Capability checks
 

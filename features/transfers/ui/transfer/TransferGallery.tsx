@@ -9,7 +9,6 @@ import {
   getTransferImageSrcSet,
 } from "@/features/media/storage";
 import { buildTransferVisualItems, type TransferVisualItem } from "@/features/transfers/live-photo";
-import { useTransferMediaEvents } from "@/features/transfers/ui/transfer/useTransferMediaEvents";
 import {
   BLOB_ZIP_DOWNLOAD_LIMIT_BYTES,
   LARGE_STREAMING_ZIP_NOTICE_BYTES,
@@ -77,6 +76,8 @@ type TransferGalleryProps = {
   groups?: AssetGroup[];
   canManage?: boolean;
   deleteToken?: string;
+  onRemoteChange: (files: TransferFileData[], groups?: AssetGroup[]) => void;
+  onTransferDeleted: () => void;
 };
 
 type GalleryFilter = "all" | "photos" | "videos" | "audio" | "files";
@@ -845,6 +846,8 @@ export function TransferGallery({
   groups,
   canManage = false,
   deleteToken,
+  onRemoteChange,
+  onTransferDeleted,
 }: TransferGalleryProps) {
   const {
     confirm: confirmAction,
@@ -856,8 +859,8 @@ export function TransferGallery({
   const navigate = useNavigate();
   const router = useRouter();
   const searchParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
-  const [currentFiles, setCurrentFiles] = useState(files);
-  const [currentGroups, setCurrentGroups] = useState(groups);
+  const currentFiles = files;
+  const currentGroups = groups;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [preparingDownload, setPreparingDownload] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -892,40 +895,6 @@ export function TransferGallery({
     const raw = Number(searchParams.get("page"));
     return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1;
   });
-
-  useEffect(() => {
-    setCurrentFiles(files);
-  }, [files]);
-
-  // Files handed to the media worker arrive here without a preview. Stream in
-  // their posters as the worker finishes, instead of asking viewers to refresh.
-  const awaitingProcessing = useMemo(
-    () =>
-      currentFiles.some(
-        (file) => file.processingStatus === "queued" || file.processingStatus === "processing",
-      ),
-    [currentFiles],
-  );
-
-  const applyProcessedFile = useCallback((incoming: TransferFileData) => {
-    setCurrentFiles((previous) => {
-      const index = previous.findIndex((file) => file.id === incoming.id);
-      if (index === -1) return previous;
-      const next = [...previous];
-      next[index] = { ...next[index], ...incoming };
-      return next;
-    });
-  }, []);
-
-  useTransferMediaEvents<TransferFileData>({
-    transferId,
-    enabled: awaitingProcessing,
-    onFile: applyProcessedFile,
-  });
-
-  useEffect(() => {
-    setCurrentGroups(groups);
-  }, [groups]);
 
   useEffect(() => {
     if (hydratedSelectionTransferRef.current === transferId) return;
@@ -1767,17 +1736,19 @@ export function TransferGallery({
         setLightboxIndex(null);
 
         if (data.deletedTransfer) {
+          onTransferDeleted();
           await navigate({ to: "/", replace: true });
           await router.invalidate();
           return;
         }
 
         if (transferData) {
-          setCurrentFiles(transferData.files ?? []);
-          setCurrentGroups(transferData.groups ?? undefined);
+          onRemoteChange(transferData.files ?? [], transferData.groups ?? undefined);
         } else {
-          setCurrentFiles((prev) => prev.filter((candidate) => candidate.id !== file.id));
-          setCurrentGroups((prev) => prev);
+          onRemoteChange(
+            files.filter((candidate) => candidate.id !== file.id),
+            groups,
+          );
         }
       } catch {
         setDeleteError("Connection error. Try again.");
@@ -1785,7 +1756,19 @@ export function TransferGallery({
         setDeletingFileId(null);
       }
     },
-    [canManage, confirmAction, deleteToken, deletingFileId, navigate, router, transferId],
+    [
+      canManage,
+      confirmAction,
+      deleteToken,
+      deletingFileId,
+      files,
+      groups,
+      navigate,
+      onRemoteChange,
+      onTransferDeleted,
+      router,
+      transferId,
+    ],
   );
 
   const selectedCount = selectedIds.size;

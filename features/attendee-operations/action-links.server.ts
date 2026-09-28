@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 
 import { queryOne, transaction } from "@/lib/platform/postgres.server";
 import { getRedis } from "@/lib/platform/redis.server";
+import { reserveRateLimit as reserveSharedRateLimit } from "@/lib/platform/rate-limit.server";
 import { normaliseEmail } from "@/lib/shared/email-address";
 
 const REDEMPTION_WINDOW_SECONDS = 15 * 60;
@@ -128,6 +129,15 @@ export async function issueActionLink(
 }
 
 async function reserveRedemptionAttempt(tokenHash: string): Promise<boolean> {
+  if (process.env.RATE_LIMIT_STORE === "postgres") {
+    const decision = await reserveSharedRateLimit({
+      name: "attendee-action-redeem",
+      identity: tokenHash,
+      limit: MAX_REDEMPTION_ATTEMPTS,
+      windowSeconds: REDEMPTION_WINDOW_SECONDS,
+    });
+    return decision.backendAvailable && decision.allowed;
+  }
   const key = `attendee-action:redeem:${tokenHash}`;
   const redis = getRedis();
   if (redis) {

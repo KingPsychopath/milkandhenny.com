@@ -116,79 +116,91 @@ export async function preparePitchMedia(
       audioTrack?.getFirstTimestamp(),
     ]);
     const naturalStart = Math.min(0, videoFirstTimestamp ?? 0, audioFirstTimestamp ?? 0);
-    const outputTarget = new BufferTarget();
-    const output = new Output({
-      format: new Mp4OutputFormat({ fastStart: "in-memory" }),
-      target: outputTarget,
-    });
     const shouldResize = Boolean(height && height > 720);
-    const shouldTranscodeVideo = Boolean(
-      videoTrack &&
-      (videoCodec !== "avc" || shouldResize || sourceFile.size > PITCH_VIDEO_MAX_BYTES),
-    );
+    const shouldTranscodeVideo = Boolean(videoTrack && (videoCodec !== "avc" || shouldResize));
     const shouldTranscodeAudio = Boolean(
       audioTrack &&
-      (audioCodec !== "aac" ||
-        (channels ?? 2) > 2 ||
-        (sampleRate ?? 48_000) > 48_000 ||
-        (!videoTrack && sourceFile.size > PITCH_AUDIO_MAX_BYTES)),
+      (audioCodec !== "aac" || (channels ?? 2) > 2 || (sampleRate ?? 48_000) > 48_000),
     );
-    const conversion = await Conversion.init({
-      input,
-      output,
-      tracks: "primary",
-      video: videoTrack
-        ? {
-            codec: "avc",
-            height: shouldResize ? 720 : undefined,
-            ...(shouldTranscodeVideo
-              ? {
-                  quality: new Quality({ bitrate: 2_500_000, bitrateMode: "variable" }),
-                  keyFrameInterval: 2,
-                }
-              : {}),
-            forceTranscode: shouldTranscodeVideo,
-            hardwareAcceleration: "prefer-hardware",
-          }
-        : { discard: true },
-      audio: audioTrack
-        ? {
-            codec: "aac",
-            numberOfChannels: Math.min(2, channels ?? 2),
-            sampleRate: Math.min(48_000, sampleRate ?? 48_000),
-            ...(shouldTranscodeAudio
-              ? { quality: new Quality({ bitrate: 128_000, bitrateMode: "variable" }) }
-              : {}),
-            forceTranscode: shouldTranscodeAudio,
-          }
-        : { discard: true },
-      ...(selection
-        ? {
-            trim: {
-              start: selectedStartMs / 1_000,
-              end: (selectedStartMs + selectedDurationMs) / 1_000,
-            },
-          }
-        : naturalStart < 0
-          ? { trim: { start: naturalStart } }
-          : {}),
-      tags: {},
-      showWarnings: false,
-    });
-    if (!conversion.isValid) {
-      throw new Error(
-        conversion.discardedTracks[0]?.reason === "no_encodable_target_codec"
-          ? "This browser cannot encode a web-ready version of that file"
-          : "That file contains an unsupported media track",
-      );
-    }
-    conversion.onProgress = (progress) => onProgress?.(Math.max(0, Math.min(1, progress)));
-    await conversion.execute();
-    const buffer = outputTarget.buffer;
-    if (!buffer) throw new Error("The optimized media file was empty");
-    const mimeType = kind === "video" ? "video/mp4" : "audio/mp4";
-    const optimized = new File([buffer], outputName(sourceFile.name, kind), { type: mimeType });
     const maximumBytes = kind === "video" ? PITCH_VIDEO_MAX_BYTES : PITCH_AUDIO_MAX_BYTES;
+    const canCompressFurther = Boolean(
+      (videoTrack && !shouldTranscodeVideo) || (audioTrack && !shouldTranscodeAudio),
+    );
+    // Retry only an oversized result, never an uncertain or failed conversion.
+    const convert = async (compress: boolean): Promise<File> => {
+      const outputTarget = new BufferTarget();
+      const output = new Output({
+        format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+        target: outputTarget,
+      });
+      const conversion = await Conversion.init({
+        input,
+        output,
+        tracks: "primary",
+        // Keep timeline sync and all selected frames. Copying may retain boundary
+        // packets; playback remains bounded by selectedDurationMs, not file duration.
+        copy: { mode: "preferred", shiftTolerance: 0, boundaryPolicy: "expand" },
+        video: videoTrack
+          ? {
+              codec: "avc",
+              height: shouldResize ? 720 : undefined,
+              ...(compress || shouldTranscodeVideo
+                ? {
+                    quality: new Quality({ bitrate: 2_500_000, bitrateMode: "variable" }),
+                    keyFrameInterval: 2,
+                  }
+                : {}),
+              forceTranscode: compress || shouldTranscodeVideo,
+              hardwareAcceleration: "prefer-hardware",
+            }
+          : { discard: true },
+        audio: audioTrack
+          ? {
+              codec: "aac",
+              numberOfChannels: Math.min(2, channels ?? 2),
+              sampleRate: Math.min(48_000, sampleRate ?? 48_000),
+              ...(compress || shouldTranscodeAudio
+                ? { quality: new Quality({ bitrate: 128_000, bitrateMode: "variable" }) }
+                : {}),
+              forceTranscode: compress || shouldTranscodeAudio,
+            }
+          : { discard: true },
+        ...(selection
+          ? {
+              trim: {
+                start: selectedStartMs / 1_000,
+                end: (selectedStartMs + selectedDurationMs) / 1_000,
+              },
+            }
+          : naturalStart < 0
+            ? { trim: { start: naturalStart } }
+            : {}),
+        tags: {},
+        showWarnings: false,
+      });
+      if (!conversion.isValid || conversion.discardedTracks.length > 0) {
+        throw new Error(
+          conversion.discardedTracks[0]?.reason === "no_encodable_target_codec"
+            ? "This browser cannot encode a web-ready version of that file"
+            : "That file contains an unsupported media track",
+        );
+      }
+      conversion.onProgress = (progress) => {
+        const fraction = Math.max(0, Math.min(1, progress));
+        onProgress?.(
+          canCompressFurther ? (compress ? 0.5 + fraction * 0.5 : fraction * 0.5) : fraction,
+        );
+      };
+      await conversion.execute();
+      const buffer = outputTarget.buffer;
+      if (!buffer) throw new Error("The optimized media file was empty");
+      const mimeType = kind === "video" ? "video/mp4" : "audio/mp4";
+      return new File([buffer], outputName(sourceFile.name, kind), { type: mimeType });
+    };
+    let optimized = await convert(false);
+    if (optimized.size > maximumBytes && canCompressFurther) {
+      optimized = await convert(true);
+    }
     if (optimized.size > maximumBytes) {
       throw new Error(
         kind === "video"

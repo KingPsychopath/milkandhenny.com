@@ -1,0 +1,85 @@
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+
+import {
+  createWord,
+  deleteWord,
+  getWord,
+  getWordMeta,
+  inspectWordPersistence,
+  listAllWords,
+  updateWord,
+} from "@/features/words/store.server";
+import { WordRevisionConflictError } from "@/features/words/word-postgres.server";
+import { query } from "@/lib/platform/postgres.server";
+import { applySchema, closeDatabase, describeWithDatabase } from "../helpers/postgres";
+
+describeWithDatabase("Postgres words", () => {
+  beforeAll(async () => {
+    vi.stubEnv("WORD_STORE", "postgres");
+    await applySchema();
+  });
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await closeDatabase();
+  });
+  beforeEach(async () => {
+    await query("truncate words cascade");
+  });
+
+  it("stores Markdown and immutable revisions with the existing word shape", async () => {
+    const created = await createWord({
+      slug: "first-word",
+      title: "First word",
+      markdown: "A line\n\nSecond line",
+      type: "note",
+      visibility: "private",
+      tags: [" Jazz ", "jazz"],
+    });
+    expect(created.meta.revision).toBe(1);
+    expect(await getWord(created.meta.slug)).toEqual(created);
+    expect((await getWordMeta(created.meta.slug))?.tags).toEqual(["jazz"]);
+
+    const updated = await updateWord(created.meta.slug, {
+      markdown: "Changed exactly",
+      title: "Changed",
+      expectedUpdatedAt: created.meta.updatedAt,
+    });
+    expect(updated?.meta.revision).toBe(2);
+    expect(updated?.markdown).toBe("Changed exactly");
+    const revisions = await query<{ revision: number; markdown: string }>(
+      "select revision, markdown from word_revisions where slug = $1 order by revision",
+      [created.meta.slug],
+    );
+    expect(revisions).toEqual([
+      { revision: 1, markdown: "A line\n\nSecond line" },
+      { revision: 2, markdown: "Changed exactly" },
+    ]);
+    expect((await listAllWords({ includeNonPublic: true })).map(({ slug }) => slug)).toEqual([
+      created.meta.slug,
+    ]);
+    expect((await inspectWordPersistence()).missingBodies).toEqual([]);
+    expect(await deleteWord(created.meta.slug)).toBe(true);
+    expect(await getWord(created.meta.slug)).toBeNull();
+  });
+
+  it("refuses concurrent creates and stale edits without losing the winning revision", async () => {
+    const input = { slug: "same-word", title: "Same", markdown: "Original" };
+    const creates = await Promise.allSettled([createWord(input), createWord(input)]);
+    expect(creates.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(creates.filter(({ status }) => status === "rejected")).toHaveLength(1);
+    const original = await getWord(input.slug);
+    if (!original) throw new Error("Expected word");
+    const edits = await Promise.allSettled([
+      updateWord(input.slug, { title: "One" }),
+      updateWord(input.slug, { title: "Two" }),
+    ]);
+    expect(edits.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(
+      edits.filter(
+        (result) =>
+          result.status === "rejected" && result.reason instanceof WordRevisionConflictError,
+      ),
+    ).toHaveLength(1);
+    expect((await getWord(input.slug))?.meta.revision).toBe(2);
+  });
+});

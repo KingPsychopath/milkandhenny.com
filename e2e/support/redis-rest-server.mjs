@@ -56,7 +56,11 @@ const server = createServer(async (request, response) => {
     );
   }
 });
-server.listen(56380, "127.0.0.1");
+const restURL = new URL(process.env.PLAYWRIGHT_REDIS_REST_URL ?? "http://127.0.0.1:56380");
+if (restURL.hostname !== "127.0.0.1") {
+  throw new Error("The browser Redis bridge must bind to loopback");
+}
+server.listen(Number(restURL.port), restURL.hostname);
 function close() {
   server.closeAllConnections();
   server.close();

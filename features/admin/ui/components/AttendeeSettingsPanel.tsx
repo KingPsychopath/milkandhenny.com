@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminOperationsSettingsQuery } from "@/features/attendee-operations/admin-settings.queries";
 
 import { AppSelect } from "@/components/AppSelect";
 import { ATTENDEE_CAPABILITIES, type CapabilityMap } from "@/features/attendee-operations/types";
@@ -6,28 +8,6 @@ import { AdminAccessSettings } from "./AdminAccessSettings";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 
 type AuthFetch = (input: string, init?: RequestInit) => Promise<Response>;
-type SettingsResponse = {
-  global: {
-    globalAvailability: CapabilityMap;
-    newEventDefaults: CapabilityMap;
-    emergencyPaused: CapabilityMap;
-    revision: number;
-  };
-  impact: Record<(typeof ATTENDEE_CAPABILITIES)[number], number>;
-  events: Array<{
-    slug: string;
-    title: string;
-    status: string;
-    policy: {
-      capabilities: CapabilityMap;
-      transferOpensAt?: string;
-      transferClosesAt?: string;
-      policyVersion: number;
-    };
-    effective: CapabilityMap;
-  }>;
-};
-
 const LABELS: Record<(typeof ATTENDEE_CAPABILITIES)[number], string> = {
   scoring: "scoring",
   publicLeaderboard: "public leaderboard",
@@ -52,45 +32,24 @@ export function AttendeeSettingsPanel({
   ensureStepUpToken: () => Promise<{ ok: true; token: string } | { ok: false }>;
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
-  const [data, setData] = useState<SettingsResponse>();
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery(adminOperationsSettingsQuery);
+  const data = settingsQuery.data;
   const [eventSlug, setEventSlug] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [transferOpensAt, setTransferOpensAt] = useState("");
   const [transferClosesAt, setTransferClosesAt] = useState("");
   const [bulkEventSlugs, setBulkEventSlugs] = useState<string[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/operations/settings");
-      const body = (await response.json().catch(() => ({}))) as Partial<SettingsResponse> & {
-        error?: string;
-      };
-      if (!response.ok || !body.global || !body.impact || !Array.isArray(body.events)) {
-        throw new Error(body.error ?? "Access policies could not be loaded");
-      }
-      const settings = body as SettingsResponse;
-      setData(settings);
-      setEventSlug((current) => {
-        const next = current || settings.events[0]?.slug || "";
-        const policy = settings.events.find((event) => event.slug === next)?.policy;
-        setTransferOpensAt(toLocalDateTime(policy?.transferOpensAt));
-        setTransferClosesAt(toLocalDateTime(policy?.transferClosesAt));
-        return next;
-      });
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Access policies could not be loaded");
-      throw error;
-    }
-  }, [authFetch]);
+  const loadError = settingsQuery.error?.message ?? null;
 
   useEffect(() => {
-    void load().catch((error) =>
-      onError(error instanceof Error ? error.message : "Access policies could not be loaded"),
-    );
-  }, [load, onError]);
+    if (!data?.events.length || eventSlug) return;
+    const first = data.events[0]!;
+    setEventSlug(first.slug);
+    setTransferOpensAt(toLocalDateTime(first.policy.transferOpensAt));
+    setTransferClosesAt(toLocalDateTime(first.policy.transferClosesAt));
+  }, [data, eventSlug]);
 
   async function saveGlobal(
     section: "globalAvailability" | "newEventDefaults" | "emergencyPaused",
@@ -109,7 +68,7 @@ export function AttendeeSettingsPanel({
       if (!response.ok) throw new Error(body.error ?? "Global access policies could not be saved");
       onStatus("Global access policies saved.");
       setReason("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminOperationsSettingsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Global access policies could not be saved");
     } finally {
@@ -140,7 +99,7 @@ export function AttendeeSettingsPanel({
       if (!response.ok) throw new Error(body.error ?? "Event access policy could not be saved");
       onStatus(`${event.title} access policy saved.`);
       setReason("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminOperationsSettingsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Event access policy could not be saved");
     } finally {
@@ -172,7 +131,7 @@ export function AttendeeSettingsPanel({
       onStatus(`Access policies applied to ${bulkEventSlugs.length} events.`);
       setReason("");
       setBulkEventSlugs([]);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminOperationsSettingsQuery.queryKey });
     } catch (error) {
       onError(
         error instanceof Error ? error.message : "Event access policies could not be applied",
@@ -193,7 +152,7 @@ export function AttendeeSettingsPanel({
         {loadError ? (
           <button
             type="button"
-            onClick={() => void load().catch(() => undefined)}
+            onClick={() => void settingsQuery.refetch()}
             className="mt-3 inline-flex min-h-11 items-center font-mono text-xs underline"
           >
             retry

@@ -10,6 +10,14 @@ import {
 import type { StorageScope } from "@/lib/platform/r2.server";
 import { randomUUID } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
+import {
+  deletePostgresWord,
+  inspectPostgresWords,
+  listPostgresWordMetas,
+  readPostgresWord,
+  readPostgresWordMeta,
+  savePostgresWord,
+} from "./word-postgres.server";
 import { WORD_INDEX_KEY, wordContentKey, wordMetaKey } from "./config.server";
 import { deleteAllShareLinksForSlug } from "./share.server";
 import {
@@ -341,6 +349,7 @@ async function deleteNoteContent(keys: string[], scopes: StorageScope[]): Promis
 }
 
 async function getAllNoteMetas(): Promise<NoteMeta[]> {
+  if (process.env.WORD_STORE === "postgres") return listPostgresWordMetas();
   const redis = getWordRedis();
 
   if (redis) {
@@ -364,6 +373,7 @@ async function getAllNoteMetas(): Promise<NoteMeta[]> {
 
 async function getWordMeta(slug: string): Promise<NoteMeta | null> {
   if (!isValidWordSlug(slug)) return null;
+  if (process.env.WORD_STORE === "postgres") return readPostgresWordMeta(slug);
   const redis = getWordRedis();
 
   if (redis) {
@@ -376,6 +386,8 @@ async function getWordMeta(slug: string): Promise<NoteMeta | null> {
 }
 
 async function getWord(slug: string): Promise<NoteRecord | null> {
+  if (process.env.WORD_STORE === "postgres")
+    return isValidWordSlug(slug) ? readPostgresWord(slug) : null;
   const meta = await getWordMeta(slug);
   if (!meta) return null;
   const content = await readNoteContent(meta);
@@ -415,6 +427,7 @@ async function createWord(input: {
     throw new Error("Invalid visibility value.");
   }
 
+  if (process.env.WORD_STORE === "postgres") return createWordLocked({ ...input, slug });
   return withWordMutationLock(slug, () => createWordLocked({ ...input, slug }));
 }
 
@@ -461,6 +474,8 @@ async function createWordLocked(input: {
     featured: !!input.featured,
     authorRole: "admin",
   };
+  if (process.env.WORD_STORE === "postgres")
+    return savePostgresWord({ meta, markdown: normalisedMarkdown });
   await writeNoteContent(meta.bodyKey, normalisedMarkdown, meta.visibility);
   const redis = getWordRedis();
   if (redis) {
@@ -488,6 +503,7 @@ async function updateWord(
     expectedUpdatedAt?: string;
   },
 ): Promise<NoteRecord | null> {
+  if (process.env.WORD_STORE === "postgres") return updateWordLocked(slug, input);
   return withWordMutationLock(slug, async () => updateWordLocked(slug, input));
 }
 
@@ -550,7 +566,13 @@ async function updateWordLocked(
 
   const needsContentRead =
     typeof nextMarkdown === "string" || typeChanged || bodyKeyChanged || visibilityChanged;
-  const currentContent = needsContentRead ? await readNoteContent(existing) : null;
+  const currentContent = needsContentRead
+    ? process.env.WORD_STORE === "postgres"
+      ? await readPostgresWord(slug).then((record) =>
+          record ? { markdown: record.markdown, key: record.meta.bodyKey } : null,
+        )
+      : await readNoteContent(existing)
+    : null;
   const markdownChanged =
     typeof nextMarkdown === "string" && (currentContent?.markdown ?? null) !== nextMarkdown;
 
@@ -565,7 +587,13 @@ async function updateWordLocked(
     featuredChanged;
 
   if (!hasMetadataChanges && !markdownChanged) {
-    const existingCurrent = currentContent ?? (await readNoteContent(existing));
+    const existingCurrent =
+      currentContent ??
+      (process.env.WORD_STORE === "postgres"
+        ? await readPostgresWord(slug).then((record) =>
+            record ? { markdown: record.markdown, key: record.meta.bodyKey } : null,
+          )
+        : await readNoteContent(existing));
     return existingCurrent ? { meta: existing, markdown: existingCurrent.markdown } : null;
   }
 
@@ -603,6 +631,11 @@ async function updateWordLocked(
 
   if ((typeChanged || bodyKeyChanged || visibilityChanged) && markdown === null) {
     return null;
+  }
+
+  if (process.env.WORD_STORE === "postgres") {
+    const body = markdown ?? (await readPostgresWord(slug))?.markdown;
+    return body === undefined ? null : savePostgresWord({ meta, markdown: body });
   }
 
   if (markdown !== null) {
@@ -671,6 +704,10 @@ async function deleteWordMedia(slug: string): Promise<void> {
 
 async function deleteWord(slug: string): Promise<boolean> {
   if (!isValidWordSlug(slug)) return false;
+  if (process.env.WORD_STORE === "postgres") {
+    const existing = await getWordMeta(slug);
+    return existing?.revision ? deletePostgresWord(slug, existing.revision) : false;
+  }
   return withWordMutationLock(slug, () => deleteWordLocked(slug));
 }
 
@@ -736,6 +773,7 @@ async function listAllWords(
 
 /** Reconcile the discovery index from independently stored metadata; never guess visibility or delete blobs. */
 export async function inspectWordPersistence(repairIndex = false) {
+  if (process.env.WORD_STORE === "postgres") return inspectPostgresWords(repairIndex);
   const redis = getWordRedis();
   const indexed = new Set(
     redis ? ((await redis.smembers(WORD_INDEX_KEY)) as string[]) : [...memoryMeta.keys()],

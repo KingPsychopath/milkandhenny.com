@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AppSelect } from "@/components/AppSelect";
-import type {
-  HotAndColdQualityReport,
-  HotAndColdUpcomingReview,
-} from "@/features/things/hot-and-cold/hot-and-cold-review";
+import { adminHotAndColdReviewQuery } from "@/features/things/hot-and-cold/hot-and-cold-review.queries";
+import type { HotAndColdUpcomingReview } from "@/features/things/hot-and-cold/hot-and-cold-review";
 import { AdminStatus } from "./AdminStatus";
-
-type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
 function signedRank(value: number) {
   return value > 0 ? `+${value.toLocaleString()}` : value.toLocaleString();
@@ -148,46 +145,23 @@ function ReviewDetail({ review }: { review: HotAndColdUpcomingReview }) {
   );
 }
 
-export function HotAndColdReviewPanel({
-  authFetch,
-  onError,
-}: {
-  authFetch: AuthFetch;
-  onError: (message: string) => void;
-}) {
-  const [report, setReport] = useState<HotAndColdQualityReport | null>(null);
+export function HotAndColdReviewPanel({ onError }: { onError: (message: string) => void }) {
+  const reviewQuery = useQuery(adminHotAndColdReviewQuery);
+  const report = reviewQuery.data ?? null;
   const [selectedPuzzle, setSelectedPuzzle] = useState<number | null>(null);
   const [onlyBlocked, setOnlyBlocked] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const loading = reviewQuery.isFetching;
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await authFetch("/api/admin/hot-and-cold-review");
-      if (!response.ok) throw new Error("Could not load judging quality evidence");
-      const next = (await response.json()) as HotAndColdQualityReport;
-      setReport(next);
-      setSelectedPuzzle(
-        (current) =>
-          current ??
-          next.upcoming.find((review) => !review.approved)?.puzzle ??
-          next.upcoming[0]?.puzzle ??
-          null,
-      );
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load judging quality evidence");
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
+    const result = await reviewQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [reviewQuery, onError]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const selected = useMemo(
-    () => report?.upcoming.find(({ puzzle }) => puzzle === selectedPuzzle) ?? report?.upcoming[0],
-    [report, selectedPuzzle],
-  );
+  const effectivePuzzle =
+    selectedPuzzle ??
+    report?.upcoming.find((review) => !review.approved)?.puzzle ??
+    report?.upcoming[0]?.puzzle ??
+    null;
+  const selected = report?.upcoming.find(({ puzzle }) => puzzle === effectivePuzzle);
 
   return (
     <section aria-labelledby="hot-cold-quality-heading" className="space-y-6">
@@ -247,7 +221,7 @@ export function HotAndColdReviewPanel({
             <label className="font-mono text-xs theme-muted">
               upcoming puzzle
               <AppSelect
-                value={selectedPuzzle ?? ""}
+                value={effectivePuzzle ?? ""}
                 onValueChange={(value) => setSelectedPuzzle(Number(value))}
                 options={report.upcoming
                   .filter((review) => !onlyBlocked || review.approved === false)

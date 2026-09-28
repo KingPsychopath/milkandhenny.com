@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   BinaryFileData,
@@ -7,6 +8,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, FileId } from "@excalidraw/excalidraw/element/types";
 import { loadExcalidraw } from "../browser-modules";
+import { pitchWallQueryRoot, publishedPitchQueryRoot } from "../pitches.queries";
 
 import type { GuidedTourStep } from "@/components/GuidedTour";
 import {
@@ -482,6 +484,7 @@ export function usePitchEditorController({
   maximumSlides: number;
   operationalStatus: PitchOperationalStatus;
 }) {
+  const queryClient = useQueryClient();
   const isDemo = session.kind === "demo";
   const deckId = session.kind === "owned" ? session.deckId : "demo";
   const [operational, setOperational] = useState(operationalStatus);
@@ -2501,6 +2504,8 @@ export function usePitchEditorController({
       });
       if (!result.ok) throw new Error(result.error);
       setDeck(result.value);
+      void queryClient.invalidateQueries({ queryKey: pitchWallQueryRoot });
+      void queryClient.invalidateQueries({ queryKey: [...publishedPitchQueryRoot, deckId] });
       setMessage(
         `Published edition ${result.value.currentEditionNumber ?? 1}. It is sealed and remains addressable after later editions.`,
         { transient: true, tone: "success" },

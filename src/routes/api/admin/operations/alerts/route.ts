@@ -4,10 +4,7 @@ import { Effect } from "effect";
 import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
 import { runEventsEffect } from "@/features/events/events-runtime.server";
-import {
-  listAlertRecipients,
-  listAlertDeliveries,
-} from "@/features/attendee-operations/notifications.server";
+import { getAdminAlertSettings } from "@/features/attendee-operations/admin-alerts.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function authenticate(request: Request) {
@@ -35,11 +32,7 @@ async function handleGET(request: Request) {
   const { auth } = await authenticate(request);
   if (auth.error) return auth.error;
   try {
-    const [recipients, deliveries] = await Promise.all([
-      listAlertRecipients(),
-      listAlertDeliveries(),
-    ]);
-    return Response.json({ recipients, deliveries });
+    return Response.json(await getAdminAlertSettings());
   } catch (error) {
     return apiErrorFromRequest(request, "operations-alerts.list", "Could not load alerts", error);
   }

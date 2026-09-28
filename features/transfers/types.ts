@@ -51,6 +51,9 @@ type TransferFile = {
   processingErrorCode?: string;
   processingErrorDetail?: string;
   retryCount?: number;
+  /** Published Postgres worker output; absent for legacy fixed-key derivatives. */
+  derivativeGeneration?: number;
+  derivativeClaimToken?: string;
 };
 
 type TransferData = {

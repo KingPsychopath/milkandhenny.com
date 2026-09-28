@@ -1,19 +1,26 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { getRedis } from "@/lib/platform/redis.server";
 import { issueAdminTokenForCli } from "./auth.server";
 import { signStepUpToken } from "./internal/authorization.server";
+import {
+  completePostgresCliRequest,
+  consumePostgresCliCode,
+  createPostgresCliRequest,
+  getPostgresCliRequest,
+  pkceMatches,
+  postgresCliAuthSelected,
+} from "./cli-auth-postgres.server";
 
 const CLI_REQUEST_TTL_SECONDS = 5 * 60;
 const CLI_CODE_TTL_SECONDS = 60;
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const STATE_PATTERN = /^[A-Za-z0-9._~-]{16,256}$/;
-const PKCE_VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
 const PKCE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 
 export type CliAuthorizationPurpose = "login" | "step-up";
 
-type CliAuthorizationRecord = {
+export type CliAuthorizationRecord = {
   redirectUri: string;
   codeChallenge: string;
   state: string;
@@ -91,8 +98,9 @@ export async function createCliAuthorizationRequest(input: {
   purpose: CliAuthorizationPurpose;
   parentJti?: string;
 }): Promise<{ requestId: string; browserUrl: string } | null> {
-  const redis = loadRedis();
-  if (!redis) return null;
+  const usePostgres = postgresCliAuthSelected();
+  const redis = usePostgres ? null : loadRedis();
+  if (!usePostgres && !redis) return null;
 
   const redirectUri = validateRedirectUri(input.redirectUri);
   if (!redirectUri || !PKCE_CHALLENGE_PATTERN.test(input.codeChallenge)) return null;
@@ -114,7 +122,8 @@ export async function createCliAuthorizationRequest(input: {
       : { ...baseRecord, purpose: "login" };
 
   try {
-    await redis.set(requestKey(requestId), record, { ex: CLI_REQUEST_TTL_SECONDS, nx: true });
+    if (usePostgres) await createPostgresCliRequest(requestId, record);
+    else await redis!.set(requestKey(requestId), record, { ex: CLI_REQUEST_TTL_SECONDS, nx: true });
     const origin = new URL(input.browserUrlOrigin).origin;
     return {
       requestId,
@@ -129,6 +138,13 @@ export async function getCliAuthorizationRequest(
   requestId: string,
 ): Promise<CliAuthorizationRecord | null> {
   if (!REQUEST_ID_PATTERN.test(requestId)) return null;
+  if (postgresCliAuthSelected()) {
+    try {
+      return await getPostgresCliRequest(requestId);
+    } catch {
+      return null;
+    }
+  }
   const redis = loadRedis();
   if (!redis) return null;
   try {
@@ -150,6 +166,18 @@ function callbackRedirect(record: CliAuthorizationRecord, values: Record<string,
 export async function approveCliAuthorization(
   requestId: string,
 ): Promise<{ redirectUri: string } | null> {
+  if (postgresCliAuthSelected()) {
+    if (!REQUEST_ID_PATTERN.test(requestId)) return null;
+    try {
+      return await completePostgresCliRequest(requestId, "approved", (record) =>
+        record.purpose === "step-up"
+          ? Promise.resolve(signStepUpToken(record.parentJti))
+          : issueAdminTokenForCli({ ip: record.ip, ua: record.ua }),
+      );
+    } catch {
+      return null;
+    }
+  }
   const redis = loadRedis();
   if (!redis || !REQUEST_ID_PATTERN.test(requestId)) return null;
 
@@ -197,6 +225,14 @@ export async function approveCliAuthorization(
 export async function denyCliAuthorization(
   requestId: string,
 ): Promise<{ redirectUri: string } | null> {
+  if (postgresCliAuthSelected()) {
+    if (!REQUEST_ID_PATTERN.test(requestId)) return null;
+    try {
+      return await completePostgresCliRequest(requestId, "denied");
+    } catch {
+      return null;
+    }
+  }
   const redis = loadRedis();
   if (!redis || !REQUEST_ID_PATTERN.test(requestId)) return null;
 
@@ -221,19 +257,18 @@ export async function denyCliAuthorization(
   }
 }
 
-function pkceMatches(verifier: string, challenge: string): boolean {
-  if (!PKCE_VERIFIER_PATTERN.test(verifier)) return false;
-  const actual = createHash("sha256").update(verifier).digest("base64url");
-  const expected = Buffer.from(challenge);
-  const received = Buffer.from(actual);
-  return expected.length === received.length && timingSafeEqual(expected, received);
-}
-
 export async function exchangeCliAuthorizationCode(input: {
   code: string;
   codeVerifier: string;
 }): Promise<string | null> {
   if (!/^[A-Za-z0-9_-]{32,128}$/.test(input.code)) return null;
+  if (postgresCliAuthSelected()) {
+    try {
+      return await consumePostgresCliCode(input.code, input.codeVerifier);
+    } catch {
+      return null;
+    }
+  }
   const redis = loadRedis();
   if (!redis) return null;
 

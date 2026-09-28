@@ -1,31 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useAdminAutoRefresh } from "@/features/admin/ui/hooks/useAdminAutoRefresh";
 import type { UploadAccessDurationMinutes } from "@/features/auth/upload-access.server";
+import { adminUploadAccessQuery } from "@/features/auth/upload-access.queries";
 import { AdminStatus, adminToneBorderClass } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type EnsureStepUpToken = () => Promise<string | null>;
-
-type UploadAccessAuditEvent = {
-  id: string;
-  action: "opened" | "closed";
-  at: string;
-  durationMinutes?: UploadAccessDurationMinutes;
-};
-
-type UploadAccessStatus = {
-  active: boolean;
-  openedAt?: string;
-  expiresAt?: string;
-  durationMinutes?: UploadAccessDurationMinutes;
-  audit: UploadAccessAuditEvent[];
-};
 
 function formatDate(value: string | undefined): string {
   if (!value) return "—";
@@ -50,9 +37,11 @@ export function UploadAccessPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [status, setStatus] = useState<UploadAccessStatus | null>(null);
+  const queryClient = useQueryClient();
+  const accessQuery = useQuery(adminUploadAccessQuery);
+  const status = accessQuery.data ?? null;
   const [duration, setDuration] = useState<UploadAccessDurationMinutes>(15);
-  const [loading, setLoading] = useState(true);
+  const loading = accessQuery.isPending;
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const { confirm: confirmAction, dialog } = useActionDialog();
@@ -60,36 +49,20 @@ export function UploadAccessPanel({
   const [pollingHalted, setPollingHalted] = useState(false);
 
   const load = useCallback(async () => {
-    // `loading` starts true and is never re-raised here: the visible
-    // "checking…" badge belongs to the first load, not to every 15-second
-    // background refresh.
-    try {
-      const response = await authFetch("/api/admin/upload-access");
-      const data = (await response.json().catch(() => ({}))) as Partial<UploadAccessStatus> & {
-        error?: string;
-      };
-      if (!response.ok) {
-        if (response.status >= 400 && response.status < 500) setPollingHalted(true);
-        throw new Error(data.error || "Failed to load upload access");
-      }
+    const result = await accessQuery.refetch();
+    if (result.error) {
+      const status = (result.error as Error & { status?: number }).status;
+      if (status && status >= 400 && status < 500) setPollingHalted(true);
+      onError(result.error.message);
+    } else {
       setPollingHalted(false);
-      setStatus({
-        active: data.active === true,
-        openedAt: data.openedAt,
-        expiresAt: data.expiresAt,
-        durationMinutes: data.durationMinutes,
-        audit: Array.isArray(data.audit) ? data.audit : [],
-      });
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Failed to load upload access");
-    } finally {
-      setLoading(false);
     }
-  }, [authFetch, onError]);
+  }, [accessQuery, onError]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const status = (accessQuery.error as (Error & { status?: number }) | null)?.status;
+    if (status && status >= 400 && status < 500) setPollingHalted(true);
+  }, [accessQuery.error]);
 
   // Refresh only while a window is open, pause in hidden tabs, and stop on a
   // 4xx instead of re-asking a refusing endpoint four times a minute.
@@ -118,7 +91,7 @@ export function UploadAccessPanel({
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Failed to open uploads");
       onStatus(`Uploads open for ${duration} minutes. Tell people to visit /upload.`);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminUploadAccessQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to open uploads");
     } finally {
@@ -149,7 +122,7 @@ export function UploadAccessPanel({
       const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(data.error || "Failed to close uploads");
       onStatus("Guest upload access closed and revoked.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: adminUploadAccessQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to close uploads");
     } finally {

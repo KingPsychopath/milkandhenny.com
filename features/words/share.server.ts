@@ -15,6 +15,15 @@ import {
   wordShareSlugsKey,
 } from "./config.server";
 import type { ShareLink, ShareLinkView } from "./content-types";
+import {
+  cleanupPostgresSharesForSlug,
+  deletePostgresSharesForSlug,
+  findPostgresShareByTokenHash,
+  listPostgresShares,
+  listPostgresShareSlugs,
+  readPostgresShare,
+  savePostgresShare,
+} from "./share-postgres.server";
 
 type AccessTokenPayload = {
   slug: string;
@@ -81,6 +90,7 @@ function shareRecordTtlSeconds(link: ShareLink): number {
 }
 
 async function getShareById(id: string): Promise<ShareLink | null> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return readPostgresShare(id);
   const redis = getShareRedis();
   if (redis) {
     const raw = await redis.get<ShareLink | string>(wordShareKey(id));
@@ -90,7 +100,8 @@ async function getShareById(id: string): Promise<ShareLink | null> {
   return memoryShares.get(id) ?? null;
 }
 
-async function setShare(link: ShareLink): Promise<void> {
+async function setShare(link: ShareLink): Promise<ShareLink> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return savePostgresShare(link);
   const redis = getShareRedis();
   if (redis) {
     await Promise.all([
@@ -98,16 +109,18 @@ async function setShare(link: ShareLink): Promise<void> {
       redis.sadd(wordShareIndexKey(link.slug), link.id),
       redis.sadd(wordShareSlugsKey(), link.slug),
     ]);
-    return;
+    return link;
   }
   memoryShares.set(link.id, link);
   const set = memoryShareIndex.get(link.slug) ?? new Set<string>();
   set.add(link.id);
   memoryShareIndex.set(link.slug, set);
   memoryShareSlugs.add(link.slug);
+  return link;
 }
 
 async function listShareLinks(slug: string): Promise<ShareLink[]> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return listPostgresShares(slug);
   const redis = getShareRedis();
   if (redis) {
     const ids = (await redis.smembers(wordShareIndexKey(slug))) as string[];
@@ -133,6 +146,7 @@ type ShareCleanupResult = {
 };
 
 async function listTrackedShareSlugs(): Promise<string[]> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return listPostgresShareSlugs();
   const redis = getShareRedis();
   if (redis) {
     const slugs = (await redis.smembers(wordShareSlugsKey())) as string[];
@@ -145,6 +159,7 @@ async function cleanupShareLinksForSlug(
   slug: string,
   nowMs = Date.now(),
 ): Promise<ShareCleanupResult> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return cleanupPostgresSharesForSlug(slug, nowMs);
   const redis = getShareRedis();
   const indexKey = wordShareIndexKey(slug);
   let removedExpired = 0;
@@ -263,6 +278,7 @@ async function revokeShareLink(slug: string, id: string): Promise<boolean> {
 }
 
 async function deleteAllShareLinksForSlug(slug: string): Promise<number> {
+  if (process.env.WORD_SHARE_STORE === "postgres") return deletePostgresSharesForSlug(slug);
   const redis = getShareRedis();
   const indexKey = wordShareIndexKey(slug);
 
@@ -329,8 +345,7 @@ async function createShareLink(input: {
     createdByRole: "admin",
   };
 
-  await setShare(link);
-  return { link, token };
+  return { link: await setShare(link), token };
 }
 
 async function updateShareLink(
@@ -391,8 +406,7 @@ async function updateShareLink(
   }
 
   next.updatedAt = nowIso;
-  await setShare(next);
-  return { link: next, token: nextToken };
+  return { link: await setShare(next), token: nextToken };
 }
 
 const SHARE_PIN_LIMIT_NAME = "words-share-pin";
@@ -435,6 +449,12 @@ function toShareLinkView(link: ShareLink): ShareLinkView {
 
 async function verifyShareForToken(slug: string, rawToken: string): Promise<ShareLink | null> {
   const tokenHash = sha256(rawToken);
+  if (process.env.WORD_SHARE_STORE === "postgres") {
+    const link = await findPostgresShareByTokenHash(slug, tokenHash);
+    return link && isShareUsable(link) && safeCompareStrings(link.tokenHash, tokenHash)
+      ? link
+      : null;
+  }
   const links = await listShareLinks(slug);
   for (const link of links) {
     if (!isShareUsable(link)) continue;
