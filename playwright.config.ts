@@ -4,6 +4,15 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:4173";
 const webPort = new URL(baseURL).port || "4173";
 const testDatabase =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
+// Browser workers and the app server must select the same persistence fixtures.
+// Keep these defaults local to Playwright so unit tests retain their own stores.
+const fixtureStores = {
+  ALBUM_STORE: process.env.ALBUM_STORE ?? "postgres",
+  WORD_STORE: process.env.WORD_STORE ?? "postgres",
+  BEST_DRESSED_STORE: process.env.BEST_DRESSED_STORE ?? "postgres",
+  REPORT_STORE: process.env.REPORT_STORE ?? "postgres",
+};
+Object.assign(process.env, fixtureStores);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -39,8 +48,7 @@ export default defineConfig({
       env: {
         ...process.env,
         DATABASE_URL: testDatabase,
-        ALBUM_STORE: process.env.ALBUM_STORE ?? "postgres",
-        WORD_STORE: process.env.WORD_STORE ?? "postgres",
+        ...fixtureStores,
         REDIS_REST_URL: "http://127.0.0.1:56380",
         REDIS_REST_TOKEN: "local-browser-test",
         VITE_BASE_URL: baseURL,
