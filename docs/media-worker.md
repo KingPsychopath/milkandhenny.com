@@ -150,7 +150,7 @@ Two paths run reconciliation:
 1. **The worker's independent repair timer** (`MEDIA_RECONCILE_INTERVAL_MS`,
    default 15 min). It runs independently of job claims and rechecks expired
    processing leases.
-2. **The daily maintenance run**, as `POST /api/cron/process-transfer-media`.
+2. **The web scheduler's daily maintenance run**, under a Postgres lease.
    This is the backstop for the case the worker sweep cannot cover: the worker
    itself being down.
 

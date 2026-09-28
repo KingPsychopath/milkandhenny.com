@@ -49,11 +49,8 @@ The checked-in CORS policies are production policies and intentionally contain o
 The canonical production origin is `https://milkandhenny.com`. Cloudflare redirects
 `www` to the apex host while preserving the path and query string.
 
-The `maintenance` service uses `ops/` as its Railway root directory. Its
-`ops/railway.toml` builds the small maintenance image and schedules it for
-`03:15 UTC` daily. Product-time scheduling runs inside the web service with
-durable Postgres leases; this daily service is a housekeeping and recovery
-backstop rather than the source of timing correctness.
+The web service owns product-time jobs and daily housekeeping through durable
+Postgres leases. No separate maintenance service or cron scheduler is required.
 
 ### Safe Railway release
 
@@ -97,7 +94,7 @@ services:
       - "127.0.0.1:3000:3000"
 ```
 
-Schedule `node ops/run-maintenance.mjs` daily with the same `APP_BASE_URL` and `CRON_SECRET`.
+The web process runs the Postgres-leased daily maintenance job after database migrations.
 
 ## Cutover and rollback
 

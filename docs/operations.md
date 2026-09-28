@@ -9,32 +9,33 @@ The role grants and production gates are in [the Postgres runtime-role runbook](
 
 ## Daily maintenance
 
-Run once per day:
+The web process runs daily housekeeping through the Events runtime and the
+`daily-maintenance` Postgres job lease. Every replica may attempt recovery, but only one lease
+holder runs the batch. It starts after database migrations, checks for due work every minute,
+and runs every 24 hours after a successful pass. A failed pass retries after one hour. Each task
+has a 10-minute deadline; failure is logged and later tasks still run. The batch has a three-hour
+deadline and records failure if any task failed. `APP_SCHEDULER_DISABLED=true` is an emergency
+stop for all web-owned schedules, not the normal deployment mode.
 
-```bash
-APP_BASE_URL=https://milkandhenny.com CRON_SECRET=… pnpm maintenance
-```
+The daily batch cleans transfers, Pitches, communication links, email retention, attendee
+access, attendee sessions, passkey ceremonies, rate limits, reports, Best Dressed, auth state,
+word shares, orphaned word media, and transfer-media reconciliation. Email delivery, event drops,
+Pitch reminders, operations digests, and game-pool cleanup have their own shorter Postgres-leased
+web schedules. Authenticated `/api/cron/*` routes remain available for manual recovery with
+`CRON_SECRET`.
 
-The web process owns user-visible timed work through the Events runtime and durable Postgres job
-leases: communication fan-out and email delivery, scoring transitions and official-result recovery,
-Pitch reminders, and operations digests. Every replica may attempt recovery, but only one lease
-holder runs a job at a time. `APP_SCHEDULER_DISABLED=true` is an emergency stop, not the normal
-deployment mode.
-
-The daily runner invokes Pitch reminders, email delivery, transfer and Pitch cleanup, game-pool
-cleanup, official-result recovery, operations digests, communication-link and email retention,
-attendee-access cleanup, word-share and orphaned-word-media cleanup, and transfer-media
-reconciliation. It also removes expired Postgres rate-limit windows in bounded batches. It is
-the independent housekeeping and recovery backstop. Each request emits one
-structured result, and the runner exits non-zero if any job fails.
+Inspect `application_scheduled_jobs` or the admin scheduler snapshot for `daily-maintenance`.
+`last_succeeded_at` confirms a complete pass; `last_failed_at` and `last_error` identify a
+failed batch. Per-task `scheduler.maintenance` log events show which task failed. Alert when a
+complete pass has not succeeded for 36 hours.
 The rate-limit cleanup removes at most 10,000 expired rows per daily run. Check its reported
 `removed` count and raise the schedule or batch budget if it repeatedly reaches that ceiling.
-When `AUTH_TOKEN_STORE=postgres`, the runner also removes up to 10,000 expired login dedupe and
+When `AUTH_TOKEN_STORE=postgres`, the daily batch also removes up to 10,000 expired login dedupe and
 revocation rows and token-session records older than 60 days past expiry. Check the reported
 counts if any category reaches that bound repeatedly.
 When `AUTH_CLI_STORE=postgres`, the same auth cleanup call also removes up to 10,000 expired CLI
 request and one-time code rows. Monitor both counts for repeated batch saturation.
-With `ATTENDEE_SESSION_STORE=postgres`, the runner also removes up to 10,000 expired attendee
+With `ATTENDEE_SESSION_STORE=postgres`, the daily batch also removes up to 10,000 expired attendee
 session rows per daily pass. The person-version rows remain until a separate account-retention
 decision because they preserve person-wide revocation semantics.
 When `PASSKEY_CEREMONY_STORE=postgres`, the same attendee cleanup call also removes up to 10,000

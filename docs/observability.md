@@ -2,17 +2,17 @@
 
 ## Signals
 
-| Question                                              | Signal                                                 | Owner                   |
-| ----------------------------------------------------- | ------------------------------------------------------ | ----------------------- |
-| Is the process configured to serve traffic?           | `GET /api/health`                                      | Web runtime             |
-| Which core and optional capabilities are enabled?     | `GET /health`                                          | Capability model        |
-| Can Redis and object storage actually be reached?     | Admin `GET /api/debug`                                 | Platform adapters       |
-| Did an API workflow succeed and how long did it take? | Structured JSON request/domain logs                    | Route and feature owner |
-| Did scheduled cleanup run?                            | `maintenance.request` plus cleanup completion events   | Maintenance runner      |
-| Is the optional worker alive and draining?            | Worker heartbeat, queue depth, completion/error events | Media worker            |
-| Is multiplayer healthy on this replica?               | Admin multiplayer runtime panel                        | Multiplayer runtime     |
-| Are replicas sharing realtime wakes?                  | Backplane mode/publication/failure counters            | Realtime backplane      |
-| Is transactional email draining?                      | Admin `GET /api/debug` email-outbox snapshot           | Email outbox            |
+| Question                                              | Signal                                                     | Owner                   |
+| ----------------------------------------------------- | ---------------------------------------------------------- | ----------------------- |
+| Is the process configured to serve traffic?           | `GET /api/health`                                          | Web runtime             |
+| Which core and optional capabilities are enabled?     | `GET /health`                                              | Capability model        |
+| Can Redis and object storage actually be reached?     | Admin `GET /api/debug`                                     | Platform adapters       |
+| Did an API workflow succeed and how long did it take? | Structured JSON request/domain logs                        | Route and feature owner |
+| Did scheduled cleanup run?                            | `daily-maintenance` lease and `scheduler.maintenance` logs | Web scheduler           |
+| Is the optional worker alive and draining?            | Worker heartbeat, queue depth, completion/error events     | Media worker            |
+| Is multiplayer healthy on this replica?               | Admin multiplayer runtime panel                            | Multiplayer runtime     |
+| Are replicas sharing realtime wakes?                  | Backplane mode/publication/failure counters                | Realtime backplane      |
+| Is transactional email draining?                      | Admin `GET /api/debug` email-outbox snapshot               | Email outbox            |
 
 ## Health semantics
 
@@ -62,7 +62,7 @@ Never log passwords, PINs, tokens, cookies, presigned URLs, or direct personal i
 
 - Poll `/api/health` every five minutes from outside the host.
 - Alert after two consecutive failures, not a single transient error.
-- Alert when scheduled maintenance has no successful completion for 36 hours.
+- Alert when `daily-maintenance` has no successful completion for 36 hours.
 - Track memory, CPU, restarts, HTTP 5xx rate, and response latency at the host.
 - Track Redis command usage and R2 storage/operation usage at their providers.
 - Alert on sustained multiplayer operation failures, lock failures, or realtime backplane failures.
