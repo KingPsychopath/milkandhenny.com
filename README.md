@@ -18,12 +18,12 @@ flowchart LR
     Worker -->|results and job status| DB
     DB -->|realtime notifications| Web
     Web -->|live updates| Browser
-    Daily[Daily maintenance] -->|authenticated cleanup and recovery| Web
+    Web -->|daily leased cleanup and recovery| DB
 ```
 
 Postgres owns durable state and work; R2 owns files. The web process runs user-visible schedules
-with Postgres leases. The media worker drains heavy jobs, and daily maintenance provides an
-independent cleanup and recovery pass. Production no longer connects to Redis. See
+with Postgres leases, including daily cleanup and recovery. The media worker drains heavy jobs.
+Production no longer connects to Redis. See
 [architecture](./docs/architecture.md) and [durable work](./docs/durable-work.md) for the contracts.
 
 The application is a modular monolith. UI routes collect intent, server functions and API routes
@@ -142,18 +142,10 @@ Deployment sequence:
 
 ## Scheduled maintenance
 
-`pnpm maintenance` calls authenticated cleanup and recovery routes once a day. It removes expired
-records in bounded batches and rechecks work that a worker or web process may have missed. The web
-process schedules user-visible work with Postgres leases, so a missed daily maintenance run does
-not control when reminders or other product events happen. The runner requires `APP_BASE_URL` (or
-`VITE_BASE_URL`) and `CRON_SECRET`; it exits nonzero if a call fails. See
-[operations](./docs/operations.md) for the jobs and limits.
-
-Run it from Railway Cron, system cron, GitHub Actions, or any scheduler:
-
-```cron
-15 3 * * * cd /srv/milkandhenny && pnpm maintenance
-```
+The web process runs cleanup and recovery once a day under a Postgres lease. Each task is bounded;
+one failure does not prevent later tasks, and the failed batch retries after an hour. Reminders,
+email, event drops, digests, and game-pool cleanup have their own shorter leased schedules. See
+[operations](./docs/operations.md) for the jobs, limits, and manual recovery routes.
 
 ## Media worker
 

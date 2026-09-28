@@ -43,8 +43,7 @@ delivery, scheduled fibers, advisory publication, telemetry, and resource finali
 
 The scheduler starts only after Postgres migrations are ready. Durable Postgres leases prevent
 overlap across replicas and deploys. It runs communications, scoring transitions and result
-recovery, Pitch reminders, and operations digests. Daily maintenance remains an independent
-housekeeping and recovery backstop.
+recovery, Pitch reminders, operations digests, and daily housekeeping and recovery.
 
 See [effect-lifecycle.md](./effect-lifecycle.md), [durable-work.md](./durable-work.md), and
 [operations.md](./operations.md).

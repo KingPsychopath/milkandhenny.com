@@ -312,7 +312,7 @@ words, and comparison failures. The records remain source-controlled rather
 than mutable production data.
 
 Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
-process drains them in bounded batches, and daily maintenance is an independent backstop. Temporary
+process drains them in bounded batches, and the web scheduler retries it independently. Temporary
 provider failures retry with backoff for at most 7 days or 10 attempts. Accepted and terminal rows
 remove the outbox's message body and recipient-address copy, while a provider-neutral operations ledger keeps
 masked purpose, source, entity references and delivery state for 120 days. Raw delivery events are
@@ -375,10 +375,10 @@ stale lease is recoverable after a crashed process. The central scheduler owns c
 fan-out, email retry wake-ups, scheduled scoring transitions, official-result recovery, Pitch
 reminders, and operations digests.
 
-Cleanup workflows remain authenticated HTTP use cases. `ops/run-maintenance.mjs` calls them
-sequentially, emits structured results, and exits non-zero on failure. Railway's daily maintenance
-service is an independent housekeeping and recovery backstop, not the clock for user-visible
-product behavior.
+The web scheduler also runs daily cleanup and recovery under a Postgres lease. It attempts each
+bounded task sequentially, logs its result, and records a failed batch for retry if any task fails.
+Authenticated cleanup routes remain available for manual recovery. Product-time jobs have their
+own leases and schedules.
 
 ## Health
 

@@ -224,7 +224,7 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 4. Copy the new Access Key ID and Secret Access Key
 5. **Update `.env.local`** with the new values
 6. **Update the production host's secret variables**
-7. **Redeploy** so the app and maintenance runner use the new token
+7. **Redeploy** so the app and media worker use the new token
 8. Test: `pnpm cli bucket ls` — should return bucket contents
 
 Cached public derivatives may continue to serve during rotation. Private storage operations and
