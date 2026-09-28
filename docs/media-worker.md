@@ -20,16 +20,13 @@ A nitro startup plugin reads it and, on the worker, starts the drain loop
 alongside the normal server. The worker still answers `/api/health` so Railway
 can supervise it.
 
-The shared Media `ManagedRuntime` owns worker fibers, scoped blocking Redis clients, processing
-deadlines, bounded concurrency, recovery telemetry, and private-transfer orchestration. The Redis
-queue, processing leases, transfer records, and R2 objects remain durable authority; Effect owns
-their execution lifecycle, not their data model.
+The shared Media `ManagedRuntime` owns worker fibers, processing deadlines, bounded concurrency,
+recovery telemetry, and private-transfer orchestration. Postgres owns the queue, processing
+leases, transfer records, and worker status; R2 owns the files. Effect owns execution lifecycle,
+not durable state. See [durable work](./durable-work.md) and
+[worker status](./media-worker-status-postgres.md).
 
-An [opt-in Postgres worker-status store](./media-worker-status-postgres.md) is staged for the
-Redis-to-Postgres migration. It is not enabled in production; queue claims, reconciliation and
-live updates still require Redis.
-
-### Staged Postgres worker credentials
+### Postgres worker credentials
 
 After the Postgres transfer migrations are applied, run
 [`ops/postgres-media-worker-role.sql`](../ops/postgres-media-worker-role.sql) as the schema owner.
@@ -46,8 +43,8 @@ When `ALBUM_STORE=postgres`, set `ALBUM_OBJECT_DELETION_RUNNER=postgres` as well
 copies and public/private deletes are retried by this worker.
 The worker verifies the migration ledger without
 reading Pitch documents. Its web counterpart still performs the full Pitch document check.
-This mode remains staged until the accepted Redis export is imported, source objects reconcile,
-and the separate worker release passes its recovery checks.
+Production uses this mode. The accepted Redis export was imported, source objects reconciled, and
+the separate worker release passed its recovery checks.
 The worker registers its close hook before async startup; Node signals drain that hook and close
 the process-wide Postgres pool after the worker records its stopped state.
 
@@ -58,14 +55,13 @@ app's.
 The roles do not share the same secret set. The web service owns user-facing
 authentication (`ADMIN_PASSWORD` and `UPLOAD_PIN`) and payment,
 email, and database credentials. The media worker does not receive those
-secrets. In the current Redis mode it needs Redis REST and direct Redis queue access plus private
-R2 credentials. The staged Postgres mode needs its scoped database credential and private R2
-credentials. When album operations are enabled, it also needs a credential scoped to the
+secrets. It needs its scoped database credential and private R2 credentials. When album operations
+are enabled, it also needs a credential scoped to the
 public R2 bucket for publication and deletion.
 
 `/api/health` is role-aware. Web readiness checks the site and its required
-dependencies; worker readiness checks only the worker runtime, both Redis
-connections, and private media storage configuration. This prevents an
+dependencies; worker readiness checks the worker runtime, required Postgres capabilities, and
+private media storage configuration. This prevents an
 unrelated web login secret from taking a healthy worker out of service while
 keeping the readiness request independent of a slow object-storage control
 plane.
@@ -107,8 +103,7 @@ A file queued for the worker reaches the browser as `original_only` — no
 preview yet. With `TRANSFER_MEDIA_EVENT_BACKPLANE=postgres`, the worker publishes
 a file wake on `transfer_media_events_v1`. Each web process holds one Postgres
 LISTEN connection, reads the committed file state, and streams it through
-`GET /api/transfers/:id/events` as SSE. The legacy Redis backplane uses
-`transfer:media:events`.
+`GET /api/transfers/:id/events` as SSE.
 
 The SSE route sends a current snapshot after subscribing. If the Postgres
 backplane reconnects while browser streams remain open, it refreshes every
@@ -126,12 +121,10 @@ and the client closes the stream instead of reconnecting forever.
 
 ## Delivery, retries, and idempotency
 
-- **At-least-once.** `BRPOPLPUSH` moves a job to a processing list; it is
-  removed only after the job settles. A worker that dies mid-job leaves the job
-  there, and the next worker start requeues it.
-- **Recovery respects leases.** Startup and each reconciliation cycle move
-  only processing entries whose 30-minute lease has expired, so a crashed job
-  returns to the queue without stealing work from a healthy replica.
+- **At-least-once.** A transfer mutation and its media job commit together in Postgres. The
+  worker claims a job with a lease and marks it complete only after the result is committed.
+- **Recovery respects leases.** An expired claim can be recovered after a crash without stealing
+  work from a healthy worker.
 - **Replays are safe.** A job whose file is already `local_done`/`worker_done`
   is skipped, derivative keys are deterministic so re-uploads overwrite, and a
   job for a deleted file finds nothing to update.
@@ -145,56 +138,39 @@ and the client closes the stream instead of reconnecting forever.
 
 ## Reconciliation
 
-Jobs get lost. A worker dies between claiming a job and finishing it, a deploy
-lands mid-flight, a derivative gets deleted from object storage. Each leaves a
-file stuck: `queued` with no job behind it, `processing` with no worker on it,
-or `ready` pointing at a thumbnail that is gone.
+An interrupted job can leave a file queued or processing without a current claim. The Postgres
+reconciler finds retryable failed files and queued or processing files older than 15 minutes that
+have no pending job or live claim. It checks candidates in bounded batches of 100 and rechecks
+each file under its row lock before enqueueing, so overlapping runs cannot duplicate the repair.
+It does not treat a ready file as missing solely because a derivative later disappears from R2;
+an object audit or explicit reprocess is needed for that case.
 
-The sweep also recognizes `video_too_large_for_poster` records from releases
-that capped video poster generation. Those files are no longer terminal: each
-is re-inferred and queued once so existing transfers gain the missing poster.
-
-`backfillTransferMedia` repairs all of those — it re-derives each file's state
-from what is actually in object storage and requeues whatever is genuinely
-unfinished. Two things run it:
+Two paths run reconciliation:
 
 1. **The worker's independent repair timer** (`MEDIA_RECONCILE_INTERVAL_MS`,
-   default 15 min — the staleness window, so a stranded file is repaired within
-   about two windows). It runs independently because the queue consumers stay
-   blocked indefinitely while idle. The same cycle requeues expired processing
-   leases before repairing transfer records.
+   default 15 min). It runs independently of job claims and rechecks expired
+   processing leases.
 2. **The daily maintenance run**, as `POST /api/cron/process-transfer-media`.
    This is the backstop for the case the worker sweep cannot cover: the worker
    itself being down.
 
-Both take the same Redis lock (`transfer:media:reconcile-lock`), so overlap is
-harmless — two backfills racing on one transfer would each write their own view
-of the file list.
-
-The sweep reads every live transfer in **one pipelined round trip** and filters
-in memory, so a healthy transfer costs no object-storage calls at all. It only
-descends into object storage for files that look unfinished, and it skips
-terminal failures entirely.
-
-What it does **not** do is retry `raw_preview_unavailable` — see the delivery
-section above. That is a property of the file, and a sweep every 15 minutes
-re-downloading and re-decoding it forever would be the worst possible version
-of this.
+The sweep skips terminal failures, including `raw_preview_unavailable`. It does not repeatedly
+download and decode files that cannot produce a preview.
 
 ## Configuration
 
-| Variable                             | Default  | Applies to | Meaning                                               |
-| ------------------------------------ | -------- | ---------- | ----------------------------------------------------- |
-| `MEDIA_PROCESSOR_MODE`               | `local`  | both       | `local` or `hybrid`                                   |
-| `MEDIA_WORKER_ROLE`                  | `web`    | both       | `web` or `worker`                                     |
-| `MEDIA_WORKER_CONCURRENCY`           | `1`      | worker     | jobs in flight per instance                           |
-| `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000` | worker     | per-job ceiling                                       |
-| `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`  | worker     | pause after a claim error                             |
-| `MEDIA_WORKER_HEARTBEAT_INTERVAL_MS` | `300000` | worker     | liveness write interval; minimum 30 seconds           |
-| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000` | worker     | periodic sweep for stranded files; `0` disables       |
-| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web        | ceiling for work the request path still does          |
-| `REDIS_URL`                          | —        | both       | direct connection; required for the queue and for SSE |
-| `TRANSFER_UPLOAD_URL_TTL_SECONDS`    | `21600`  | web        | how long a batch has to finish uploading              |
+| Variable                             | Default  | Applies to | Meaning                                         |
+| ------------------------------------ | -------- | ---------- | ----------------------------------------------- |
+| `MEDIA_PROCESSOR_MODE`               | `local`  | both       | `local` or `hybrid`                             |
+| `MEDIA_WORKER_ROLE`                  | `web`    | both       | `web` or `worker`                               |
+| `MEDIA_WORKER_CONCURRENCY`           | `1`      | worker     | jobs in flight per instance                     |
+| `MEDIA_WORKER_JOB_TIMEOUT_MS`        | `600000` | worker     | per-job ceiling                                 |
+| `MEDIA_WORKER_ERROR_BACKOFF_MS`      | `15000`  | worker     | pause after a claim error                       |
+| `MEDIA_WORKER_HEARTBEAT_INTERVAL_MS` | `300000` | worker     | liveness write interval; minimum 30 seconds     |
+| `MEDIA_RECONCILE_INTERVAL_MS`        | `900000` | worker     | periodic sweep for stranded files; `0` disables |
+| `MEDIA_INLINE_PROCESSING_TIMEOUT_MS` | `120000` | web        | ceiling for work the request path still does    |
+| `DATABASE_URL`                       | —        | both       | scoped Postgres connection for queue and state  |
+| `TRANSFER_UPLOAD_URL_TTL_SECONDS`    | `21600`  | web        | how long a batch has to finish uploading        |
 
 ## Operating it
 
@@ -209,19 +185,9 @@ Health and queue depth appear in the admin dashboard and in
 - **a reconcile sweep that keeps finding work** — files are being stranded
   faster than they are processed, which usually means the worker is flapping.
 
-The worker drains one queue, `transfer:media:queue`. A parallel word-media
-queue used to be claimed on every idle pass; it had a consumer but no producer
-— word uploads have always been processed inline by the finalize route — so it
-was costing a blocking Redis call every loop to watch a queue nothing wrote to.
-It is gone.
-
-Every concurrency slot owns a dedicated direct Redis connection and issues one
-indefinite `BRPOPLPUSH`. Sharing a connection would serialize blocking claims;
-using finite timeouts would turn an empty queue into a permanent command poll.
-Shutdown stops intake, interrupts the scoped worker fibers, and finalizes those
-blocking connections. A job interrupted after claim remains recoverable through
-its processing lease; shutdown does not pretend every in-flight provider call
-definitively failed or completed.
+The worker claims from the leased Postgres media queue. Shutdown stops intake and interrupts the
+scoped worker fibers. A job interrupted after claim remains recoverable through its processing
+lease; shutdown does not pretend every in-flight provider call definitively failed or completed.
 
 Scaling out is safe: the queue is the coordination point, and recovery skips
 every processing entry whose lease is still current.

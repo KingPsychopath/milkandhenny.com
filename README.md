@@ -3,29 +3,39 @@
 A portable TanStack Start application for writing, photo galleries, party games, private file
 transfers, and events/ticketing.
 
-The web application is a standard Node server. It does not require Vercel, Railway, or any other specific host and can run from the included Docker image on a managed platform or VPS.
+The web application is a standard Node server. The included Docker image runs on Railway, a VPS,
+or another container host.
 
 ## Runtime architecture
 
-| Responsibility              | Owner                                                             |
-| --------------------------- | ----------------------------------------------------------------- |
-| SSR, routes, API, and auth  | TanStack Start + Nitro Node server                                |
-| Relational product state    | PostgreSQL                                                        |
-| Expiring/distributed state  | Redis-compatible REST API                                         |
-| Images and files            | S3-compatible object storage (currently Cloudflare R2)            |
-| Product-time scheduled work | In-process Events runtime with durable Postgres leases            |
-| Housekeeping and recovery   | Authenticated maintenance runner invoked by an external scheduler |
-| Heavy RAW/video derivatives | Optional worker role using the same production image              |
+```mermaid
+flowchart LR
+    Browser --> Web[Web app: TanStack Start + Nitro]
+    Web --> DB[(Postgres: content, sessions, rooms, transfers, jobs, leases)]
+    Web --> R2[(R2: private sources and public media)]
+    DB -->|claim durable jobs| Worker[Media worker: same image]
+    Worker --> R2
+    Worker -->|results and job status| DB
+    DB -->|realtime notifications| Web
+    Web -->|live updates| Browser
+    Daily[Daily maintenance] -->|authenticated cleanup and recovery| Web
+```
 
-The application is a modular monolith. UI routes collect intent, server functions and API routes enforce transport/auth boundaries, feature modules own workflows, and `lib/platform` contains external adapters.
+Postgres owns durable state and work; R2 owns files. The web process runs user-visible schedules
+with Postgres leases. The media worker drains heavy jobs, and daily maintenance provides an
+independent cleanup and recovery pass. Production no longer connects to Redis. See
+[architecture](./docs/architecture.md) and [durable work](./docs/durable-work.md) for the contracts.
+
+The application is a modular monolith. UI routes collect intent, server functions and API routes
+enforce transport/auth boundaries, feature modules own workflows, and `lib/platform` contains
+external adapters.
 
 ## Requirements
 
 - The Node.js version used by the Dockerfile
 - The package-manager version pinned by `packageManager` in `package.json`
-- Redis REST credentials
-- S3-compatible object-storage credentials
-- PostgreSQL for events, tickets, scoring, communications, and Pitch Night
+- PostgreSQL for application state and durable work
+- S3-compatible object-storage credentials for media and transfers
 
 ## Local development
 
@@ -36,6 +46,9 @@ pnpm dev
 ```
 
 Open `http://localhost:3000`.
+
+Fill in the database, object-storage, and authentication values in `.env.local`. Select the
+Postgres stores listed in the template for a Redis-free local run.
 
 Useful commands:
 
@@ -52,14 +65,12 @@ intentionally not part of the toolchain.
 
 ## Environment contract
 
-Copy [`.env.example`](./.env.example). A full production deployment uses:
+Copy [`.env.example`](./.env.example). A full production deployment needs these core values. The
+template also documents the Postgres store selectors, worker role, and optional integrations:
 
 ```dotenv
 VITE_BASE_URL=https://milkandhenny.com
 VITE_MEDIA_PUBLIC_URL=https://pics.milkandhenny.com
-
-REDIS_REST_URL=
-REDIS_REST_TOKEN=
 
 DATABASE_URL=
 
@@ -78,24 +89,22 @@ UPLOAD_PIN=
 
 Only `VITE_*` variables enter the browser bundle. Never prefix credentials or authentication secrets with `VITE_`.
 
-`CRON_SECRET`, direct Redis, media-worker configuration, external ZIP service settings, and
-performance tuning are optional and documented in `.env.example`.
-
-`REDIS_REST_*` is the provider-neutral Redis contract.
+`CRON_SECRET`, media-worker configuration, external ZIP service settings, and performance tuning
+are documented in `.env.example`. Production sets the application store selectors to `postgres`
+and runs migrations before starting restricted web and worker database roles; see
+[deployment](./docs/deployment.md) and [Postgres runtime roles](./docs/postgres-runtime-roles.md).
 
 Effect v4 owns backend orchestration and lifecycle for Events, Media, Multiplayer, and Pitches.
-Product rules, repositories, and browser code remain ordinary TypeScript. A direct `REDIS_URL`
-enables cross-replica WebSocket wake fan-out and the blocking media queue; it is required before
-scaling realtime rooms beyond one web replica. Authoritative room state continues to use the Redis
-REST contract.
+Product rules, repositories, and browser code remain ordinary TypeScript. Postgres stores
+authoritative room state and the leased media queue, and carries cross-replica wake notifications.
 
 Application-owned runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`. Hosting-provider metadata is accepted only as an adapter when those canonical variables are omitted; an instance ID must be unique per running process or replica.
 
 ## Health and capabilities
 
-- `/api/health` — cheap machine-readable readiness check; no dependency operations.
+- `/api/health` — machine-readable readiness check with bounded required-capability probes.
 - `/health` — safe human-readable capability page.
-- `/api/debug` — admin-protected deep Redis/object-storage probes.
+- `/api/debug` — admin-protected deep database, object-storage, and runtime probes.
 
 The capability page distinguishes required services from optional functions. Advanced RAW/video processing is expected to show as disabled while `MEDIA_PROCESSOR_MODE=local`.
 
@@ -133,10 +142,12 @@ Deployment sequence:
 
 ## Scheduled maintenance
 
-`pnpm maintenance` calls authenticated housekeeping and recovery routes. Product-time jobs such as
-communications, scoring transitions, result recovery, reminders, and operations digests run inside
-the web process with Postgres leases. The maintenance runner requires `APP_BASE_URL` (or
-`VITE_BASE_URL`) and `CRON_SECRET`.
+`pnpm maintenance` calls authenticated cleanup and recovery routes once a day. It removes expired
+records in bounded batches and rechecks work that a worker or web process may have missed. The web
+process schedules user-visible work with Postgres leases, so a missed daily maintenance run does
+not control when reminders or other product events happen. The runner requires `APP_BASE_URL` (or
+`VITE_BASE_URL`) and `CRON_SECRET`; it exits nonzero if a call fails. See
+[operations](./docs/operations.md) for the jobs and limits.
 
 Run it from Railway Cron, system cron, GitHub Actions, or any scheduler:
 
@@ -146,12 +157,12 @@ Run it from Railway Cron, system cron, GitHub Actions, or any scheduler:
 
 ## Media worker
 
-Images and GIFs are processed inline. RAW previews and video posters are queued
-for a dedicated worker — the same server image run with `MEDIA_WORKER_ROLE=worker`.
+Images and GIFs are processed inline. RAW previews and video posters are queued in Postgres for a
+dedicated worker—the same server image run with `MEDIA_WORKER_ROLE=worker`.
 
 ```dotenv
-MEDIA_PROCESSOR_MODE=local    # everything inline; the default, and right for development
-MEDIA_PROCESSOR_MODE=hybrid   # heavy routes queued; needs a worker instance and a direct REDIS_URL
+MEDIA_PROCESSOR_MODE=local    # everything inline; the default for development
+MEDIA_PROCESSOR_MODE=hybrid   # heavy routes queued; requires a worker with Postgres job storage
 ```
 
 See [`docs/media-worker.md`](./docs/media-worker.md) for the split, the delivery

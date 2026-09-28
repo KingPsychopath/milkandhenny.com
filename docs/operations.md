@@ -51,11 +51,14 @@ cleanup pass is delayed. Check for repeated batch saturation.
 curl -fsS https://milkandhenny.com/api/health
 ```
 
-Use `/health` for the safe human view. Use the admin-protected `/api/debug` only when diagnosing dependencies; it deliberately spends one Redis and one object-storage operation.
+Use `/health` for the safe human view. Use the admin-protected `/api/debug` only when diagnosing
+dependencies; it performs deeper database, object-storage, and runtime checks.
 
 ## Backups and restore
 
-Follow [disaster-recovery.md](./disaster-recovery.md). Run the PostgreSQL archive daily and a restore drill before launch and every quarter. Keep the archive outside the deployment account. Configure a separate copy of permanent object storage; private transfers and live rooms expire and are not restored.
+Follow [disaster-recovery.md](./disaster-recovery.md) for the current backup decision and restore
+drill. Private transfers expire; permanent media and database records have different recovery
+requirements.
 
 ### Staged object audits
 
@@ -73,7 +76,7 @@ photos: private originals and derivatives for every photo, plus public derivativ
 albums. It exits nonzero on missing objects, original-size discrepancies, R2 errors or a partial
 scan. It makes no changes. The same maintenance freeze and complete-scan requirement apply.
 
-In staged Postgres transfer mode, admin and CLI hard reset tombstone up to 1,000 current transfers
+In production Postgres transfer mode, admin and CLI hard reset tombstone up to 1,000 current transfers
 in bounded batches and queue deletion of their known private objects. The media worker finishes
 those deletions; the command does not prove R2 is empty. Run deep cleanup after its late-upload
 grace period to stage old unreferenced objects. Stop transfer writers before a full reset so a
@@ -105,8 +108,9 @@ the queue, and `pnpm cli email cleanup --step-up` to apply retention immediately
 
 - Start the web process at 512 MB–1 GB RAM and 0.5–1 vCPU.
 - Keep one replica until observed traffic requires more.
-- Before adding a second web replica, link direct Redis as `REDIS_URL`; otherwise WebSocket wake delivery is process-local.
-- Do not attach a volume; application durability belongs in Postgres, Redis, or object storage.
+- Before adding a second web replica, confirm the Postgres realtime backplane is selected and
+  healthy so cross-replica wake delivery works.
+- Do not attach a volume; application durability belongs in Postgres or object storage.
 - Keep `MEDIA_PROCESSOR_MODE=local` while no media worker is running; a queue with no consumer only accumulates.
 - Set host-level memory and spending limits, but leave enough headroom for image transformations.
 - Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` so Nitro can close sockets and dispose subsystem
@@ -116,11 +120,12 @@ the queue, and `pnpm cli email cleanup --step-up` to apply retention immediately
 
 ## Multiplayer scaling
 
-Each replica owns one managed Multiplayer runtime, one bounded local socket registry, and—when
-`REDIS_URL` is configured—one Redis publisher and one Redis subscriber. Authoritative rooms remain
-in Redis REST storage; the direct connection carries advisory cross-replica wake events only.
+Each replica owns one managed Multiplayer runtime, one bounded local socket registry, and a
+Postgres realtime listener. Authoritative rooms are stored in Postgres; notifications only wake
+other replicas to read committed state.
 
-The admin system-health panel reports the current replica and whether fan-out is `local` or `redis`. Do not scale past one replica while it reports `local`. Sticky routing can reduce fan-out traffic but is not required for correctness once the Redis backplane is enabled.
+The admin system-health panel reports the current replica and backplane. Confirm it reports
+`postgres` and remains healthy before scaling beyond one web replica.
 
 Socket input is bounded by message size, message rate, wake frequency, per-room connections, and per-process connections. Rejected overloads use a retryable WebSocket close code. Durable HTTP reconciliation remains authoritative when a wake is delayed or lost.
 
@@ -137,7 +142,7 @@ Socket input is bounded by message size, message rate, wake frequency, per-room 
 1. Check platform deployment state and restarts.
 2. Check `/api/health`.
 3. Inspect recent structured error logs by request ID/scope.
-4. Use `/api/debug` to distinguish Redis, object-storage, lock contention, and realtime fan-out failure.
+4. Use `/api/debug` to distinguish database, object-storage, lock contention, and realtime fan-out failure.
 5. Roll back DNS or the deployment if a required flow is broken.
 6. Rotate credentials only if exposure is suspected; rotation makes rollback harder.
 
@@ -145,7 +150,5 @@ Socket input is bounded by message size, message rate, wake frequency, per-room 
 
 Bring the worker up before switching the web service to `hybrid` — the reverse order queues jobs nobody drains. Full cutover and rollback order is in [media-worker.md](./media-worker.md#cutover).
 
-The worker's queue cost is proportional to work, not to time. Each concurrency
-slot holds one indefinite blocking claim on its own Redis connection, so an
-idle queue does not issue repeated commands. The only time-based writes are a
-heartbeat every five minutes and a reconciliation sweep every 15 minutes.
+The worker claims leased Postgres media jobs. It writes a heartbeat every five minutes and runs
+a reconciliation sweep every 15 minutes to recover work stranded by an interrupted process.
