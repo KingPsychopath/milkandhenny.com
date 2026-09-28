@@ -1600,7 +1600,12 @@ that the release is complete.
 - [ ] Pass `pnpm verify:release` on the release source. The first run passed checks and 2,200
       coverage tests but had three browser fixture failures because `TEST_DATABASE_URL` was unset
       in the Playwright process, plus one multiplayer timing failure. The fixture is corrected;
-      all nine affected browser cases passed on rerun. A complete release rerun is in progress.
+      all nine affected browser cases passed on rerun. The combined release rerun on merge
+      `e4fd4272` passed `pnpm check` and 2,203 coverage tests, then passed 71 of 72 browser
+      journeys against an isolated migrated Postgres database. Its only failure was an admin
+      settings test expecting a bare event title while the visible checkbox label includes
+      `· draft`. The assertion was corrected in PR #16; its focused browser journey, `pnpm check`,
+      and `pnpm build` passed on current `main`. A full green `verify:release` rerun remains open.
 - [x] Deploy release `acef2431` to web and media-worker. Both Redis-free restarts succeeded
       (`9697eeb2-032f-4c34-ba03-32c33163acec` and
       `0d3bd400-9639-499d-a36a-074b46e5542d`). Public health, words, pictures, and party
@@ -1626,6 +1631,16 @@ that the release is complete.
 - [x] Observe successive worker heartbeats after the Redis-free restart, a stable zero-length
       queue, and healthy web and worker deployments. The last 250 deployment log lines for each
       service contain no error messages.
+- [x] Integrate the concurrent TanStack Query work with the Postgres migration catalog through
+      `0122` in PR #14 (`e4fd4272`, merged as `5f379b50`). Web and media-worker deployments of
+      the combined artifact succeeded, replacing the failed standalone query deployments that
+      stopped at migration `0116`. PR #15 (`77851a51`) repaired media recovery and legacy album
+      visibility, and both production services deployed it successfully. PR #16 (`dc2d4660`)
+      corrected the test-only admin assertion; Railway skipped rebuilding unchanged runtime code.
+      After these merges, public health was healthy, the media queue was empty with a fresh worker
+      heartbeat, and both services still had no Redis or Upstash environment variables. GitHub CI
+      remains red at the unrelated Hot & Cold human editorial approval gate for dailies #36–65;
+      the user explicitly authorized merging the code despite that gate.
 - [ ] Complete final acceptance after the external Upstash resource is deleted. A separate-account
       Postgres backup schedule and restore drill remain operational follow-up work; the user waived
       a fresh dump for this cutover and the earlier readable pre-cutover dump remains available
