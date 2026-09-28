@@ -23,6 +23,7 @@ vi.mock("@/features/system/media-role.server", () => ({
 }));
 
 import { CommunicationsService } from "@/features/communications/communications-service.server";
+import { AttendeeOperationsService } from "@/features/attendee-operations/attendee-operations-service.server";
 import { ApplicationSchedulerService } from "@/features/system/application-scheduler-service.server";
 import { PostgresService, RedisService } from "@/lib/platform/provider-services.server";
 
@@ -32,7 +33,10 @@ describe("application scheduler service", () => {
     const dependencies = Layer.mergeAll(
       Layer.succeed(CommunicationsService, {
         runScheduled: Effect.succeed({ staged: 0, waitlistAlerts: 0, handled: 0 }),
+        cleanupLinks: Effect.succeed({}),
+        cleanupEmail: Effect.succeed({}),
       } as never),
+      Layer.succeed(AttendeeOperationsService, { cleanupExpired: Effect.succeed({}) } as never),
       Layer.succeed(PostgresService, { port: {} as never }),
       Layer.succeed(RedisService, { client: Effect.succeed(null) }),
     );
@@ -55,6 +59,7 @@ describe("application scheduler service", () => {
       "operations-digests",
       "pitch-reminders",
       "game-pool-cleanup",
+      "daily-maintenance",
     ]);
   });
 });
