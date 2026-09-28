@@ -70,6 +70,20 @@ shared multiplayer rooms where another device's command must update the current 
 
 ## Browser navigation and state
 
+Ordinary remote snapshots are owned by TanStack Query. A route loader prefetches the critical
+query during SSR and browser navigation; the component observes that same entry after hydration.
+Create the QueryClient with the router so each server request has an isolated cache. Feature query
+keys include every input that changes the result, including filters and non-secret access scope.
+Keep credentials out of keys and independently authorize every server read. Confirmed commands
+update complete exact entries or invalidate the affected query families. Local form drafts retain
+their own base revision and are never overwritten by a background refresh.
+
+Capability-bearing pages, live room projections, checkout outcomes, upload execution, and offline
+recovery have specialized owners. A capability URL may use a route-local loader with zero Router
+cache lifetime so the credential is neither a Query key nor a dehydrated shared snapshot. A live
+controller owns ordered events and reconnect reconciliation; Query may own independent metadata.
+These boundaries are detailed in [server-state-architecture-proposal.md](./server-state-architecture-proposal.md).
+
 The URL owns durable, addressable resources. React state owns live interaction.
 An in-place mode gets a browser-history entry only when Back should undo or
 leave that mode. Local games use this rule for setup-to-round transitions:

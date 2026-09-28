@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { WaitlistAdminView, WaitlistStatus } from "@/features/event-waitlist/types";
+import { adminWaitlistQuery } from "@/features/event-waitlist/admin-waitlist.queries";
 import { AdminStatus, type AdminStatusTone } from "./AdminStatus";
-
-type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 
 const EMPTY_COUNTS: WaitlistAdminView["counts"] = {
   pending: 0,
@@ -38,39 +38,27 @@ function dateLabel(value: string | undefined): string {
 
 export function EventWaitlistPanel({
   eventSlug,
-  authFetch,
   onError,
 }: {
   eventSlug: string;
-  authFetch: AuthFetch;
   onError: (message: string) => void;
 }) {
-  const [view, setView] = useState<WaitlistAdminView>({ counts: EMPTY_COUNTS, entries: [] });
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const waitlistQuery = useQuery(adminWaitlistQuery(eventSlug));
+  const view: WaitlistAdminView = waitlistQuery.data ?? { counts: EMPTY_COUNTS, entries: [] };
+  const loading = waitlistQuery.isFetching;
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const response = await authFetch(`/api/admin/events/${eventSlug}/waitlist`);
-      const data: unknown = await response.json().catch(() => null);
-      if (!response.ok || !data || typeof data !== "object" || Array.isArray(data)) {
-        throw new Error("Failed to load the waitlist");
-      }
-      const record = data as Partial<WaitlistAdminView>;
-      if (!record.counts || !Array.isArray(record.entries)) {
-        throw new Error("Failed to load the waitlist");
-      }
-      setView({ counts: { ...EMPTY_COUNTS, ...record.counts }, entries: record.entries });
+      await queryClient.fetchQuery({ ...adminWaitlistQuery(eventSlug), staleTime: 0 });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to load the waitlist");
-    } finally {
-      setLoading(false);
     }
-  }, [authFetch, eventSlug, onError]);
+  }, [queryClient, eventSlug, onError]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (waitlistQuery.error) onError(waitlistQuery.error.message);
+  }, [waitlistQuery.error, onError]);
 
   return (
     <section aria-labelledby="event-waitlist-heading">
@@ -118,7 +106,11 @@ export function EventWaitlistPanel({
         </div>
       </dl>
 
-      {loading && view.entries.length === 0 ? (
+      {waitlistQuery.error && !waitlistQuery.data ? (
+        <p role="alert" className="mt-6 font-mono text-xs theme-muted">
+          {waitlistQuery.error.message}
+        </p>
+      ) : loading && view.entries.length === 0 ? (
         <p role="status" className="mt-6 font-mono text-xs theme-muted">
           loading waitlist…
         </p>

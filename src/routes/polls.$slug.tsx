@@ -1,12 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { getPublicPollFn } from "@/features/polls/polls.functions";
+import { publicPollOptions } from "@/features/polls/polls.queries";
 import { PollPage } from "@/features/polls/ui/PollPage";
 import { SITE_BRAND } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
 
 export const Route = createFileRoute("/polls/$slug")({
-  loader: ({ params }) => getPublicPollFn({ data: { slug: params.slug } }),
+  loader: async ({ context, params }) => {
+    const poll = await context.queryClient.fetchQuery(publicPollOptions(params.slug));
+    return poll ? { title: poll.title, intro: poll.intro, status: poll.status } : null;
+  },
+  preloadStaleTime: 0,
   component: PollRoute,
   head: ({ loaderData, params }) =>
     buildSeoHead({
@@ -18,5 +22,5 @@ export const Route = createFileRoute("/polls/$slug")({
 });
 
 function PollRoute() {
-  return <PollPage initialPoll={Route.useLoaderData()} />;
+  return <PollPage slug={Route.useParams().slug} />;
 }

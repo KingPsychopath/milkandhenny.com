@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminAlbumsQuery } from "@/features/media/admin-albums.queries";
+import { useHasMounted } from "@/hooks/useHasMounted";
 
 import type { Album, Photo } from "@/features/media/albums";
 import { registerApplicationFileDrop } from "@/features/media/ApplicationFileDrop";
@@ -32,6 +35,7 @@ interface PreparedUpload {
 }
 
 const EMPTY_PHOTO_DRAFT: PhotoDraft = { title: "", alt: "", caption: "", focalPoint: "" };
+const EMPTY_ALBUMS: Album[] = [];
 const fieldClass =
   "w-full border-b theme-border bg-transparent py-2 font-mono text-xs outline-none focus:border-[var(--foreground)]";
 
@@ -76,14 +80,21 @@ export function AlbumManagerPanel({
   onChanged,
 }: AlbumManagerPanelProps) {
   const { confirm, dialog } = useActionDialog();
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState("");
+  const hydrated = useHasMounted();
+  const queryClient = useQueryClient();
+  const albumQuery = useQuery(adminAlbumsQuery);
+  const albums: Album[] = albumQuery.data ?? EMPTY_ALBUMS;
+  const loading = albumQuery.isFetching;
+  const [selectedSlugState, setSelectedSlug] = useState("");
+  const selectedSlug = albums.some((album) => album.slug === selectedSlugState)
+    ? selectedSlugState
+    : (albums[0]?.slug ?? "");
   const [query, setQuery] = useState("");
   const [photoQuery, setPhotoQuery] = useState("");
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
+  const [localError, setError] = useState("");
+  const error = localError || albumQuery.error?.message || "";
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [photoDraft, setPhotoDraft] = useState<PhotoDraft>(EMPTY_PHOTO_DRAFT);
@@ -123,32 +134,16 @@ export function AlbumManagerPanel({
 
   const loadAlbums = useCallback(
     async (keepSlug?: string) => {
-      setLoading(true);
       setError("");
       try {
-        const response = await authFetch("/api/admin/albums");
-        const data = (await response.json().catch(() => ({}))) as { albums?: Album[] };
-        if (!response.ok) throw new Error(readError(data, "Failed to load albums"));
-        const next = Array.isArray(data.albums) ? data.albums : [];
-        setAlbums(next);
-        const preferred = keepSlug;
-        setSelectedSlug(
-          preferred && next.some((album) => album.slug === preferred)
-            ? preferred
-            : (next[0]?.slug ?? ""),
-        );
+        const next = await queryClient.fetchQuery({ ...adminAlbumsQuery, staleTime: 0 });
+        if (keepSlug && next.some((album) => album.slug === keepSlug)) setSelectedSlug(keepSlug);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Failed to load albums");
-      } finally {
-        setLoading(false);
       }
     },
-    [authFetch],
+    [queryClient],
   );
-
-  useEffect(() => {
-    void loadAlbums();
-  }, [loadAlbums]);
 
   // Keyed on the slug, not the derived album object: `replaceAlbum` swaps in
   // a fresh object after every mutation, and resetting on identity wiped
@@ -169,7 +164,9 @@ export function AlbumManagerPanel({
   }, [selectedSlug]);
 
   const replaceAlbum = (album: Album) => {
-    setAlbums((current) => current.map((item) => (item.slug === album.slug ? album : item)));
+    queryClient.setQueryData<Album[]>(adminAlbumsQuery.queryKey, (current) =>
+      (current ?? EMPTY_ALBUMS).map((item) => (item.slug === album.slug ? album : item)),
+    );
   };
 
   const mutate = async (url: string, options: RequestInit, fallback: string): Promise<Album> => {
@@ -198,7 +195,10 @@ export function AlbumManagerPanel({
       });
       const data = (await response.json().catch(() => ({}))) as { album?: Album };
       if (!response.ok || !data.album) throw new Error(readError(data, "Failed to create album"));
-      setAlbums((current) => [data.album!, ...current]);
+      queryClient.setQueryData<Album[]>(adminAlbumsQuery.queryKey, (current) => [
+        data.album!,
+        ...(current ?? EMPTY_ALBUMS),
+      ]);
       setSelectedSlug(data.album.slug);
       setCreateOpen(false);
       setCreateTitle("");
@@ -421,7 +421,7 @@ export function AlbumManagerPanel({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(readError(data, "Failed to delete album"));
       const remaining = albums.filter((album) => album.slug !== selectedAlbum.slug);
-      setAlbums(remaining);
+      queryClient.setQueryData<Album[]>(adminAlbumsQuery.queryKey, remaining);
       setSelectedSlug(remaining[0]?.slug ?? "");
       setStatus("Album deleted.");
       onChanged?.();
@@ -538,6 +538,7 @@ export function AlbumManagerPanel({
   return (
     <section
       id="album-manager"
+      inert={!hydrated}
       aria-labelledby="album-manager-heading"
       className="border-t theme-border pt-6 space-y-5 scroll-mt-6"
       onPaste={(event) => {

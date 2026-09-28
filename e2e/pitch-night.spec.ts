@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForAppHydration } from "./support/multiplayer";
 
 test("creates, saves, publishes, presents, and remotely controls a pitch", async ({
   browser,
@@ -50,6 +51,19 @@ test("creates, saves, publishes, presents, and remotely controls a pitch", async
   await expect(page.getByRole("status").filter({ hasText: "Published edition" })).toBeVisible({
     timeout: 20_000,
   });
+
+  await page.goto("/things/pitches");
+  await waitForAppHydration(page);
+  const wallSearch = page.getByRole("searchbox", { name: "find a person or idea" });
+  await wallSearch.fill("no-pitch-matches-this-query");
+  await expect(page.getByText("No pitches match that search.")).toBeVisible();
+  await wallSearch.fill(editedTitle);
+  await expect(
+    page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "The wall" }) })
+      .getByRole("link", { name: new RegExp(editedTitle) }),
+  ).toBeVisible();
 
   await page.goto(`/things/pitches/${deckId}`);
   await expect(page.getByRole("heading", { name: editedTitle })).toBeVisible();

@@ -24,8 +24,14 @@ alwaysApply: false
 - Early returns to reduce nesting.
 
 ## Data + Mutations
-- Load initial data through route loaders or server functions. Do not use a
-  client effect as the first render's data boundary.
+- Use feature-owned TanStack Query options for ordinary remote snapshots. Route loaders prefetch
+  critical entries for SSR; components observe the same entries. Include all non-secret
+  result-changing inputs in query keys and scope private data by viewer/access representation.
+- A confirmed mutation updates an exact complete cache entry or invalidates affected query
+  families. Keep unsaved form drafts and their base revisions in local state.
+- Do not use a client effect as the first render's data boundary when the server can provide it.
+  Capability links, live room protocols, transaction outcomes, and browser recovery retain their
+  explicit lifecycle owners. Keep capability tokens out of query keys and dehydrated cache data.
 - Use TanStack server functions for application mutations and Nitro API routes
   for HTTP integrations or externally called endpoints.
 - Shared domain functions in `features/*`; no business logic in components.

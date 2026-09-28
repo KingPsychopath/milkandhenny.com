@@ -2,6 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  adminEditorWordQuery,
+  adminEditorWordsQuery,
+  EMPTY_ADMIN_EDITOR_FILTERS,
+} from "@/features/words/admin-editor.queries";
+import type { AdminEditorWordFilters } from "@/features/words/admin-editor.functions";
+import { adminSharedWordsQuery } from "@/features/words/admin-shares.queries";
+import { homePageQuery } from "@/features/site/home.queries";
+import { adminContentSummaryQuery } from "@/features/admin/content-summary.queries";
+import {
+  adminWordPageMediaQuery,
+  adminWordSharedAssetsQuery,
+} from "@/features/words/admin-media-library.queries";
 import { MediaPreviewModal } from "./components/MediaPreviewModal";
 import { EditorFiltersPanel } from "./components/EditorFiltersPanel";
 import { EditorResultsList } from "./components/EditorResultsList";
@@ -23,9 +37,7 @@ import type {
   ShareLink,
   SharePatchResponse,
   ShareStateFilter,
-  SharedWordSummary,
   WordMediaItem,
-  WordMediaResponse,
 } from "./types";
 
 function isExpiredShare(link: ShareLink): boolean {
@@ -41,6 +53,9 @@ function getShareState(link: ShareLink): Exclude<ShareStateFilter, "all"> {
 const SHARE_EXPIRY_OPTIONS = [1, 3, 7, 14, 30] as const;
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 const EDITOR_DRAFT_KEY_PREFIX = "mah-admin-editor-draft:";
+const EMPTY_NOTES: NoteMeta[] = [];
+const EMPTY_SHARES: ShareLink[] = [];
+const EMPTY_MEDIA: WordMediaItem[] = [];
 
 type WordSavePayload = {
   title: string;
@@ -158,7 +173,8 @@ function payloadFromNote(record: NoteRecord): WordSavePayload {
   };
 }
 
-export function EditorAdminClient() {
+export function EditorAdminClient({ initialSlug }: { initialSlug?: string }) {
+  const queryClient = useQueryClient();
   const {
     confirm: confirmAction,
     prompt: promptAction,
@@ -166,22 +182,42 @@ export function EditorAdminClient() {
     isOpen: actionDialogOpen,
   } = useActionDialog();
   const { ensureStepUpToken, authDialog, authDialogOpen } = useAdminAuth();
-  const [notes, setNotes] = useState<NoteMeta[]>([]);
-  const [selectedSlug, setSelectedSlug] = useState("");
-  const [current, setCurrent] = useState<NoteRecord | null>(null);
-  const [shares, setShares] = useState<ShareLink[]>([]);
+  const [selectedSlug, setSelectedSlug] = useState(
+    initialSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(initialSlug) ? initialSlug : "",
+  );
+  const detailQuery = useQuery({
+    ...adminEditorWordQuery(selectedSlug),
+    enabled: Boolean(selectedSlug),
+  });
+  const current: NoteRecord | null = detailQuery.data?.word ?? null;
+  const shares: ShareLink[] = detailQuery.data?.shares ?? EMPTY_SHARES;
+  const [draftBase, setDraftBase] = useState<{ slug: string; record: NoteRecord } | null>(() =>
+    current ? { slug: selectedSlug, record: current } : null,
+  );
   const [shareTokensById, setShareTokensById] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [mobileEditorPanel, setMobileEditorPanel] = useState<MobileEditorPanel>("create");
-  const [activeShareCountBySlug, setActiveShareCountBySlug] = useState<Record<string, number>>({});
-  const [pageMedia, setPageMedia] = useState<WordMediaItem[]>([]);
-  const [sharedAssets, setSharedAssets] = useState<WordMediaItem[]>([]);
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [mediaError, setMediaError] = useState("");
+  const sharedStatusQuery = useQuery(adminSharedWordsQuery);
+  const activeShareCountBySlug = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of sharedStatusQuery.data ?? []) counts[item.slug] = item.activeShareCount;
+    return counts;
+  }, [sharedStatusQuery.data]);
+  const pageMediaQuery = useQuery({
+    ...adminWordPageMediaQuery(selectedSlug),
+    enabled: Boolean(selectedSlug),
+  });
+  const assetsQuery = useQuery({
+    ...adminWordSharedAssetsQuery,
+    enabled: Boolean(selectedSlug),
+  });
+  const pageMedia: WordMediaItem[] = pageMediaQuery.data?.pageMedia ?? EMPTY_MEDIA;
+  const sharedAssets: WordMediaItem[] = assetsQuery.data?.assets ?? EMPTY_MEDIA;
+  const mediaLoading = pageMediaQuery.isFetching || assetsQuery.isFetching;
+  const mediaError = pageMediaQuery.error?.message ?? assetsQuery.error?.message ?? "";
   const [mediaCopied, setMediaCopied] = useState<string | null>(null);
-  const [assetsHydrated, setAssetsHydrated] = useState(false);
   const {
     showPreview,
     setShowPreview,
@@ -201,6 +237,11 @@ export function EditorAdminClient() {
     setMediaSearchQuery,
     clearFilters,
   } = useEditorFilters();
+  const [committedFilters, setCommittedFilters] = useState<AdminEditorWordFilters>(
+    EMPTY_ADMIN_EDITOR_FILTERS,
+  );
+  const notesQuery = useQuery(adminEditorWordsQuery(committedFilters));
+  const notes: NoteMeta[] = notesQuery.data?.words ?? EMPTY_NOTES;
   const {
     createSlug,
     setCreateSlug,
@@ -240,7 +281,7 @@ export function EditorAdminClient() {
     resetCreateForm,
     setEditFromRecord,
     appendSnippet,
-  } = useWordFormState();
+  } = useWordFormState(current);
   const { previewItems, previewIndex, setPreviewIndex, closePreview, openPreview, hasPreview } =
     useMediaPreviewState();
   const [autosavePhase, setAutosavePhase] = useState<
@@ -259,68 +300,70 @@ export function EditorAdminClient() {
     setBusy(true);
     setError("");
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      if (searchQuery.trim()) params.set("q", searchQuery.trim());
-      if (filterType !== "all") params.set("type", filterType);
-      if (filterVisibility !== "all") params.set("visibility", filterVisibility);
-      if (filterTag.trim()) params.set("tag", filterTag.trim().toLowerCase());
-
-      const res = await fetch(`/api/words?${params.toString()}`);
-      const data = (await res.json().catch(() => ({}))) as { words?: NoteMeta[]; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to load words");
-      setNotes(data.words ?? []);
+      const filters = {
+        q: searchQuery.trim(),
+        type: filterType,
+        visibility: filterVisibility,
+        tag: filterTag.trim().toLowerCase(),
+      };
+      setCommittedFilters(filters);
+      await queryClient.fetchQuery({ ...adminEditorWordsQuery(filters), staleTime: 0 });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load words");
     } finally {
       setBusy(false);
     }
-  }, [filterTag, filterType, filterVisibility, searchQuery]);
+  }, [filterTag, filterType, filterVisibility, searchQuery, queryClient]);
 
-  const loadSharedStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/word-shares");
-      const data = (await res.json().catch(() => ({}))) as { items?: SharedWordSummary[] };
-      if (!res.ok) return;
-      const next: Record<string, number> = {};
-      for (const item of data.items ?? []) {
-        next[item.slug] = item.activeShareCount;
+  const loadSharedStatus = useCallback(
+    async (changedSlug?: string) => {
+      try {
+        await Promise.all([
+          queryClient.fetchQuery({ ...adminSharedWordsQuery, staleTime: 0 }),
+          ...(changedSlug
+            ? [
+                queryClient.invalidateQueries({
+                  queryKey: ["words", "public", "detail", changedSlug],
+                }),
+              ]
+            : []),
+        ]);
+      } catch {
+        // Non-fatal for editor UX.
       }
-      setActiveShareCountBySlug(next);
-    } catch {
-      // Non-fatal for editor UX.
-    }
-  }, []);
+    },
+    [queryClient],
+  );
+
+  const invalidatePublishedWord = useCallback(
+    async (slug: string, includeEditorDetail = true) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["words", "public"] }),
+        queryClient.invalidateQueries({ queryKey: homePageQuery.queryKey }),
+        queryClient.invalidateQueries({ queryKey: adminContentSummaryQuery.queryKey }),
+        ...(includeEditorDetail
+          ? [queryClient.invalidateQueries({ queryKey: adminEditorWordQuery(slug).queryKey })]
+          : []),
+      ]);
+    },
+    [queryClient],
+  );
 
   const loadWordMedia = useCallback(
     async (slug: string, forceAssets = false) => {
       if (!slug) return;
-
-      setMediaLoading(true);
-      setMediaError("");
       try {
-        const params = new URLSearchParams();
-        params.set("slug", slug);
-        if (!forceAssets && assetsHydrated) {
-          params.set("includeAssets", "false");
-        }
-
-        const res = await fetch(`/api/admin/word-media?${params.toString()}`);
-        const data = (await res.json().catch(() => ({}))) as WordMediaResponse;
-        if (!res.ok) throw new Error(data.error ?? "Failed to load media library");
-
-        setPageMedia(data.pageMedia ?? []);
-        if (data.assetsIncluded) {
-          setSharedAssets(data.assets ?? []);
-          setAssetsHydrated(true);
-        }
+        await Promise.all([
+          queryClient.fetchQuery({ ...adminWordPageMediaQuery(slug), staleTime: 0 }),
+          forceAssets
+            ? queryClient.fetchQuery({ ...adminWordSharedAssetsQuery, staleTime: 0 })
+            : queryClient.ensureQueryData(adminWordSharedAssetsQuery),
+        ]);
       } catch (err) {
-        setMediaError(err instanceof Error ? err.message : "Failed to load media library");
-      } finally {
-        setMediaLoading(false);
+        setError(err instanceof Error ? err.message : "Failed to load media library");
       }
     },
-    [assetsHydrated],
+    [queryClient],
   );
 
   const copySnippet = useCallback(async (snippet: string, copyId: string) => {
@@ -348,63 +391,42 @@ export function EditorAdminClient() {
       setBusy(true);
       setError("");
       try {
-        const [noteRes, sharesRes] = await Promise.all([
-          fetch(`/api/words/${encodeURIComponent(slug)}`),
-          fetch(`/api/words/${encodeURIComponent(slug)}/shares`),
-        ]);
-        const noteData = (await noteRes.json().catch(() => ({}))) as NoteRecord & {
-          error?: string;
-        };
-        const shareData = (await sharesRes.json().catch(() => ({}))) as {
-          links?: ShareLink[];
-          error?: string;
-        };
-
-        if (!noteRes.ok) throw new Error(noteData.error ?? "Failed to load word");
-        if (!sharesRes.ok) throw new Error(shareData.error ?? "Failed to load share links");
-
-        setCurrent(noteData);
-        setEditFromRecord(noteData);
-        setShares(shareData.links ?? []);
+        await queryClient.fetchQuery({ ...adminEditorWordQuery(slug), staleTime: 0 });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load word");
       } finally {
         setBusy(false);
       }
     },
-    [setEditFromRecord],
+    [queryClient],
   );
 
   useEffect(() => {
-    void loadNotes();
-  }, [loadNotes]);
+    if (notesQuery.error) setError(notesQuery.error.message);
+  }, [notesQuery.error]);
 
   useEffect(() => {
-    void loadSharedStatus();
-  }, [loadSharedStatus]);
-
-  useEffect(() => {
-    const fromQuery = new URLSearchParams(window.location.search).get("slug");
-    if (fromQuery && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(fromQuery)) {
-      setSelectedSlug(fromQuery);
+    if (initialSlug && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(initialSlug)) {
+      setSelectedSlug(initialSlug);
     }
-  }, []);
+  }, [initialSlug]);
 
   useEffect(() => {
     if (!selectedSlug && notes[0]) setSelectedSlug(notes[0].slug);
   }, [notes, selectedSlug]);
 
   useEffect(() => {
-    if (selectedSlug) void loadWord(selectedSlug);
-  }, [selectedSlug, loadWord]);
+    if (detailQuery.error) setError(detailQuery.error.message);
+  }, [detailQuery.error]);
 
   useEffect(() => {
-    if (selectedSlug) void loadWordMedia(selectedSlug);
-  }, [selectedSlug, loadWordMedia]);
+    if (!current || current.meta.slug !== selectedSlug || draftBase?.slug === selectedSlug) return;
+    setEditFromRecord(current);
+    setDraftBase({ slug: selectedSlug, record: current });
+  }, [current, selectedSlug, draftBase?.slug, setEditFromRecord]);
 
   useEffect(() => {
     if (!selectedSlug) {
-      setPageMedia([]);
       setMediaSearchQuery("");
     }
   }, [selectedSlug, setMediaSearchQuery]);
@@ -413,7 +435,7 @@ export function EditorAdminClient() {
     () => notes.find((n) => n.slug === selectedSlug) ?? null,
     [notes, selectedSlug],
   );
-  const hasLoadedSelected = !!current && current.meta.slug === selectedSlug;
+  const hasLoadedSelected = !!current && draftBase?.slug === selectedSlug;
 
   const editPayload = useMemo<WordSavePayload | null>(() => {
     if (!selectedSlug || !hasLoadedSelected) return null;
@@ -442,8 +464,8 @@ export function EditorAdminClient() {
   ]);
 
   const currentPayload = useMemo(
-    () => (current && current.meta.slug === selectedSlug ? payloadFromNote(current) : null),
-    [current, selectedSlug],
+    () => (draftBase?.slug === selectedSlug ? payloadFromNote(draftBase.record) : null),
+    [draftBase, selectedSlug],
   );
 
   const isEditDirty = useMemo(() => {
@@ -535,7 +557,11 @@ export function EditorAdminClient() {
       setStatus("word created");
       resetCreateForm();
 
-      await Promise.all([loadNotes(), loadSharedStatus()]);
+      await Promise.all([
+        loadNotes(),
+        loadSharedStatus(),
+        ...(data.meta?.slug ? [invalidatePublishedWord(data.meta.slug)] : []),
+      ]);
       if (data.meta?.slug) setSelectedSlug(data.meta.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create word");
@@ -553,15 +579,24 @@ export function EditorAdminClient() {
 
   const applySavedWord = useCallback(
     (updated: NoteRecord, syncForm: boolean) => {
-      setCurrent(updated);
-      setNotes((prev) =>
-        prev.map((note) => (note.slug === updated.meta.slug ? updated.meta : note)),
+      queryClient.setQueryData(adminEditorWordQuery(updated.meta.slug).queryKey, (previous) =>
+        previous
+          ? {
+              ...previous,
+              word: {
+                meta: { ...previous.word.meta, ...updated.meta },
+                markdown: updated.markdown,
+              },
+            }
+          : previous,
       );
+      void queryClient.invalidateQueries({ queryKey: ["admin", "words", "editor-list"] });
       if (syncForm && selectedSlug === updated.meta.slug) {
+        setDraftBase({ slug: selectedSlug, record: updated });
         setEditFromRecord(updated);
       }
     },
-    [selectedSlug, setEditFromRecord],
+    [selectedSlug, setEditFromRecord, queryClient],
   );
 
   const saveWordToApi = useCallback(async () => {
@@ -574,7 +609,7 @@ export function EditorAdminClient() {
 
     try {
       const expectedUpdatedAt =
-        current && current.meta.slug === slug ? current.meta.updatedAt : undefined;
+        draftBase?.slug === slug ? draftBase.record.meta.updatedAt : undefined;
       const res = await fetch(`/api/words/${encodeURIComponent(slug)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -601,6 +636,7 @@ export function EditorAdminClient() {
       }
 
       applySavedWord(data, true);
+      await invalidatePublishedWord(slug);
       deleteEditorDraft(slug);
       restoredDraftKeyRef.current = "";
       setStatus("changes published");
@@ -614,7 +650,7 @@ export function EditorAdminClient() {
     } finally {
       setBusy(false);
     }
-  }, [applySavedWord, current, editPayload, selectedSlug]);
+  }, [applySavedWord, draftBase, editPayload, invalidatePublishedWord, selectedSlug]);
 
   const requestAutosave = useCallback(
     (kind: "debounced" | "immediate" = "debounced") => {
@@ -781,10 +817,14 @@ export function EditorAdminClient() {
       if (!res.ok) throw new Error(data.error ?? "Failed to delete word");
 
       setStatus("word deleted");
-      setCurrent(null);
-      setShares([]);
+      queryClient.removeQueries({ queryKey: adminEditorWordQuery(selectedSlug).queryKey });
+      setDraftBase(null);
       setSelectedSlug("");
-      await Promise.all([loadNotes(), loadSharedStatus()]);
+      await Promise.all([
+        loadNotes(),
+        loadSharedStatus(),
+        invalidatePublishedWord(selectedSlug, false),
+      ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete word");
     } finally {
@@ -831,7 +871,7 @@ export function EditorAdminClient() {
       storeShareToken(data.link.id, data.token);
       await copyText(buildShareUrl(selectedSlug, data.token));
       setStatus("share link created and copied");
-      await loadSharedStatus();
+      await loadSharedStatus(selectedSlug);
       await loadWord(selectedSlug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create share link");
@@ -876,7 +916,7 @@ export function EditorAdminClient() {
       if (!res.ok) throw new Error(data.error ?? "Failed to update share link");
 
       setStatus(enable ? "PIN enabled" : "PIN removed");
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update share link");
@@ -916,7 +956,7 @@ export function EditorAdminClient() {
           reason === "reissue" ? "share link reissued and copied" : "share link rotated and copied",
         );
       }
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
       return data.token;
     } catch (err) {
@@ -972,7 +1012,7 @@ export function EditorAdminClient() {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to extend share link");
       setStatus(`share link extended by ${days} day(s)`);
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to extend share link");
@@ -1042,7 +1082,7 @@ export function EditorAdminClient() {
         delete next[link.id];
         return next;
       });
-      await loadSharedStatus();
+      await loadSharedStatus(link.slug);
       await loadWord(link.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to revoke share link");
@@ -1102,7 +1142,10 @@ export function EditorAdminClient() {
         onFilterVisibilityChange={setFilterVisibility}
         onFilterTagChange={setFilterTag}
         onApply={() => void loadNotes()}
-        onClear={clearFilters}
+        onClear={() => {
+          clearFilters();
+          setCommittedFilters(EMPTY_ADMIN_EDITOR_FILTERS);
+        }}
       />
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
@@ -1115,6 +1158,11 @@ export function EditorAdminClient() {
         />
 
         <section className="space-y-6">
+          {selected && !hasLoadedSelected && !detailQuery.error ? (
+            <p role="status" className="font-mono text-xs theme-muted">
+              loading selected word…
+            </p>
+          ) : null}
           <div className="sm:hidden">
             <div className="rounded-md border theme-border p-1 flex gap-1">
               <button
@@ -1183,7 +1231,7 @@ export function EditorAdminClient() {
             />
           </div>
 
-          {selected ? (
+          {selected && hasLoadedSelected ? (
             <div className={mobileEditorPanel === "edit" ? "block" : "hidden sm:block"}>
               <WordEditSection
                 selected={selected}
@@ -1227,7 +1275,7 @@ export function EditorAdminClient() {
             </div>
           ) : null}
 
-          {selected ? (
+          {selected && hasLoadedSelected ? (
             <div className={mobileEditorPanel === "share" ? "block" : "hidden sm:block"}>
               <WordShareSection
                 shares={shares}

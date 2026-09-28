@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 
 import { EventsPanel, TicketSalesBreakdown } from "@/features/admin/ui/components/EventsPanel";
@@ -47,14 +48,18 @@ describe("admin events panel", () => {
 
   it("shows an initial loading state instead of a false empty state", () => {
     const html = renderToStaticMarkup(
-      createElement(EventsPanel, {
-        authFetch: async () => new Response(),
-        onError: () => undefined,
-        onStatus: () => undefined,
-        ensureStepUpToken: async () => ({ ok: false as const, cancelled: true as const }),
-        withStepUpHeaders: (_token: string, extra: Record<string, string> = {}) => extra,
-        permissions: permissionsForGlobalRole("support"),
-      }),
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(EventsPanel, {
+          authFetch: async () => new Response(),
+          onError: () => undefined,
+          onStatus: () => undefined,
+          ensureStepUpToken: async () => ({ ok: false as const, cancelled: true as const }),
+          withStepUpHeaders: (_token: string, extra: Record<string, string> = {}) => extra,
+          permissions: permissionsForGlobalRole("support"),
+        }),
+      ),
     );
 
     expect(html).toContain("loading events…");

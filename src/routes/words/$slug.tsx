@@ -1,4 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { WordBody } from "@/features/words/components/ui/WordBody";
 import { formatWordDate, highlightWordTitle } from "@/features/words/components/ui/wordPageShared";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
@@ -9,6 +10,7 @@ import { Share } from "@/components/Share";
 import { AppImage } from "@/components/AppImage";
 import { imagePlaceholderStyle } from "@/features/media/image";
 import { getWordPageFn } from "@/features/words/reader.functions";
+import { publicWordDetailQuery } from "@/features/words/reader.queries";
 import { BASE_URL, SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
@@ -18,7 +20,16 @@ export const Route = createFileRoute("/words/$slug")({
   validateSearch: (search: Record<string, unknown>): { share?: string } =>
     typeof search.share === "string" ? { share: search.share } : {},
   loaderDeps: ({ search }) => ({ share: search.share }),
-  loader: ({ params, deps }) => getWordPageFn({ data: { ...params, share: deps.share } }),
+  loader: async ({ context, params, deps }) => {
+    const query = publicWordDetailQuery(params.slug);
+    // A share token must reach the server when a private word redirects to its vault page.
+    const data = deps.share
+      ? await getWordPageFn({ data: { slug: params.slug, share: deps.share } })
+      : await context.queryClient.fetchQuery(query);
+    if (deps.share) context.queryClient.setQueryData(query.queryKey, data);
+    return { meta: data.meta, heroImage: data.heroImage };
+  },
+  preloadStaleTime: 0,
   head: ({ loaderData }) => {
     if (!loaderData) {
       return buildSeoHead({
@@ -45,7 +56,7 @@ export const Route = createFileRoute("/words/$slug")({
 });
 
 function WordSlugPage() {
-  const data = Route.useLoaderData();
+  const { data } = useSuspenseQuery(publicWordDetailQuery(Route.useParams().slug));
   const { meta } = data;
   const slug = meta.slug;
   const { note, published, headings, albums, heroImage, heroImageData, images } = data;

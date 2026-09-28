@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   type Dispatch,
   type ReactNode,
@@ -71,7 +72,7 @@ export function useAdminDraftState<T>(
   key: string,
   initialValue: T,
   isDirty?: (value: T) => boolean,
-): [T, Dispatch<SetStateAction<T>>, (saved?: T) => void] {
+): [T, Dispatch<SetStateAction<T>>, (saved?: T) => void, boolean] {
   const context = useContext(DraftContext);
   const [savedValue, setSavedValue] = useState(initialValue);
   const [value, setValue] = useState(initialValue);
@@ -98,7 +99,7 @@ export function useAdminDraftState<T>(
     }
     setHydrated(true);
   }, [storageKey]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!hydrated || !storageKey) return;
     try {
       if (!dirty) {
@@ -117,5 +118,5 @@ export function useAdminDraftState<T>(
     register?.(key, { dirty, recovered, unavailable });
     return () => register?.(key, null);
   }, [dirty, key, recovered, register, unavailable]);
-  return [value, setValue, (saved = value) => setSavedValue(saved)];
+  return [value, setValue, (saved = value) => setSavedValue(saved), hydrated];
 }

@@ -158,6 +158,11 @@ export async function createAdminStepUpToken(
   const payload = auth.payload;
   if (!payload) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  // The local development cookie is already a loopback-only credential and is exempt from
+  // step-up checks. Let its browser use the same endpoint as a signed admin session.
+  if (getLocalDevAdminAuth(request))
+    return Response.json({ token: "local-dev-step-up", expiresInSeconds: 300 });
+
   const reservation = await reserveStepUpAttempt(payload.jti);
   if (!reservation.backendAvailable && process.env.NODE_ENV === "production") {
     return Response.json(

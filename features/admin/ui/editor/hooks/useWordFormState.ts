@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { DEFAULT_WORD_TYPE } from "@/features/words/types";
 import type { NoteRecord, NoteVisibility, WordType } from "../types";
 
-export function useWordFormState() {
+export function useWordFormState(initialRecord?: NoteRecord | null) {
   const [createSlug, setCreateSlug] = useState("");
   const [createTitle, setCreateTitle] = useState("");
   const [createSubtitle, setCreateSubtitle] = useState("");
@@ -15,14 +15,16 @@ export function useWordFormState() {
   const [createFeatured, setCreateFeatured] = useState(false);
   const [createMarkdown, setCreateMarkdown] = useState("");
 
-  const [editTitle, setEditTitle] = useState("");
-  const [editSubtitle, setEditSubtitle] = useState("");
-  const [editImage, setEditImage] = useState("");
-  const [editType, setEditType] = useState<WordType>(DEFAULT_WORD_TYPE);
-  const [editVisibility, setEditVisibility] = useState<NoteVisibility>("private");
-  const [editTags, setEditTags] = useState("");
-  const [editFeatured, setEditFeatured] = useState(false);
-  const [editMarkdown, setEditMarkdown] = useState("");
+  const [editTitle, setEditTitle] = useState(initialRecord?.meta.title ?? "");
+  const [editSubtitle, setEditSubtitle] = useState(initialRecord?.meta.subtitle ?? "");
+  const [editImage, setEditImage] = useState(initialRecord?.meta.image ?? "");
+  const [editType, setEditType] = useState<WordType>(initialRecord?.meta.type ?? DEFAULT_WORD_TYPE);
+  const [editVisibility, setEditVisibility] = useState<NoteVisibility>(
+    initialRecord?.meta.visibility ?? "private",
+  );
+  const [editTags, setEditTags] = useState(initialRecord?.meta.tags.join(", ") ?? "");
+  const [editFeatured, setEditFeatured] = useState(!!initialRecord?.meta.featured);
+  const [editMarkdown, setEditMarkdown] = useState(initialRecord?.markdown ?? "");
 
   const parseTags = useCallback((raw: string): string[] => {
     return [

@@ -1,24 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminBestDressedQuery } from "@/features/best-dressed/admin.queries";
+import { bestDressedLeaderboardQuery } from "@/features/best-dressed/best-dressed.queries";
 
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useHasMounted } from "@/hooks/useHasMounted";
 import { AdminStatus } from "./AdminStatus";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
-
-interface VotingWindow {
-  isOpen: boolean;
-  openUntil: number | null;
-  secondsRemaining: number;
-}
-
-interface VotingSnapshot {
-  leaderboard: Array<{ name: string; count: number }>;
-  totalVotes: number;
-}
 
 function formatWindow(value: number | null): string {
   if (!value) return "closed";
@@ -40,8 +33,11 @@ export function BestDressedPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
-  const [snapshot, setSnapshot] = useState<VotingSnapshot | null>(null);
-  const [windowState, setWindowState] = useState<VotingWindow | null>(null);
+  const queryClient = useQueryClient();
+  const dashboard = useQuery(adminBestDressedQuery);
+  const hydrated = useHasMounted();
+  const snapshot = dashboard.data?.snapshot;
+  const windowState = dashboard.data?.windowState;
   const [windowMinutes, setWindowMinutes] = useState("30");
   const [codeCount, setCodeCount] = useState("20");
   const [codeMinutes, setCodeMinutes] = useState("360");
@@ -49,32 +45,18 @@ export function BestDressedPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const { confirm, dialog } = useActionDialog();
 
-  const refresh = useCallback(async () => {
+  const refresh = async () => {
     setBusy("refresh");
     onError("");
     try {
-      const [snapshotResponse, windowResponse] = await Promise.all([
-        authFetch("/api/best-dressed"),
-        authFetch("/api/best-dressed/voting/open"),
-      ]);
-      const snapshotData = (await snapshotResponse
-        .json()
-        .catch(() => null)) as VotingSnapshot | null;
-      const windowData = (await windowResponse.json().catch(() => null)) as VotingWindow | null;
-      if (!snapshotResponse.ok || !snapshotData) throw new Error("Failed to load voting results");
-      if (!windowResponse.ok || !windowData) throw new Error("Failed to load voting controls");
-      setSnapshot(snapshotData);
-      setWindowState(windowData);
+      const result = await dashboard.refetch();
+      if (result.error) throw result.error;
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to load best-dressed controls");
     } finally {
       setBusy(null);
     }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  };
 
   const setVotingWindow = async (minutes: number) => {
     setBusy("window");
@@ -85,9 +67,10 @@ export function BestDressedPanel({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ minutes }),
       });
-      const data = (await response.json().catch(() => null)) as VotingWindow | null;
+      const data = (await response.json().catch(() => null)) as { isOpen?: boolean } | null;
       if (!response.ok || !data) throw new Error("Failed to update the voting window");
-      setWindowState(data);
+      await queryClient.invalidateQueries({ queryKey: adminBestDressedQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: bestDressedLeaderboardQuery.queryKey });
       onStatus(minutes > 0 ? `Voting is open for ${minutes} minutes.` : "Voting is closed.");
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to update the voting window");
@@ -163,7 +146,8 @@ export function BestDressedPanel({
         headers: { "x-admin-step-up": stepUp },
       });
       if (!response.ok) throw new Error("Failed to clear votes");
-      setSnapshot({ leaderboard: [], totalVotes: 0 });
+      await queryClient.invalidateQueries({ queryKey: adminBestDressedQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: bestDressedLeaderboardQuery.queryKey });
       onStatus("Votes cleared. A new round is ready.");
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to clear votes");
@@ -173,7 +157,7 @@ export function BestDressedPanel({
   };
 
   return (
-    <section aria-labelledby="best-dressed-heading" className="space-y-8">
+    <section aria-labelledby="best-dressed-heading" className="space-y-8" inert={!hydrated}>
       <div className="flex flex-wrap items-start justify-between gap-4 border-b theme-border pb-6">
         <div>
           <p className="font-mono text-micro font-bold uppercase tracking-widest theme-muted">
@@ -196,6 +180,12 @@ export function BestDressedPanel({
           open voting page ↗
         </Link>
       </div>
+
+      {dashboard.error ? (
+        <p role="alert" className="font-mono text-xs">
+          {dashboard.error.message}
+        </p>
+      ) : null}
 
       <div className="grid gap-8 md:grid-cols-2">
         <section aria-labelledby="voting-window-heading" className="space-y-4">

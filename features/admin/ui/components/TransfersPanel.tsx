@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { buildTransferUrl } from "@/features/transfers/routes";
 import {
@@ -10,33 +11,17 @@ import {
 } from "@/features/transfers/media-worker-health";
 import { copyText } from "@/lib/client/share";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useHasMounted } from "@/hooks/useHasMounted";
 import { formatRemaining } from "../format";
 import { UploadAccessPanel } from "./UploadAccessPanel";
 import { AdminStatus, adminToneForStatus } from "./AdminStatus";
 import { AdminLoadError, AdminLoading } from "./AdminLoadState";
+import { adminTransferDetailQuery, adminTransfersQuery } from "@/features/transfers/admin.queries";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 type EnsureStepUpToken = () => Promise<string | null>;
 type StepUpHeaders = (token: string, extra?: Record<string, string>) => Record<string, string>;
-
-type TransferSummary = {
-  id: string;
-  title: string;
-  fileCount: number;
-  createdAt: string;
-  expiresAt: string;
-  remainingSeconds: number;
-};
-
-type TransferMediaAdminStats = {
-  queueLength: number;
-  worker: {
-    lastHeartbeatAt?: string;
-    lastProcessedAt?: string;
-    lastErrorAt?: string;
-    lastErrorMessage?: string;
-  };
-};
+const EMPTY_TRANSFERS: never[] = [];
 
 type AdminTransferDetail = {
   id: string;
@@ -58,12 +43,6 @@ type AdminTransferDetail = {
 };
 
 type TransferHealthFilter = "all" | "queued" | "processing" | "failed" | "worker";
-
-type TransferListResponse = {
-  error?: string;
-  transfers?: TransferSummary[];
-  media?: TransferMediaAdminStats;
-};
 
 type MediaActionResponse = {
   error?: string;
@@ -115,19 +94,25 @@ export function TransfersPanel({
   onError: (message: string) => void;
   onStatus: (message: string) => void;
 }) {
+  const hydrated = useHasMounted();
   const { confirm: confirmAction, dialog: actionDialog } = useActionDialog();
-  const [transfers, setTransfers] = useState<TransferSummary[]>([]);
-  const [transfersLoading, setTransfersLoading] = useState(true);
-  const [transfersLoadError, setTransfersLoadError] = useState<string | null>(null);
-  const [transferMediaStats, setTransferMediaStats] = useState<TransferMediaAdminStats | null>(
-    null,
-  );
-  const [transferDetail, setTransferDetail] = useState<AdminTransferDetail | null>(null);
-  const [transferDetailLoading, setTransferDetailLoading] = useState<string | null>(null);
-  const [transferDetailError, setTransferDetailError] = useState<{
-    id: string;
-    message: string;
-  } | null>(null);
+  const queryClient = useQueryClient();
+  const transfersQuery = useQuery(adminTransfersQuery);
+  const transfers = transfersQuery.data?.transfers ?? EMPTY_TRANSFERS;
+  const transferMediaStats = transfersQuery.data?.media ?? null;
+  const transfersLoading = transfersQuery.isFetching;
+  const transfersLoadError = transfersQuery.error?.message ?? null;
+  const [selectedTransferId, setSelectedTransferId] = useState<string | null>(null);
+  const transferDetailQuery = useQuery({
+    ...adminTransferDetailQuery(selectedTransferId ?? ""),
+    enabled: Boolean(selectedTransferId),
+  });
+  const transferDetail = transferDetailQuery.data ?? null;
+  const transferDetailLoading = transferDetailQuery.isFetching ? selectedTransferId : null;
+  const transferDetailError =
+    selectedTransferId && transferDetailQuery.error
+      ? { id: selectedTransferId, message: transferDetailQuery.error.message }
+      : null;
   const [transferQuery, setTransferQuery] = useState("");
   const [transferHealthFilter, setTransferHealthFilter] = useState<TransferHealthFilter>("all");
   const [showAllTransfers, setShowAllTransfers] = useState(false);
@@ -161,29 +146,10 @@ export function TransfersPanel({
   }, []);
 
   const loadTransfers = useCallback(async () => {
-    setTransfersLoading(true);
-    setTransfersLoadError(null);
     onError("");
-    try {
-      const res = await authFetch("/api/admin/transfers");
-      const data = (await res.json().catch(() => ({}))) as TransferListResponse;
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to load transfers");
-      }
-      setTransfers((data.transfers as TransferSummary[]) ?? []);
-      setTransferMediaStats((data.media as TransferMediaAdminStats) ?? null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to load transfers";
-      setTransfersLoadError(msg);
-      onError(msg);
-    } finally {
-      setTransfersLoading(false);
-    }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void loadTransfers();
-  }, [loadTransfers]);
+    const result = await transfersQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [onError, transfersQuery]);
 
   const loadTransfersAndScroll = useCallback(async () => {
     // Jump immediately so the user sees progress/spinners in the section.
@@ -206,30 +172,20 @@ export function TransfersPanel({
   };
 
   const handleLoadTransferDetail = async (id: string) => {
-    setTransferDetailLoading(id);
-    setTransferDetail(null);
-    setTransferDetailError(null);
+    setSelectedTransferId(id);
     setTransferHealthFilter("all");
     onError("");
     try {
-      const res = await authFetch(`/api/admin/transfers/${encodeURIComponent(id)}`);
-      const data = (await res.json().catch(() => ({}))) as TransferDetailResponse;
-      if (!res.ok) {
-        throw new Error((data.error as string) || "Failed to load transfer");
-      }
-      setTransferDetail((data.transfer as AdminTransferDetail) ?? null);
+      await queryClient.fetchQuery({ ...adminTransferDetailQuery(id), staleTime: 0 });
       requestAnimationFrame(() => {
         transferDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load transfer";
-      setTransferDetailError({ id, message: msg });
       requestAnimationFrame(() => {
         transferDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
       onError(msg);
-    } finally {
-      setTransferDetailLoading(null);
     }
   };
 
@@ -263,7 +219,8 @@ export function TransfersPanel({
       const msg = `Deleted transfer "${title}" (${id}).`;
       onStatus(msg);
       setTransferStatus(msg);
-      if (transferDetail?.id === id) setTransferDetail(null);
+      if (selectedTransferId === id) setSelectedTransferId(null);
+      queryClient.removeQueries({ queryKey: adminTransferDetailQuery(id).queryKey });
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete transfer";
@@ -401,7 +358,10 @@ export function TransfersPanel({
       const msg = `Removed ${filename} from transfer ${transferId}.`;
       onStatus(msg);
       setTransferStatus(msg);
-      if (data.deletedTransfer) setTransferDetail(null);
+      if (data.deletedTransfer) {
+        setSelectedTransferId(null);
+        queryClient.removeQueries({ queryKey: adminTransferDetailQuery(transferId).queryKey });
+      }
       await Promise.all([
         loadTransfers(),
         data.deletedTransfer ? Promise.resolve() : handleLoadTransferDetail(transferId),
@@ -497,6 +457,8 @@ export function TransfersPanel({
           : `Nuke complete: deleted ${data.deletedTransfers ?? 0} transfers and ${data.deletedFiles ?? 0} files.`;
       onStatus(msg);
       setTransferStatus(msg);
+      setSelectedTransferId(null);
+      queryClient.removeQueries({ queryKey: ["admin", "transfers", "detail"] });
       await loadTransfers();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to nuke transfers";
@@ -549,6 +511,7 @@ export function TransfersPanel({
       <div
         id="transfer-manager"
         ref={transfersSectionRef}
+        inert={!hydrated}
         className="border-t theme-border pt-6 space-y-3 scroll-mt-6"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -729,7 +692,7 @@ export function TransfersPanel({
                     <div>
                       <button
                         type="button"
-                        onClick={() => setTransferDetailError(null)}
+                        onClick={() => setSelectedTransferId(null)}
                         className="mb-3 min-h-11 font-mono text-xs theme-muted underline underline-offset-4 lg:hidden"
                       >
                         ← back to transfers
@@ -749,7 +712,7 @@ export function TransfersPanel({
                         </p>
                         <button
                           type="button"
-                          onClick={() => setTransferDetail(null)}
+                          onClick={() => setSelectedTransferId(null)}
                           className="min-h-11 shrink-0 font-mono text-xs theme-muted underline underline-offset-4"
                         >
                           back to transfers

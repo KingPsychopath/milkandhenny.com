@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { getPollVoteFn, submitPollVoteFn } from "../polls.functions";
-import type { PollResult, PublicPoll } from "../types";
+import { devicePollVoteOptions, publicPollOptions } from "../polls.queries";
 import { PollDistribution } from "./PollDistribution";
+import { usePollVoteMutation } from "./usePollVoteMutation";
 
 function deviceVoterId(slug: string): string {
   const key = `milk-henny:poll:${slug}:voter`;
@@ -18,31 +19,30 @@ function existingDeviceVoterId(slug: string): string | null {
   return window.localStorage.getItem(`milk-henny:poll:${slug}:voter`);
 }
 
-export function PollPage({ initialPoll }: { initialPoll: PublicPoll | null }) {
-  const [poll, setPoll] = useState(initialPoll);
+export function PollPage({ slug }: { slug: string }) {
+  const { data: publicPoll } = useSuspenseQuery(publicPollOptions(slug));
+  const [voterId, setVoterId] = useState<string | null>(null);
+  const { data: deviceVote } = useQuery({
+    ...devicePollVoteOptions(slug, voterId),
+    enabled: Boolean(voterId),
+  });
+  const voteMutation = usePollVoteMutation(slug);
   const [selections, setSelections] = useState<string[]>([]);
-  const [results, setResults] = useState<PollResult[] | null>(initialPoll?.results ?? null);
-  const [state, setState] = useState<"ready" | "saving" | "saved" | "error">("ready");
-  const [error, setError] = useState("");
+  const [edited, setEdited] = useState(false);
+  const poll = publicPoll
+    ? { ...publicPoll, results: publicPoll.results ?? deviceVote?.results ?? null }
+    : null;
+  const results = poll?.results ?? null;
 
   useEffect(() => {
-    if (!initialPoll || initialPoll.results) return;
-    const voterId = existingDeviceVoterId(initialPoll.slug);
-    if (!voterId) return;
-    let current = true;
-    void getPollVoteFn({ data: { slug: initialPoll.slug, voterId } })
-      .then((vote) => {
-        if (!current || !vote) return;
-        setPoll({ ...vote.poll, results: vote.results });
-        setSelections(vote.selections);
-        setResults(vote.results);
-        setState("saved");
-      })
-      .catch(() => {});
-    return () => {
-      current = false;
-    };
-  }, [initialPoll]);
+    setVoterId(existingDeviceVoterId(slug));
+    setSelections([]);
+    setEdited(false);
+  }, [slug]);
+
+  useEffect(() => {
+    if (!edited && deviceVote) setSelections(deviceVote.selections);
+  }, [deviceVote, edited]);
 
   if (!poll) {
     return (
@@ -64,8 +64,8 @@ export function PollPage({ initialPoll }: { initialPoll: PublicPoll | null }) {
   }
 
   const choose = (optionId: string, checked: boolean) => {
-    setState("ready");
-    setError("");
+    setEdited(true);
+    voteMutation.reset();
     setSelections((current) => {
       if (poll.selectionMode === "single") return [optionId];
       return checked ? [...current, optionId] : current.filter((id) => id !== optionId);
@@ -74,19 +74,14 @@ export function PollPage({ initialPoll }: { initialPoll: PublicPoll | null }) {
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setState("saving");
-    setError("");
     try {
-      const response = await submitPollVoteFn({
-        data: { slug: poll.slug, voterId: deviceVoterId(poll.slug), selections },
-      });
-      setPoll({ ...response.poll, results: response.results });
+      const nextVoterId = voterId ?? deviceVoterId(slug);
+      const response = await voteMutation.mutateAsync({ voterId: nextVoterId, selections });
+      setVoterId(nextVoterId);
       setSelections(response.selections);
-      setResults(response.results);
-      setState("saved");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not save your vote. Try again.");
-      setState("error");
+      setEdited(false);
+    } catch {
+      // Query owns the error while the selected ballot remains editable.
     }
   };
 
@@ -133,23 +128,25 @@ export function PollPage({ initialPoll }: { initialPoll: PublicPoll | null }) {
               })}
             </div>
           </fieldset>
-          {state === "error" ? (
+          {voteMutation.isError ? (
             <p role="alert" className="mt-4 font-mono text-xs text-[var(--status-danger)]">
-              {error}
+              {voteMutation.error instanceof Error
+                ? voteMutation.error.message
+                : "We could not save your vote. Try again."}
             </p>
           ) : null}
           <button
             type="submit"
-            disabled={state === "saving" || selections.length === 0}
+            disabled={voteMutation.isPending || selections.length === 0}
             className="mh-action mh-action--primary mt-6"
           >
-            {state === "saving"
+            {voteMutation.isPending
               ? "saving…"
-              : state === "saved"
+              : deviceVote && !edited
                 ? "update my answer"
                 : "show me the shape"}
           </button>
-          {state === "saved" ? (
+          {deviceVote && !edited ? (
             <p role="status" className="mt-3 font-mono text-xs theme-muted">
               Your answer is in. You can change it above.
             </p>
@@ -177,7 +174,7 @@ export function PollPage({ initialPoll }: { initialPoll: PublicPoll | null }) {
             <PollDistribution results={results} showPercentages={poll.showPercentages} />
           </div>
         </section>
-      ) : poll.resultVisibility === "hidden" && state === "saved" ? (
+      ) : poll.resultVisibility === "hidden" && deviceVote ? (
         <p className="py-9 font-serif text-lg theme-muted">
           Thank you. We’re keeping the answers private while we choose the date.
         </p>

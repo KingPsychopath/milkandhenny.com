@@ -2,7 +2,14 @@
 
 import { useAdminDraftState } from "../hooks/useAdminDraftState";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { readCommunicationsWorkspaceFn } from "@/features/communications/admin-workspace.functions";
+import { adminSurveyResponsesQuery } from "@/features/surveys/admin-survey-responses.queries";
+import {
+  communicationsWorkspaceQuery,
+  type CommunicationsWorkspaceScope,
+} from "@/features/communications/admin-workspace.queries";
 import { fromZonedDateTimeInput, toZonedDateTimeInput } from "@/lib/shared/zoned-datetime";
 
 import { useActionDialog } from "@/hooks/useActionDialog";
@@ -20,17 +27,11 @@ import {
   Kind,
   Audience,
   MediaKind,
-  Contact,
-  EventOption,
-  Message,
   EmailCapability,
   Template,
   Stage,
   StageDelivery,
-  Plan,
   Survey,
-  SurveyResponse,
-  SurveyInvitation,
   StageDraft,
   TemplateDraft,
   SurveyDraft,
@@ -44,17 +45,8 @@ import {
   FeedbackView,
   PeopleView,
 } from "./CommunicationsViews";
-export type InitialCommunications = {
-  data: Awaited<
-    ReturnType<
-      typeof import("@/features/communications/admin-workspace.functions").readCommunicationsWorkspaceFn
-    >
-  > | null;
-  error: string | null;
-} | null;
-
+type CommunicationsWorkspace = Awaited<ReturnType<typeof readCommunicationsWorkspaceFn>>;
 export function CommunicationsPanel({
-  initialWorkspace,
   authFetch,
   onError,
   onStatus,
@@ -67,7 +59,6 @@ export function CommunicationsPanel({
   ensureStepUpToken,
   withStepUpHeaders,
 }: {
-  initialWorkspace?: InitialCommunications;
   authFetch: AuthFetch;
   onError: (message: string) => void;
   onStatus: (message: string) => void;
@@ -82,25 +73,13 @@ export function CommunicationsPanel({
   >;
   withStepUpHeaders: (token: string, extra?: Record<string, string>) => Record<string, string>;
 }) {
-  const [contacts, setContacts] = useState<Contact[]>(initialWorkspace?.data?.contacts ?? []);
-  const [messages, setMessages] = useState<Message[]>(initialWorkspace?.data?.messages ?? []);
-  const [events, setEvents] = useState<EventOption[]>(initialWorkspace?.data?.events ?? []);
-  const [plans, setPlans] = useState<Plan[]>(initialWorkspace?.data?.plans ?? []);
-  const [templates, setTemplates] = useState<Template[]>(initialWorkspace?.data?.templates ?? []);
-  const [surveys, setSurveys] = useState<Survey[]>(initialWorkspace?.data?.surveys ?? []);
-  const [email, setEmail] = useState<EmailCapability>({ provider: null, mailpitUrl: null });
+  const queryClient = useQueryClient();
   const [localTab, setLocalTab] = useState<CommunicationsTab>(communicationTab);
-  const [loading, setLoading] = useState(!initialWorkspace);
-  const [hasLoaded, setHasLoaded] = useState(Boolean(initialWorkspace?.data));
-  const [loadError, setLoadError] = useState<string | null>(initialWorkspace?.error ?? null);
   const [busy, setBusy] = useState(false);
   const [planRefreshHalted, setPlanRefreshHalted] = useState(false);
   const [planRefreshFailed, setPlanRefreshFailed] = useState(false);
-  const [planCheckedAt, setPlanCheckedAt] = useState<string | null>(null);
-  const [localSelectedEvent, setLocalSelectedEvent] = useState(
-    communicationEvent || initialWorkspace?.data?.selectedEvent || "",
-  );
-  const [stageEditor, setStageEditor] = useAdminDraftState<{
+  const [localSelectedEvent, setLocalSelectedEvent] = useState(communicationEvent || "");
+  const [stageEditor, setStageEditor, , stageHydrated] = useAdminDraftState<{
     id: string | null;
     draft: StageDraft;
   }>(
@@ -142,7 +121,7 @@ export function CommunicationsPanel({
   } | null>(null);
   const [stagePreview, setStagePreview] = useState<{ stageId: string; html: string } | null>(null);
   const [testEmail, setTestEmail] = useState("try@owenabel.com");
-  const [composition, setComposition] = useAdminDraftState<{
+  const [composition, setComposition, , compositionHydrated] = useAdminDraftState<{
     kind: Kind;
     audience: Audience;
     composeEvent: string;
@@ -208,11 +187,7 @@ export function CommunicationsPanel({
       ],
     }));
   const [contactQuery, setContactQuery] = useState("");
-  const [contactsNextCursor, setContactsNextCursor] = useState<string | null>(
-    initialWorkspace?.data?.contactsNextCursor ?? null,
-  );
-  const [optedInCount, setOptedInCount] = useState(initialWorkspace?.data?.optedInCount ?? 0);
-  const [templateDraft, setTemplateDraft] = useAdminDraftState<TemplateDraft>(
+  const [templateDraft, setTemplateDraft, , templateHydrated] = useAdminDraftState<TemplateDraft>(
     "communications:templateDraft",
     {
       id: "",
@@ -227,9 +202,8 @@ export function CommunicationsPanel({
       isDefault: false,
     },
   );
-  const [surveyDraft, setSurveyDraft, markSurveySaved] = useAdminDraftState<SurveyDraft>(
-    "communications:surveyDraft",
-    {
+  const [surveyDraft, setSurveyDraft, markSurveySaved, surveyHydrated] =
+    useAdminDraftState<SurveyDraft>("communications:surveyDraft", {
       id: "",
       slug: "",
       eventSlug: "",
@@ -238,14 +212,55 @@ export function CommunicationsPanel({
       identityMode: "identified",
       status: "draft",
       questions: [],
-    },
-  );
+    });
   const [selectedSurvey, setSelectedSurvey] = useState<string | null>(null);
-  const [responses, setResponses] = useState<SurveyResponse[]>([]);
-  const [surveyInvitations, setSurveyInvitations] = useState<SurveyInvitation[]>([]);
+  const surveyResponses = useQuery({
+    ...adminSurveyResponsesQuery(selectedSurvey ?? ""),
+    enabled: Boolean(selectedSurvey),
+  });
   const { confirm, dialog } = useActionDialog();
   const tab = communicationTab || localTab;
   const selectedEvent = communicationEvent || localSelectedEvent;
+  const [debouncedContactQuery, setDebouncedContactQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedContactQuery(contactQuery), 300);
+    return () => clearTimeout(timer);
+  }, [contactQuery]);
+  const scope: CommunicationsWorkspaceScope = useMemo(
+    () => ({
+      tab,
+      // The selected default is returned by the workflow; only an explicit URL selection changes identity.
+      eventSlug: communicationEvent ?? "",
+      query: debouncedContactQuery,
+    }),
+    [tab, communicationEvent, debouncedContactQuery],
+  );
+  const workspace = useQuery(communicationsWorkspaceQuery(scope));
+  const data = workspace.data;
+  const contacts = data?.contacts ?? [];
+  const contactsNextCursor = data?.contactsNextCursor ?? null;
+  const optedInCount = data?.optedInCount ?? 0;
+  const messages = data?.messages ?? [];
+  const events = data?.events ?? [];
+  const plans = data?.plans ?? [];
+  const templates = data?.templates ?? [];
+  const surveys = data?.surveys ?? [];
+  const email: EmailCapability = data?.email ?? { provider: null, mailpitUrl: null };
+  const planCheckedAt = data?.checkedAt ?? null;
+  const loading = workspace.isFetching;
+  const hasLoaded = Boolean(data);
+  const loadError = workspace.error?.message ?? null;
+  const refetchWorkspace = workspace.refetch;
+  const load = useCallback(async () => {
+    const result = await refetchWorkspace();
+    if (result.isError) {
+      const message = result.error?.message ?? "Could not load communications";
+      onError(message);
+    }
+  }, [onError, refetchWorkspace]);
+  useEffect(() => {
+    if (!communicationEvent && data?.selectedEvent) setLocalSelectedEvent(data.selectedEvent);
+  }, [communicationEvent, data?.selectedEvent]);
   const setTab = (nextTab: CommunicationsTab) => {
     setLocalTab(nextTab);
     onCommunicationTabChange(nextTab);
@@ -259,92 +274,6 @@ export function CommunicationsPanel({
     },
     [onCommunicationEventChange],
   );
-
-  const activeLoad = useRef<AbortController | null>(null);
-  useEffect(() => () => activeLoad.current?.abort(), []);
-  const load = useCallback(async () => {
-    activeLoad.current?.abort();
-    const controller = new AbortController();
-    activeLoad.current = controller;
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch(
-        `/api/admin/communications?${new URLSearchParams({ scope: "workspace", tab, eventSlug: selectedEvent, q: contactQuery })}`,
-        { signal: controller.signal },
-      );
-      const data = (await response.json().catch(() => ({}))) as {
-        contacts?: Contact[];
-        contactsNextCursor?: string | null;
-        optedInCount?: number;
-        selectedEvent?: string;
-        messages?: Message[];
-        events?: EventOption[];
-        plans?: Plan[];
-        templates?: Template[];
-        surveys?: Survey[];
-        email?: EmailCapability;
-        checkedAt?: string;
-        error?: string;
-      };
-      if (controller.signal.aborted) return;
-      if (!response.ok) throw new Error(data.error || "Could not load communications");
-      setContacts(data.contacts || []);
-      setContactsNextCursor(data.contactsNextCursor ?? null);
-      setOptedInCount(data.optedInCount ?? 0);
-      if (!selectedEvent && data.selectedEvent) setLocalSelectedEvent(data.selectedEvent);
-      setMessages(data.messages || []);
-      setEvents(data.events || []);
-      setPlans(data.plans || []);
-      setTemplates(data.templates || []);
-      setSurveys(data.surveys || []);
-      setEmail(data.email || { provider: null, mailpitUrl: null });
-      setPlanRefreshHalted(false);
-      setPlanRefreshFailed(false);
-      setPlanCheckedAt(data.checkedAt || new Date().toISOString());
-      setHasLoaded(true);
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      const message = error instanceof Error ? error.message : "Could not load communications";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [authFetch, onError, tab, selectedEvent, contactQuery]);
-  useEffect(() => {
-    activeLoad.current?.abort();
-    if (initialWorkspace?.data) {
-      const data = initialWorkspace.data;
-      setContacts(data.contacts);
-      setMessages(data.messages);
-      setEvents(data.events);
-      setPlans(data.plans);
-      setTemplates(data.templates);
-      setSurveys(data.surveys);
-      setEmail(data.email);
-      setContactsNextCursor(data.contactsNextCursor);
-      setOptedInCount(data.optedInCount);
-      setLocalSelectedEvent(data.selectedEvent);
-      setHasLoaded(true);
-      setLoadError(null);
-      setLoading(false);
-    } else if (initialWorkspace?.error) {
-      setLoadError(initialWorkspace.error);
-      setLoading(false);
-    }
-  }, [initialWorkspace]);
-  const previousSearch = useRef("");
-  useEffect(() => {
-    const searchChanged = previousSearch.current !== contactQuery;
-    previousSearch.current = contactQuery;
-    if (initialWorkspace && !searchChanged) return;
-    const timer = setTimeout(() => void load(), 300);
-    return () => {
-      clearTimeout(timer);
-      activeLoad.current?.abort();
-    };
-  }, [load, initialWorkspace, contactQuery]);
 
   const activePlan = plans.find((plan) => plan.eventSlug === selectedEvent);
   const planDeliveryIsActive =
@@ -362,7 +291,7 @@ export function CommunicationsPanel({
         const params = new URLSearchParams({ scope: "event-plan", eventSlug: selectedEvent });
         const response = await authFetch(`/api/admin/communications?${params}`);
         const data = (await response.json().catch(() => ({}))) as {
-          plans?: Plan[];
+          plans?: CommunicationsWorkspace["plans"];
           checkedAt?: string;
         };
         if (!response.ok) {
@@ -376,17 +305,26 @@ export function CommunicationsPanel({
         const refreshed = data.plans || [];
         setPlanRefreshHalted(false);
         setPlanRefreshFailed(false);
-        setPlanCheckedAt(data.checkedAt || new Date().toISOString());
-        setPlans((current) => [
-          ...current.filter((plan) => plan.eventSlug !== selectedEvent),
-          ...refreshed,
-        ]);
+        queryClient.setQueryData<NonNullable<typeof workspace.data>>(
+          communicationsWorkspaceQuery(scope).queryKey,
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  checkedAt: data.checkedAt || new Date().toISOString(),
+                  plans: [
+                    ...current.plans.filter((plan) => plan.eventSlug !== selectedEvent),
+                    ...refreshed,
+                  ],
+                }
+              : current,
+        );
       } catch (error) {
         if (isCurrent()) setPlanRefreshFailed(true);
         throw error;
       }
     },
-    [authFetch, selectedEvent],
+    [authFetch, queryClient, scope, selectedEvent],
   );
   useAdminAutoRefresh({
     enabled: planRefreshEnabled && !planRefreshHalted,
@@ -408,15 +346,13 @@ export function CommunicationsPanel({
           .map((stage) => stage.sendAt as string),
       ),
     ].sort((a, b) => Date.parse(a) - Date.parse(b))[0] || null;
-  const filteredContacts = useMemo(() => {
-    const term = contactQuery.trim().toLowerCase();
-    return contacts.filter(
-      (contact) =>
-        !term ||
-        contact.email.toLowerCase().includes(term) ||
-        (contact.displayName || "").toLowerCase().includes(term),
-    );
-  }, [contacts, contactQuery]);
+  const term = contactQuery.trim().toLowerCase();
+  const filteredContacts = contacts.filter(
+    (contact) =>
+      !term ||
+      contact.email.toLowerCase().includes(term) ||
+      (contact.displayName || "").toLowerCase().includes(term),
+  );
 
   const post = async (payload: Record<string, unknown>) => {
     const response = await authFetch("/api/admin/communications", {
@@ -818,6 +754,10 @@ export function CommunicationsPanel({
       setSurveyDraft((current) => ({ ...current, id: savedDraft.id }));
       onStatus("Survey saved.");
       if (data.survey) setSelectedSurvey(data.survey.id);
+      if (data.survey)
+        await queryClient.invalidateQueries({
+          queryKey: adminSurveyResponsesQuery(data.survey.id).queryKey,
+        });
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not save survey");
@@ -825,7 +765,7 @@ export function CommunicationsPanel({
       setBusy(false);
     }
   };
-  const loadResponses = async (survey: Survey) => {
+  const loadResponses = (survey: Survey) => {
     setSelectedSurvey(survey.id);
     setSurveyDraft({
       id: survey.id,
@@ -837,19 +777,6 @@ export function CommunicationsPanel({
       status: survey.status,
       questions: survey.questions,
     });
-    try {
-      const response = await authFetch(`/api/admin/surveys/${survey.id}`);
-      const data = (await response.json().catch(() => ({}))) as {
-        responses?: SurveyResponse[];
-        invitations?: SurveyInvitation[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error || "Could not load feedback");
-      setResponses(data.responses || []);
-      setSurveyInvitations(data.invitations || []);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not load feedback");
-    }
   };
   const newSurvey = () => {
     setSurveyDraft({
@@ -863,8 +790,6 @@ export function CommunicationsPanel({
       questions: [{ id: "question-1", type: "long_text", label: "", required: true }],
     });
     setSelectedSurvey(null);
-    setResponses([]);
-    setSurveyInvitations([]);
   };
   const audienceOptions: Array<[Audience, string]> =
     kind === "newsletter"
@@ -883,7 +808,10 @@ export function CommunicationsPanel({
           ];
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      inert={!(stageHydrated && compositionHydrated && templateHydrated && surveyHydrated)}
+    >
       <section aria-label="Communications status" className="border-y theme-border py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -989,16 +917,20 @@ export function CommunicationsPanel({
               onClick={async () => {
                 setBusy(true);
                 try {
-                  const response = await authFetch(
-                    `/api/admin/communications?${new URLSearchParams({ scope: "workspace", tab, q: contactQuery, cursor: contactsNextCursor })}`,
+                  const page = await readCommunicationsWorkspaceFn({
+                    data: { ...scope, cursor: contactsNextCursor },
+                  });
+                  queryClient.setQueryData<NonNullable<typeof workspace.data>>(
+                    communicationsWorkspaceQuery(scope).queryKey,
+                    (current) =>
+                      current
+                        ? {
+                            ...current,
+                            contacts: [...current.contacts, ...page.contacts],
+                            contactsNextCursor: page.contactsNextCursor,
+                          }
+                        : current,
                   );
-                  if (!response.ok) throw new Error("Could not load more contacts");
-                  const data = (await response.json()) as {
-                    contacts: Contact[];
-                    contactsNextCursor: string | null;
-                  };
-                  setContacts((current) => [...current, ...data.contacts]);
-                  setContactsNextCursor(data.contactsNextCursor);
                 } catch (error) {
                   onError(error instanceof Error ? error.message : "Could not load contacts");
                 } finally {
@@ -1011,7 +943,7 @@ export function CommunicationsPanel({
           ) : null}
         </div>
       ) : null}
-      {hasLoaded && !loadError ? (
+      {hasLoaded ? (
         <>
           <nav
             aria-label="Communications tools"
@@ -1147,8 +1079,10 @@ export function CommunicationsPanel({
               newSurvey={newSurvey}
               loadResponses={loadResponses}
               selectedSurvey={selectedSurvey}
-              responses={responses}
-              invitations={surveyInvitations}
+              responses={surveyResponses.data?.responses ?? []}
+              invitations={surveyResponses.data?.invitations ?? []}
+              responseLoading={surveyResponses.isPending && Boolean(selectedSurvey)}
+              responseError={surveyResponses.error?.message ?? null}
               busy={busy}
             />
           ) : null}
@@ -1169,13 +1103,7 @@ export function CommunicationsPanel({
               setPreference={async (contact, optedIn) => {
                 try {
                   await post({ action: "set-preference", emailHash: contact.emailHash, optedIn });
-                  setContacts((current) =>
-                    current.map((item) =>
-                      item.emailHash === contact.emailHash
-                        ? { ...item, marketingOptedIn: optedIn }
-                        : item,
-                    ),
-                  );
+                  await load();
                   onStatus(
                     `${contact.email} ${optedIn ? "can receive marketing" : "is opted out"}.`,
                   );

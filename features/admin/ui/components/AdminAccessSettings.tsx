@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { namedAdminGrantsQuery } from "@/features/attendee-operations/admin-settings.queries";
 
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
@@ -37,41 +39,18 @@ export function AdminAccessSettings({
   ensureStepUpToken: () => Promise<{ ok: true; token: string } | { ok: false }>;
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
-  const [grants, setGrants] = useState<Grant[]>([]);
+  const queryClient = useQueryClient();
+  const grantsQuery = useQuery(namedAdminGrantsQuery);
+  const grants = grantsQuery.data ?? [];
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [rolePreset, setRolePreset] = useState<Grant["rolePreset"]>("admin");
   const [expiresAt, setExpiresAt] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const loading = grantsQuery.isPending;
+  const loadError = grantsQuery.error?.message ?? null;
   const { prompt, dialog } = useActionDialog();
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/operations/access");
-      const body = (await response.json().catch(() => ({}))) as {
-        grants?: Grant[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(body.error ?? "Admin access could not be loaded");
-      setGrants(body.grants ?? []);
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Admin access could not be loaded");
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    void load().catch((error) =>
-      onError(error instanceof Error ? error.message : "Admin access could not be loaded"),
-    );
-  }, [load, onError]);
 
   async function invite(event: FormEvent) {
     event.preventDefault();
@@ -104,7 +83,7 @@ export function AdminAccessSettings({
       setEmail("");
       setReason("");
       setExpiresAt("");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: namedAdminGrantsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Admin invitation could not be created");
     } finally {
@@ -140,7 +119,7 @@ export function AdminAccessSettings({
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Admin access could not be revoked");
       onStatus("Admin access revoked immediately.");
-      await load();
+      await queryClient.invalidateQueries({ queryKey: namedAdminGrantsQuery.queryKey });
     } catch (error) {
       onError(error instanceof Error ? error.message : "Admin access could not be revoked");
     } finally {
@@ -259,7 +238,7 @@ export function AdminAccessSettings({
           </p>
           <button
             type="button"
-            onClick={() => void load().catch(() => undefined)}
+            onClick={() => void grantsQuery.refetch()}
             className="inline-flex min-h-11 items-center font-mono text-xs underline"
           >
             retry

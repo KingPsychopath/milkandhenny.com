@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import {
-  getMyAccountFn,
-  requireAttendeeAccountFn,
-} from "@/features/attendee-access/access.functions";
+import { requireAttendeeAccountFn } from "@/features/attendee-access/access.functions";
+import { myAccountQuery } from "@/features/attendee-access/account.queries";
 import { MyAccountPage } from "@/features/attendee-access/ui/MyAccountPage";
 import { SITE_NAME } from "@/lib/shared/config";
 import { buildSeoHead } from "@/lib/shared/seo";
@@ -11,9 +9,12 @@ import { buildSeoHead } from "@/lib/shared/seo";
 export const Route = createFileRoute("/my")({
   beforeLoad: () => requireAttendeeAccountFn(),
   loader: {
-    handler: () => getMyAccountFn(),
+    handler: async ({ context }) => {
+      await context.queryClient.fetchQuery(myAccountQuery);
+    },
     staleReloadMode: "blocking",
   },
+  preloadStaleTime: 0,
   staleTime: 0,
   gcTime: 0,
   preload: false,
@@ -29,12 +30,5 @@ export const Route = createFileRoute("/my")({
 });
 
 function MyAccountRoute() {
-  const { account, emailStepUpRequired, security } = Route.useLoaderData();
-  return (
-    <MyAccountPage
-      account={account}
-      emailStepUpRequired={emailStepUpRequired}
-      security={security}
-    />
-  );
+  return <MyAccountPage />;
 }

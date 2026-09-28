@@ -4,7 +4,6 @@ import { StatusNotice } from "@/components/StatusNotice";
 import { AppSelect } from "@/components/AppSelect";
 import {
   emailStaffTeamsFn,
-  getStaffOperationsPageFn,
   moveStaffTeamParticipantFn,
   shuffleStaffTeamsFn,
 } from "../staff-operations.functions";
@@ -34,22 +33,6 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
     setState({ teams: data.teams, teamRoster: data.teamRoster });
     setTeamCount(initialTeamCount(data.teams));
   }, [data.teamRoster, data.teams]);
-
-  useEffect(() => {
-    let current = true;
-    void getStaffOperationsPageFn({ data: { eventSlug: data.eventSlug, token } })
-      .then((page) => {
-        if (!current || !page.found) return;
-        setState({ teams: page.teams, teamRoster: page.teamRoster });
-        setTeamCount(initialTeamCount(page.teams));
-      })
-      .catch(() => {
-        if (current) setError("Team totals could not be refreshed. Try again before shuffling.");
-      });
-    return () => {
-      current = false;
-    };
-  }, [data.eventSlug, token]);
 
   const activeTeams = state.teams.filter((team) => team.status === "active");
   const selectedParticipant = state.teamRoster.find(

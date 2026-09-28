@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AppSelect } from "@/components/AppSelect";
 import { eventPath } from "@/features/events/routes";
 import { isPubliclyVisible, type EventRecord } from "@/features/events/types";
-import {
-  getAdminSiteSettingsFn,
-  updateAdminSiteSettingsFn,
-} from "@/features/site/site-settings.functions";
+import { updateAdminSiteSettingsFn } from "@/features/site/site-settings.functions";
+import { adminSiteSettingsQuery } from "@/features/site/site-settings.queries";
 import { AdminStatus } from "./AdminStatus";
 
 const AUTOMATIC = "__automatic__";
@@ -25,9 +24,12 @@ export function FooterPartyLinkSettings({
   onStatus: (message: string) => void;
 }) {
   const selectId = useId();
-  const [savedPath, setSavedPath] = useState<string | null | undefined>(undefined);
-  const [draftPath, setDraftPath] = useState<string | null | undefined>(undefined);
-  const [effectivePath, setEffectivePath] = useState("");
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery(adminSiteSettingsQuery);
+  const savedPath = settingsQuery.data?.footerPartyPath;
+  const [draftOverride, setDraftPath] = useState<string | null | undefined>(undefined);
+  const draftPath = draftOverride === undefined ? savedPath : draftOverride;
+  const effectivePath = settingsQuery.data?.effectivePartyPath ?? "";
   const [saving, setSaving] = useState(false);
 
   const options = useMemo(
@@ -43,29 +45,6 @@ export function FooterPartyLinkSettings({
     [events],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    void getAdminSiteSettingsFn()
-      .then((result) => {
-        if (cancelled) return;
-        if (!result.authorised) {
-          onError("Your admin session has expired");
-          return;
-        }
-        setSavedPath(result.settings.footerPartyPath);
-        setDraftPath(result.settings.footerPartyPath);
-        setEffectivePath(result.settings.effectivePartyPath);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          onError(error instanceof Error ? error.message : "Failed to load footer party link");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onError]);
-
   const selectedValue =
     draftPath === undefined
       ? AUTOMATIC
@@ -75,7 +54,7 @@ export function FooterPartyLinkSettings({
           ? draftPath
           : CUSTOM;
   const customPath = selectedValue === CUSTOM ? (draftPath ?? "") : "";
-  const busy = saving || draftPath === undefined;
+  const busy = saving || settingsQuery.isPending;
   const canSave = selectedValue !== CUSTOM || Boolean(customPath.trim());
   const dirty = draftPath !== savedPath;
 
@@ -102,9 +81,8 @@ export function FooterPartyLinkSettings({
         onError(result.error);
         return;
       }
-      setSavedPath(result.settings.footerPartyPath);
       setDraftPath(result.settings.footerPartyPath);
-      setEffectivePath(result.settings.effectivePartyPath);
+      await queryClient.invalidateQueries({ queryKey: adminSiteSettingsQuery.queryKey });
       onStatus("Footer party link saved");
     } catch (error) {
       onError(error instanceof Error ? error.message : "Failed to save footer party link");
@@ -115,6 +93,11 @@ export function FooterPartyLinkSettings({
 
   return (
     <div className="border-y theme-border py-5">
+      {settingsQuery.error ? (
+        <p role="alert" className="font-mono text-xs">
+          {settingsQuery.error.message}
+        </p>
+      ) : null}
       <p className="font-mono text-micro theme-muted tracking-wide">footer party link</p>
       <p className="mt-1 max-w-xl font-mono text-micro theme-faint">
         Choose where “the party” in the public footer goes. Automatic mode follows the latest

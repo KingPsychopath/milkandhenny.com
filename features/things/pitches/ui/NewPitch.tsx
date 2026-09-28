@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { useBrowserProfileForm } from "@/lib/client/browser-profile";
@@ -6,6 +7,7 @@ import { BrowserProfileHint } from "@/components/BrowserProfileHint";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 import { isValidEmail } from "@/lib/shared/email-address";
 import { createPitchFn } from "../pitches.functions";
+import { pitchWallQueryRoot } from "../pitches.queries";
 import { rememberPitchCredential, saveLocalPitchDraft } from "../browser-store.client";
 import { createEmptyPitchDocument } from "../new-document.client";
 import type { PitchCreatorIdentity, PitchOperationalStatus } from "../types";
@@ -27,6 +29,7 @@ export function NewPitch({
   emailDestination: "inbox" | "mailpit" | "unavailable";
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [title, setTitle] = useState("");
   const [state, setState] = useState<"idle" | "saving" | "error" | "email-warning">("idle");
@@ -85,6 +88,7 @@ export function NewPitch({
         setError(result.error);
         return;
       }
+      void queryClient.invalidateQueries({ queryKey: pitchWallQueryRoot });
       remember({ name: ownerName, email: ownerEmail });
       await Promise.all([
         rememberPitchCredential({

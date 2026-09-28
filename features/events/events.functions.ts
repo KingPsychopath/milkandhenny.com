@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 
-import { authenticateRequest } from "@/features/auth/auth.server";
+import { getAdminWorkspaceAccess } from "@/features/auth/auth.server";
 import {
   getEventsIndex,
   type EventsIndexData,
@@ -30,10 +30,6 @@ export const getEventsIndexFn = createServerFn({ method: "GET" }).handler(
   },
 );
 
-export type AdminEventsResult =
-  | { authorised: false }
-  | { authorised: true; events: Awaited<ReturnType<typeof listForAdmin>> };
-
 async function listForAdmin() {
   const result = await runEventsResult(
     Effect.gen(function* () {
@@ -42,14 +38,13 @@ async function listForAdmin() {
     }),
     getRequest().signal,
   );
-  return result.ok ? result.value : [];
+  if (!result.ok) throw new Error(result.error);
+  return result.value;
 }
 
-export const getAdminEventsFn = createServerFn({ method: "GET" }).handler(
-  async (): Promise<AdminEventsResult> => {
-    const request = getRequest();
-    const auth = await authenticateRequest(request, "admin");
-    if (!auth.ok) return { authorised: false };
-    return { authorised: true, events: await listForAdmin() };
-  },
-);
+export const getAdminEventsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const access = await getAdminWorkspaceAccess(getRequest());
+  if (!access.ok || !access.permissions.viewOperations)
+    throw new Error("Event operations access required");
+  return listForAdmin();
+});

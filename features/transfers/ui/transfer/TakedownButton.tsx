@@ -5,6 +5,7 @@ import { useState, useCallback } from "react";
 type TakedownButtonProps = {
   transferId: string;
   deleteToken?: string;
+  onDeleted?: () => void;
 };
 
 /**
@@ -12,7 +13,7 @@ type TakedownButtonProps = {
  * Authorization may come from the private token or the signed-in owner identity.
  * Shows a confirmation step before executing.
  */
-export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps) {
+export function TakedownButton({ transferId, deleteToken, onDeleted }: TakedownButtonProps) {
   const [state, setState] = useState<"idle" | "confirm" | "deleting" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -42,11 +43,12 @@ export function TakedownButton({ transferId, deleteToken }: TakedownButtonProps)
       }
 
       setState("done");
+      onDeleted?.();
     } catch {
       setErrorMsg("Connection error. Check your network and try again.");
       setState("error");
     }
-  }, [transferId, deleteToken]);
+  }, [transferId, deleteToken, onDeleted]);
 
   if (state === "done") {
     return (

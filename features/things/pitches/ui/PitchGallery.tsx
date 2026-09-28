@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { AppImage } from "@/components/AppImage";
@@ -8,14 +9,9 @@ import {
   listPitchCredentials,
   readLocalPitchDraft,
 } from "../browser-store.client";
-import { listPublishedPitchesFn, readOwnedPitchStatusFn } from "../pitches.functions";
-import type {
-  PersonalPitchSummary,
-  PitchOperationalStatus,
-  PitchOwnerCredential,
-  PitchOwnerDeckState,
-  PitchWallLoad,
-} from "../types";
+import { readOwnedPitchStatusFn } from "../pitches.functions";
+import { pitchWallQuery } from "../pitches.queries";
+import type { PitchOwnerCredential, PitchOwnerDeckState } from "../types";
 import { PitchDemoEntry } from "./PitchDemoEntry";
 import { PitchRecovery } from "./PitchRecovery";
 
@@ -28,20 +24,24 @@ const DECK_STATE_LABEL: Record<DeviceDeck["state"], string> = {
   unknown: "not checked",
 };
 
-export function PitchGallery({
-  initialWall,
-  operationalStatus,
-  personalPitches,
-}: {
-  initialWall: PitchWallLoad;
-  operationalStatus: PitchOperationalStatus;
-  personalPitches: PersonalPitchSummary[];
-}) {
+export function PitchGallery() {
   const [query, setQuery] = useState("");
-  const [pitches, setPitches] = useState(initialWall.pitches);
-  const [loadError, setLoadError] = useState(initialWall.message ?? "");
-  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const wallQuery = useQuery({
+    ...pitchWallQuery(debouncedQuery),
+    placeholderData: keepPreviousData,
+  });
+  const data = wallQuery.data;
+  const pitches = data?.wall.pitches ?? [];
+  const operationalStatus = data?.operationalStatus;
+  const personalPitches = data?.personalPitches ?? [];
+  const loadError = wallQuery.error?.message ?? data?.wall.message ?? "";
   const [mine, setMine] = useState<DeviceDeck[]>([]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
 
   useEffect(() => {
     void listPitchCredentials()
@@ -73,20 +73,6 @@ export function PitchGallery({
       .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void listPublishedPitchesFn({ data: { search: query } })
-        .then((result) => {
-          if (result.wall.status !== "unavailable") setPitches(result.wall.pitches);
-          setLoadError(result.wall.message ?? "");
-        })
-        .catch(() =>
-          setLoadError("We could not refresh the wall. Your published pitches are still safe."),
-        );
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [query, refreshVersion]);
-
   return (
     <main id="main" className="min-h-screen bg-background">
       <header className="mx-auto max-w-5xl px-6 pb-12 pt-16">
@@ -110,7 +96,7 @@ export function PitchGallery({
             </p>
           </div>
           <div className="grid min-w-56 gap-3">
-            {operationalStatus.canWrite ? (
+            {operationalStatus?.canWrite ? (
               <Link
                 to="/things/pitches/new"
                 className="inline-flex min-h-12 items-center justify-center bg-foreground px-7 font-mono text-sm text-background hover:opacity-80"
@@ -133,7 +119,7 @@ export function PitchGallery({
         </div>
       </header>
 
-      {!operationalStatus.canWrite ? (
+      {operationalStatus && !operationalStatus.canWrite ? (
         <div
           className="border-y border-[var(--things-amber)] bg-[var(--selection-bg)] px-6 py-3 text-center font-mono text-xs text-[var(--selection-fg)]"
           role="status"
@@ -232,7 +218,7 @@ export function PitchGallery({
             <p className="font-serif text-lg text-[var(--selection-fg)]">{loadError}</p>
             <button
               type="button"
-              onClick={() => setRefreshVersion((current) => current + 1)}
+              onClick={() => void wallQuery.refetch()}
               className="mt-3 min-h-11 border-b border-current px-3 font-mono text-xs text-[var(--selection-fg)] hover:opacity-60"
             >
               try again
@@ -295,7 +281,7 @@ export function PitchGallery({
           </p>
         ) : null}
 
-        {operationalStatus.canWrite ? (
+        {operationalStatus?.canWrite ? (
           <div className="mx-auto mt-12 max-w-xl">
             <PitchRecovery />
           </div>

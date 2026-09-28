@@ -1,14 +1,18 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, absoluteUrl, buildSeoHead } from "@/lib/shared/seo";
 import { serializeJsonForHtml } from "@/lib/shared/serialize-json-for-html";
 import { PostListItem } from "@/features/words/components/PostListItem";
-import { getHomePageFn } from "@/features/site/home.functions";
+import { homePageQuery } from "@/features/site/home.queries";
 
 export const Route = createFileRoute("/")({
   component: Home,
-  loader: () => getHomePageFn(),
+  loader: async ({ context }) => {
+    await context.queryClient.fetchQuery(homePageQuery);
+  },
+  preloadStaleTime: 0,
   head: () =>
     buildSeoHead({
       title: SITE_NAME,
@@ -20,7 +24,9 @@ export const Route = createFileRoute("/")({
 });
 
 function Home() {
-  const { posts, hasMore, footerPartyPath } = Route.useLoaderData();
+  const {
+    data: { posts, hasMore, footerPartyPath },
+  } = useSuspenseQuery(homePageQuery);
   const websiteSchema = {
     "@context": "https://schema.org",
     "@type": "WebSite",

@@ -1,14 +1,18 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { SiteFooter, SiteFooterBar } from "@/components/SiteFooter";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { SearchableWordList } from "@/features/words/components/ui/SearchableWordList";
-import { getWordsPageFn } from "@/features/words/reader.functions";
+import { wordsPageQuery } from "@/features/words/reader.queries";
 
 export const Route = createFileRoute("/words/")({
   component: WordsPage,
-  loader: () => getWordsPageFn(),
+  loader: async ({ context }) => {
+    await context.queryClient.fetchQuery(wordsPageQuery);
+  },
+  preloadStaleTime: 0,
   head: () =>
     buildSeoHead({
       title: `Words — ${SITE_NAME}`,
@@ -20,7 +24,7 @@ export const Route = createFileRoute("/words/")({
 });
 
 function WordsPage() {
-  const allItems = Route.useLoaderData();
+  const { data: allItems } = useSuspenseQuery(wordsPageQuery);
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">

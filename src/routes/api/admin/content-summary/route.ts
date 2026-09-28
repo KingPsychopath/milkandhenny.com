@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuth } from "@/features/auth/auth.server";
-import { getAllAlbums, validateAllAlbums } from "@/features/media/albums.server";
-import { isWordsEnabled } from "@/features/words/reader.server";
-import { listAllWords } from "@/features/words/store.server";
+import { getAdminContentSummary } from "@/features/admin/content-summary.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
 async function handleGET(request: Request) {
@@ -10,61 +8,7 @@ async function handleGET(request: Request) {
   if (authErr) return authErr;
 
   try {
-    const noteBlogs = isWordsEnabled()
-      ? await listAllWords({ includeNonPublic: true, type: "blog" })
-      : [];
-
-    const posts = noteBlogs
-      .map((note) => ({
-        slug: note.slug,
-        title: note.title,
-        date: note.publishedAt ?? note.updatedAt,
-        readingTime: note.readingTime,
-        featured: note.featured ?? false,
-        hasImage: !!note.image,
-      }))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const albums = await getAllAlbums();
-    const invalidAlbums = await validateAllAlbums();
-
-    const featuredPosts = posts.filter((post) => post.featured).length;
-    const postsWithImages = posts.filter((post) => post.hasImage).length;
-    const totalReadingMinutes = posts.reduce((sum, post) => sum + post.readingTime, 0);
-    const latestPostDate = posts[0]?.date ?? null;
-
-    const totalPhotos = albums.reduce((sum, album) => sum + album.photos.length, 0);
-    const albumsWithoutDescription = albums.filter((album) => !album.description?.trim()).length;
-    const latestAlbumDate = albums[0]?.date ?? null;
-
-    return Response.json({
-      blog: {
-        totalPosts: posts.length,
-        featuredPosts,
-        postsWithImages,
-        totalReadingMinutes,
-        latestPostDate,
-        recent: posts.slice(0, 5).map((post) => ({
-          slug: post.slug,
-          title: post.title,
-          date: post.date,
-          readingTime: post.readingTime,
-          featured: post.featured,
-        })),
-      },
-      gallery: {
-        totalAlbums: albums.length,
-        totalPhotos,
-        albumsWithoutDescription,
-        invalidAlbumCount: invalidAlbums.length,
-        latestAlbumDate,
-        recent: albums.slice(0, 5).map((album) => ({
-          slug: album.slug,
-          title: album.title,
-          date: album.date,
-          photoCount: album.photos.length,
-        })),
-      },
-    });
+    return Response.json(await getAdminContentSummary());
   } catch (error) {
     return apiErrorFromRequest(
       request,

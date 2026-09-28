@@ -4,10 +4,7 @@ import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { runPitchesResult as runPitchesResultWithoutSignal } from "@/features/things/pitches/pitches-runtime.server";
 import { PitchesService } from "@/features/things/pitches/pitches-service.server";
-import {
-  getPitchOperationalStatus,
-  setPitchAdminMode,
-} from "@/features/things/pitches/operational.server";
+import { setPitchAdminMode } from "@/features/things/pitches/operational.server";
 import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import {
   isPitchDeckId,
@@ -18,49 +15,33 @@ import { PITCH_REMINDER_TEMPLATES } from "@/features/things/pitches/types";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 import { ObjectStorageService } from "@/lib/platform/provider-services.server";
 import { getBaseUrlForRequest } from "@/lib/shared/config";
+import {
+  getAdminPitchDetail,
+  getAdminPitchReminders,
+  getAdminPitchWorkspace,
+} from "@/features/things/pitches/admin-workspace.server";
 import { isValidEmail } from "@/lib/shared/email-address";
 
 async function handleGET(request: Request) {
-  const runPitchesResult = <A, E>(
-    effect: Effect.Effect<A, E, PitchesService | ObjectStorageService>,
-  ) => runPitchesResultWithoutSignal(effect, request.signal);
   const authError = await requireAuth(request, "admin");
   if (authError) return authError;
   try {
     const url = new URL(request.url);
     const deckId = url.searchParams.get("deckId");
     if (url.searchParams.get("view") === "reminders") {
-      const result = await runPitchesResult(
-        Effect.gen(function* () {
-          const pitches = yield* PitchesService;
-          return yield* pitches.reminderAdmin();
-        }),
-      );
+      const result = await getAdminPitchReminders(request.signal);
       return result.ok
         ? Response.json({ reminders: result.value })
         : Response.json({ error: result.error }, { status: result.status });
     }
     if (!deckId) {
-      const [result, operationalStatus] = await Promise.all([
-        runPitchesResult(
-          Effect.gen(function* () {
-            const pitches = yield* PitchesService;
-            return yield* pitches.listAdmin();
-          }),
-        ),
-        getPitchOperationalStatus({ includeConfiguredMode: true }),
-      ]);
+      const result = await getAdminPitchWorkspace(request.signal);
       return result.ok
-        ? Response.json({ pitches: result.value, operationalStatus })
+        ? Response.json({ pitches: result.pitches, operationalStatus: result.operationalStatus })
         : Response.json({ error: result.error }, { status: result.status });
     }
     if (!isPitchDeckId(deckId)) return Response.json({ error: "Pitch not found" }, { status: 404 });
-    const result = await runPitchesResult(
-      Effect.gen(function* () {
-        const pitches = yield* PitchesService;
-        return yield* pitches.adminDetail(deckId);
-      }),
-    );
+    const result = await getAdminPitchDetail(deckId, request.signal);
     if (!result.ok) {
       return Response.json({ error: result.error }, { status: result.status });
     }

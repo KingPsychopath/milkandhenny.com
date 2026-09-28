@@ -15,8 +15,10 @@ alwaysApply: false
 
 ## Safety
 - Handle edge cases: undefined inputs, failures, error paths.
-- Do not remove/rename existing functionality unless asked.
-- Do not add dependencies without asking.
+- Preserve intended behavior during refactors; remove obsolete code when its replacement is
+  complete. Ask when the task leaves a material product-behavior choice unresolved.
+- Add a dependency only when existing code or pinned dependencies cannot meet the need. Check its
+  compatibility and explain the choice in the handoff.
 
 ## TypeScript
 - No `any`. Prefer `unknown` when type is genuinely unknown.
@@ -36,5 +38,5 @@ alwaysApply: false
 - Destructive operations (delete user, purge data) require confirmation flags in CLI and explicit UI confirmation on web.
 
 ## Workflow
-- Execution defaults (commit style, checkpoints) live in `AGENTS.md`.
-- Verification follows the blast radius in `.cursor/rules/testing.mdc` and `docs/testing.md`.
+- Commit style lives in `AGENTS.md`; verification follows its blast-radius rule and the test tiers
+  in `docs/testing.md`.

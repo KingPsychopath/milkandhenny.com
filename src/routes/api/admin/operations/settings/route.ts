@@ -2,13 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { requireAdminStepUp, requireAuthWithPayload } from "@/features/auth/auth.server";
 import {
-  countCapabilityImpact,
-  getEventOperationsPolicy,
-  getGlobalOperationsSettings,
   updateEventOperationsPolicy,
   updateGlobalOperationsSettings,
 } from "@/features/attendee-operations/capabilities.server";
-import { ATTENDEE_CAPABILITIES, effectiveCapability } from "@/features/attendee-operations/types";
+import { getAdminOperationsSettings } from "@/features/attendee-operations/admin-settings.server";
 import { listEvents } from "@/features/events/store.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
 
@@ -16,30 +13,7 @@ async function handleGET(request: Request) {
   const auth = await requireAuthWithPayload(request, "admin");
   if (auth.error) return auth.error;
   try {
-    const events = await listEvents({ includeHidden: true });
-    const [global, policies, impactCounts] = await Promise.all([
-      getGlobalOperationsSettings(),
-      Promise.all(events.map((event) => getEventOperationsPolicy(event.slug))),
-      Promise.all(ATTENDEE_CAPABILITIES.map((capability) => countCapabilityImpact(capability))),
-    ]);
-    return Response.json({
-      global,
-      impact: Object.fromEntries(
-        ATTENDEE_CAPABILITIES.map((capability, index) => [capability, impactCounts[index]]),
-      ),
-      events: events.map((event, index) => ({
-        slug: event.slug,
-        title: event.title,
-        status: event.status,
-        policy: policies[index],
-        effective: Object.fromEntries(
-          ATTENDEE_CAPABILITIES.map((capability) => [
-            capability,
-            effectiveCapability(global, policies[index]!, capability),
-          ]),
-        ),
-      })),
-    });
+    return Response.json(await getAdminOperationsSettings());
   } catch (error) {
     return apiErrorFromRequest(
       request,

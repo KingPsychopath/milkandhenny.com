@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  adminPitchDetailQuery,
+  adminPitchWorkspaceQuery,
+} from "@/features/things/pitches/admin-workspace.queries";
 
 import type {
   PitchAsset,
@@ -13,14 +18,20 @@ import type {
 } from "@/features/things/pitches/types";
 import { isPitchOperationalMode } from "@/features/things/pitches/types";
 import { loadPitchFiles } from "@/features/things/pitches/ui/files.client";
+import {
+  pitchWallQueryRoot,
+  publishedPitchQueryRoot,
+} from "@/features/things/pitches/pitches.queries";
 import { PitchSlideThumbnail } from "@/features/things/pitches/ui/PitchSlideThumbnail";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useHasMounted } from "@/hooks/useHasMounted";
 import { PitchRemindersPanel } from "./PitchRemindersPanel";
 import { AdminStatus, adminToneBorderClass, adminToneForStatus } from "./AdminStatus";
 import { AppSelect } from "@/components/AppSelect";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
 
 type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
+const EMPTY_PITCHES: PitchDeckAdminSummary[] = [];
 
 type PitchDetail = {
   pitch: {
@@ -125,49 +136,41 @@ export function PitchesPanel({
   >;
   withStepUpHeaders: (token: string, headers?: Record<string, string>) => Record<string, string>;
 }) {
-  const [pitches, setPitches] = useState<PitchDeckAdminSummary[]>([]);
-  const [detail, setDetail] = useState<PitchDetail>();
+  const queryClient = useQueryClient();
+  const hydrated = useHasMounted();
+  const workspaceQuery = useQuery(adminPitchWorkspaceQuery);
+  const pitches = workspaceQuery.data?.pitches ?? EMPTY_PITCHES;
+  const operationalStatus = workspaceQuery.data?.operationalStatus;
+  const loading = workspaceQuery.isFetching;
+  const loadError = workspaceQuery.error?.message ?? null;
+  const invalidatePitchViews = (deckId?: string) => {
+    void queryClient.invalidateQueries({ queryKey: pitchWallQueryRoot });
+    void queryClient.invalidateQueries({
+      queryKey: deckId ? [...publishedPitchQueryRoot, deckId] : publishedPitchQueryRoot,
+    });
+  };
+  const [selectedPitchId, setSelectedPitchId] = useState<string>();
+  const detailQuery = useQuery({
+    ...adminPitchDetailQuery(selectedPitchId ?? ""),
+    enabled: Boolean(selectedPitchId),
+  });
+  const detail: PitchDetail | undefined = detailQuery.data;
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived" | "trash">("all");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [detailFiles, setDetailFiles] = useState<BinaryFiles>({});
   const [form, setForm] = useState({ title: "", ownerName: "", ownerEmail: "" });
   const [lifecycleDraft, setLifecycleDraft] = useState<"active" | "archived" | "trashed">("active");
   const [publicationDraft, setPublicationDraft] = useState<"draft" | "published">("draft");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [operationalStatus, setOperationalStatus] = useState<PitchOperationalStatus>();
-  const [modeDraft, setModeDraft] = useState<PitchOperationalMode>("enabled");
+  const [modeDraftOverride, setModeDraft] = useState<PitchOperationalMode>();
+  const modeDraft = modeDraftOverride ?? operationalStatus?.adminMode ?? "enabled";
   const { confirm, dialog } = useActionDialog();
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const response = await authFetch("/api/admin/pitches");
-      if (!response.ok) throw new Error("Could not load pitches");
-      const body = (await response.json()) as {
-        pitches?: PitchDeckAdminSummary[];
-        operationalStatus?: PitchOperationalStatus;
-      };
-      setPitches(body.pitches ?? []);
-      if (body.operationalStatus) {
-        setOperationalStatus(body.operationalStatus);
-        setModeDraft(body.operationalStatus.adminMode);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not load pitches";
-      setLoadError(message);
-      onError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [authFetch, onError]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const result = await workspaceQuery.refetch();
+    if (result.error) onError(result.error.message);
+  }, [workspaceQuery, onError]);
 
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -190,10 +193,11 @@ export function PitchesPanel({
   async function open(pitch: PitchDeckAdminSummary) {
     setBusy(pitch.id);
     try {
-      const response = await authFetch(`/api/admin/pitches?deckId=${encodeURIComponent(pitch.id)}`);
-      if (!response.ok) throw new Error("Could not open pitch");
-      const next = (await response.json()) as PitchDetail;
-      setDetail(next);
+      const next = await queryClient.fetchQuery({
+        ...adminPitchDetailQuery(pitch.id),
+        staleTime: 0,
+      });
+      setSelectedPitchId(pitch.id);
       setForm({
         title: next.pitch.title,
         ownerName: next.pitch.ownerName,
@@ -228,8 +232,9 @@ export function PitchesPanel({
         body: JSON.stringify({ action: "archive", deckId: pitch.id, archived }),
       });
       if (!response.ok) throw new Error("Could not update pitch");
+      invalidatePitchViews(pitch.id);
       onStatus(archived ? "Pitch hidden from the wall." : "Pitch restored.");
-      setDetail(undefined);
+      setSelectedPitchId(undefined);
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not update pitch");
@@ -247,8 +252,9 @@ export function PitchesPanel({
         body: JSON.stringify({ action: "restore-trash", deckId }),
       });
       if (!response.ok) throw new Error("Could not restore pitch from Trash");
+      invalidatePitchViews(deckId);
       onStatus("Pitch restored from Trash.");
-      setDetail(undefined);
+      setSelectedPitchId(undefined);
       await refresh();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Could not restore pitch from Trash");
@@ -271,6 +277,7 @@ export function PitchesPanel({
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not update pitch");
+      if (action !== "resend-access") invalidatePitchViews(detail.pitch.id);
       onStatus(
         action === "resend-access"
           ? "A fresh private editing link was sent."
@@ -337,7 +344,8 @@ export function PitchesPanel({
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Could not delete pitch");
-      setDetail(undefined);
+      invalidatePitchViews(detail.pitch.id);
+      setSelectedPitchId(undefined);
       setDeleteConfirmation("");
       onStatus("Pitch moved to Trash. It can be restored for 30 days.");
       await refresh();
@@ -374,8 +382,12 @@ export function PitchesPanel({
       if (!response.ok || !body.operationalStatus) {
         throw new Error(body.error ?? "Could not change the studio mode");
       }
-      setOperationalStatus(body.operationalStatus);
-      setModeDraft(body.operationalStatus.adminMode);
+      const nextStatus = body.operationalStatus;
+      invalidatePitchViews();
+      queryClient.setQueryData(adminPitchWorkspaceQuery.queryKey, (current) =>
+        current ? { ...current, operationalStatus: nextStatus } : current,
+      );
+      setModeDraft(undefined);
       onStatus(
         body.operationalStatus.effectiveMode === "enabled"
           ? "Pitch Night Studio is fully enabled."
@@ -404,7 +416,7 @@ export function PitchesPanel({
   const trashStatus = detail && isTrashed ? describeTrash(detail.pitch, detail.audit) : undefined;
 
   return (
-    <section id="pitch-manager" className="scroll-mt-6">
+    <section id="pitch-manager" className="scroll-mt-6" inert={!hydrated}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs theme-muted">pitch night studio</p>
@@ -649,7 +661,7 @@ export function PitchesPanel({
             </div>
             <button
               type="button"
-              onClick={() => setDetail(undefined)}
+              onClick={() => setSelectedPitchId(undefined)}
               className="min-h-11 font-mono text-xs theme-muted hover:text-foreground"
             >
               back to pitches

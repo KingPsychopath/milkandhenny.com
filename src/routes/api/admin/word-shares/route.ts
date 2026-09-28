@@ -2,63 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Effect } from "effect";
 import { requireAdminStepUp, requireAuth } from "@/features/auth/auth.server";
 import { isWordsEnabled } from "@/features/words/reader.server";
-import { listShareLinks } from "@/features/words/share.server";
-import { listAllWords } from "@/features/words/store.server";
+import { buildSharedWordSummaries } from "@/features/words/admin-shares.server";
 import { MediaMaintenanceService } from "@/features/system/media-maintenance-service.server";
 import { runMediaEffect } from "@/features/system/media-worker-runtime.server";
 import { apiErrorFromRequest } from "@/lib/platform/api-error";
-import type { WordType } from "@/features/words/types";
-import type { WordVisibility } from "@/features/words/content-types";
-
-type SharedWordSummary = {
-  slug: string;
-  title: string;
-  type: WordType;
-  visibility: WordVisibility;
-  activeShareCount: number;
-  pinProtectedCount: number;
-  nextExpiryAt: string;
-};
-
-function isLinkActive(link: { revokedAt?: string; expiresAt: string }): boolean {
-  if (link.revokedAt) return false;
-  return new Date(link.expiresAt).getTime() > Date.now();
-}
-
-async function buildSharedWordSummaries(): Promise<SharedWordSummary[]> {
-  const words = await listAllWords({
-    includeNonPublic: true,
-  });
-
-  const summaries = await Promise.all(
-    words.map(async (note) => {
-      const links = await listShareLinks(note.slug);
-      const active = links.filter(isLinkActive);
-      if (active.length === 0) return null;
-
-      let nextExpiryAt = active[0]?.expiresAt ?? note.updatedAt;
-      for (const link of active) {
-        if (new Date(link.expiresAt).getTime() < new Date(nextExpiryAt).getTime()) {
-          nextExpiryAt = link.expiresAt;
-        }
-      }
-
-      return {
-        slug: note.slug,
-        title: note.title,
-        type: note.type,
-        visibility: note.visibility,
-        activeShareCount: active.length,
-        pinProtectedCount: active.filter((link) => link.pinRequired).length,
-        nextExpiryAt,
-      } satisfies SharedWordSummary;
-    }),
-  );
-
-  return summaries
-    .filter((item): item is SharedWordSummary => !!item)
-    .sort((a, b) => new Date(a.nextExpiryAt).getTime() - new Date(b.nextExpiryAt).getTime());
-}
 
 async function handleGET(request: Request) {
   const authErr = await requireAuth(request, "admin");

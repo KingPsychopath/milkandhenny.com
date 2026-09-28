@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { Pool } from "pg";
+import { waitForAppHydration } from "./support/multiplayer";
 
 const databaseUrl =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:test@127.0.0.1:55432/mah_test";
@@ -53,6 +54,14 @@ test("an emailed access link requires deliberate confirmation before redemption"
       "href",
       "/my",
     );
+    await page.goto("/my");
+    await waitForAppHydration(page);
+    await expect(page.getByRole("heading", { name: "account" })).toBeVisible();
+    await page.getByRole("button", { name: "sign out" }).click();
+    await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
+    await page.goto("/my");
+    await expect(page.getByRole("heading", { name: "sign in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "account" })).toHaveCount(0);
   } finally {
     await pool.end();
   }
@@ -61,6 +70,7 @@ test("an emailed access link requires deliberate confirmation before redemption"
 test("missing pages offer back and home recovery", async ({ page }) => {
   await page.goto("/");
   await page.goto("/this-page-does-not-exist");
+  await waitForAppHydration(page);
 
   await expect(page.getByRole("heading", { name: "404" })).toBeVisible();
   await expect(page.getByRole("button", { name: "go back" })).toBeVisible();

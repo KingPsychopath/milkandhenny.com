@@ -1,8 +1,12 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { adminCaseInboxQuery } from "@/features/attendee-operations/admin-inbox.queries";
+import { adminPeopleQuery } from "@/features/attendee-operations/admin-people.queries";
 
 import { AppSelect } from "@/components/AppSelect";
 import { useActionDialog } from "@/hooks/useActionDialog";
+import { useHasMounted } from "@/hooks/useHasMounted";
 import type { OperationsTab } from "./AdminSectionNav";
 import { AttendeePreviewMatrix } from "./AttendeePreviewMatrix";
 import { parseSavedInboxViews, type StoredInboxView } from "../admin-inbox-views";
@@ -101,6 +105,10 @@ type PurchaserContact = {
     deliveryNeedsAttention: boolean;
   }>;
 };
+const EMPTY_ITEMS: InboxItem[] = [];
+const EMPTY_ADMINS: Administrator[] = [];
+const EMPTY_PEOPLE: Person[] = [];
+const EMPTY_CONTACTS: PurchaserContact[] = [];
 
 export function AttendeeOperationsPanel({
   authFetch,
@@ -131,24 +139,59 @@ export function AttendeeOperationsPanel({
   inboxOnly?: boolean;
   availableTabs: readonly OperationsTab[];
 }) {
-  const [items, setItems] = useState<InboxItem[]>([]);
-  const [unresolved, setUnresolved] = useState(0);
-  const [unread, setUnread] = useState(0);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [purchaserContacts, setPurchaserContacts] = useState<PurchaserContact[]>([]);
-  const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Person>();
-  const [selectedContact, setSelectedContact] = useState<PurchaserContact>();
-  const [loading, setLoading] = useState(false);
-  const [inboxLoaded, setInboxLoaded] = useState(false);
-  const [inboxLoadError, setInboxLoadError] = useState<string | null>(null);
-  const [peopleLoaded, setPeopleLoaded] = useState(false);
-  const [peopleLoadError, setPeopleLoadError] = useState<string | null>(null);
-  const [administrators, setAdministrators] = useState<Administrator[]>([]);
+  const queryClient = useQueryClient();
+  const hydrated = useHasMounted();
+  const initialSearch = initialPerson ?? initialTicket ?? initialEvent ?? "";
+  const [query, setQuery] = useState(initialSearch);
+  const [committedSearch, setCommittedSearch] = useState(initialSearch);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | undefined>(initialPerson);
+  const [selectedContactId, setSelectedContactId] = useState<string>();
+  const [dismissedSelection, setDismissedSelection] = useState(false);
+  const peopleQuery = useQuery({ ...adminPeopleQuery(committedSearch), enabled: tab === "people" });
+  const people: Person[] = peopleQuery.data?.people ?? EMPTY_PEOPLE;
+  const purchaserContacts: PurchaserContact[] =
+    peopleQuery.data?.purchaserContacts ?? EMPTY_CONTACTS;
+  const selected =
+    dismissedSelection || selectedContactId
+      ? undefined
+      : selectedPersonId
+        ? people.find((person) => person.personId === selectedPersonId)
+        : committedSearch
+          ? people[0]
+          : undefined;
+  const selectedContact =
+    dismissedSelection || selected
+      ? undefined
+      : selectedContactId
+        ? purchaserContacts.find((contact) => contact.contactId === selectedContactId)
+        : committedSearch
+          ? (purchaserContacts.find((contact) =>
+              contact.tickets.some((ticket) => ticket.id === committedSearch),
+            ) ?? purchaserContacts[0])
+          : undefined;
+  const peopleLoaded = Boolean(peopleQuery.data);
+  const peopleLoadError = peopleQuery.error?.message ?? null;
   const [statusFilter, setStatusFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [eventFilter, setEventFilter] = useState("");
+  const inboxFilters = useMemo(
+    () => ({
+      status: statusFilter,
+      severity: severityFilter,
+      category: categoryFilter.trim(),
+      eventSlug: eventFilter.trim(),
+    }),
+    [statusFilter, severityFilter, categoryFilter, eventFilter],
+  );
+  const inboxQuery = useQuery({ ...adminCaseInboxQuery(inboxFilters), enabled: tab === "inbox" });
+  const items: InboxItem[] = inboxQuery.data?.items ?? EMPTY_ITEMS;
+  const unresolved = inboxQuery.data?.unresolved ?? 0;
+  const unread = inboxQuery.data?.unread ?? 0;
+  const administrators: Administrator[] = inboxQuery.data?.administrators ?? EMPTY_ADMINS;
+  const inboxLoaded = Boolean(inboxQuery.data);
+  const inboxLoadError = inboxQuery.error?.message ?? null;
+  const loading = peopleQuery.isFetching || inboxQuery.isFetching;
   const [savedViews, setSavedViews] = useState<StoredInboxView[]>([]);
   const [identityBusy, setIdentityBusy] = useState(false);
   const [inboxBusy, setInboxBusy] = useState<string>();
@@ -156,38 +199,14 @@ export function AttendeeOperationsPanel({
   const { prompt, dialog } = useActionDialog();
 
   const loadInbox = useCallback(async () => {
-    setLoading(true);
-    setInboxLoadError(null);
     try {
-      const params = new URLSearchParams();
-      if (statusFilter) params.set("status", statusFilter);
-      if (severityFilter) params.set("severity", severityFilter);
-      if (categoryFilter.trim()) params.set("category", categoryFilter.trim());
-      if (eventFilter.trim()) params.set("event", eventFilter.trim());
-      const response = await authFetch(
-        `/api/admin/operations/inbox${params.size ? `?${params}` : ""}`,
-      );
-      const body = (await response.json()) as {
-        unresolved?: number;
-        unread?: number;
-        items?: InboxItem[];
-        administrators?: Administrator[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(body.error ?? "Inbox could not be loaded");
-      setItems(body.items ?? []);
-      setUnresolved(body.unresolved ?? 0);
-      setUnread(body.unread ?? 0);
-      setAdministrators(body.administrators ?? []);
-      setInboxLoaded(true);
+      await queryClient.fetchQuery({ ...adminCaseInboxQuery(inboxFilters), staleTime: 0 });
+      await queryClient.invalidateQueries({ queryKey: ["admin", "operations", "inbox", "active"] });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Inbox could not be loaded";
-      setInboxLoadError(message);
       onError(message);
-    } finally {
-      setLoading(false);
     }
-  }, [authFetch, categoryFilter, eventFilter, onError, severityFilter, statusFilter]);
+  }, [queryClient, inboxFilters, onError]);
 
   useEffect(() => {
     try {
@@ -198,10 +217,6 @@ export function AttendeeOperationsPanel({
       setSavedViews([]);
     }
   }, []);
-
-  useEffect(() => {
-    if (tab === "inbox") void loadInbox();
-  }, [loadInbox, tab]);
 
   async function updateItem(
     item: InboxItem,
@@ -307,57 +322,43 @@ export function AttendeeOperationsPanel({
 
   const loadPeople = useCallback(
     async (selectedPersonId?: string, searchText = query) => {
-      setLoading(true);
-      setPeopleLoadError(null);
+      setCommittedSearch(searchText);
+      setDismissedSelection(false);
       try {
-        const response = await authFetch(
-          `/api/admin/operations/people?q=${encodeURIComponent(searchText)}`,
-        );
-        const body = (await response.json()) as {
-          people?: Person[];
-          purchaserContacts?: PurchaserContact[];
-          error?: string;
-        };
-        if (!response.ok) throw new Error(body.error ?? "People could not be searched");
-        const nextPeople = body.people ?? [];
-        const nextContacts = body.purchaserContacts ?? [];
-        setPeople(nextPeople);
-        setPurchaserContacts(nextContacts);
+        const body = await queryClient.fetchQuery({
+          ...adminPeopleQuery(searchText),
+          staleTime: 0,
+        });
+        const nextPeople = body.people;
+        const nextContacts = body.purchaserContacts;
         const matchingPerson = selectedPersonId
           ? nextPeople.find((person) => person.personId === selectedPersonId)
           : searchText
             ? nextPeople[0]
             : undefined;
-        setSelected(matchingPerson);
-        setSelectedContact(
+        setSelectedPersonId(matchingPerson?.personId);
+        setSelectedContactId(
           matchingPerson || !searchText
             ? undefined
-            : (nextContacts.find((contact) =>
-                contact.tickets.some((ticket) => ticket.id === searchText),
-              ) ?? nextContacts[0]),
+            : (
+                nextContacts.find((contact) =>
+                  contact.tickets.some((ticket) => ticket.id === searchText),
+                ) ?? nextContacts[0]
+              )?.contactId,
         );
-        setPeopleLoaded(true);
         if (matchingPerson && matchingPerson.personId !== initialPerson) {
           selfNavigationRef.current = matchingPerson.personId;
           onPersonChange(matchingPerson.personId);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "People could not be searched";
-        setPeopleLoadError(message);
         onError(message);
-      } finally {
-        setLoading(false);
       }
     },
-    [authFetch, initialPerson, onError, onPersonChange, query],
+    [queryClient, initialPerson, onError, onPersonChange, query],
   );
 
-  // Seeds the search from deep-link parameters only. `loadPeople` is read
-  // through a ref: its identity tracks the query text, and depending on it
-  // here made every keystroke re-run this effect and stomp the box with the
-  // deep-link target while re-fetching three or four times per search.
-  const loadPeopleRef = useRef(loadPeople);
-  loadPeopleRef.current = loadPeople;
+  // Deep-link changes update the committed Query key without fetching on each keystroke.
   const selfNavigationRef = useRef<string | null>(null);
   useEffect(() => {
     if (tab !== "people") return;
@@ -369,7 +370,10 @@ export function AttendeeOperationsPanel({
     if (selfTarget !== null && (initialPerson ?? "cleared") === selfTarget) return;
     const target = initialPerson ?? initialTicket ?? initialEvent ?? "";
     setQuery(target);
-    void loadPeopleRef.current(initialPerson, target);
+    setCommittedSearch(target);
+    setSelectedPersonId(initialPerson);
+    setSelectedContactId(undefined);
+    setDismissedSelection(false);
   }, [initialEvent, initialPerson, initialTicket, tab]);
 
   async function findPeople(event: FormEvent) {
@@ -471,6 +475,7 @@ export function AttendeeOperationsPanel({
     <section
       id={inboxOnly ? "notifications" : undefined}
       aria-labelledby="attendee-operations-heading"
+      inert={!hydrated}
     >
       <div className="flex flex-wrap items-end justify-between gap-4 border-b theme-border pb-5">
         <div>
@@ -872,8 +877,9 @@ export function AttendeeOperationsPanel({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelected(person);
-                            setSelectedContact(undefined);
+                            setSelectedPersonId(person.personId);
+                            setSelectedContactId(undefined);
+                            setDismissedSelection(false);
                             selfNavigationRef.current = person.personId;
                             onPersonChange(person.personId);
                           }}
@@ -915,8 +921,9 @@ export function AttendeeOperationsPanel({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelected(undefined);
-                            setSelectedContact(contact);
+                            setSelectedPersonId(undefined);
+                            setSelectedContactId(contact.contactId);
+                            setDismissedSelection(false);
                           }}
                           className="min-h-14 w-full py-3 text-left hover:opacity-70"
                         >
@@ -951,7 +958,8 @@ export function AttendeeOperationsPanel({
                   busy={identityBusy}
                   onManage={manageIdentity}
                   onClose={() => {
-                    setSelected(undefined);
+                    setSelectedPersonId(undefined);
+                    setDismissedSelection(true);
                     selfNavigationRef.current = "cleared";
                     onPersonChange(undefined);
                   }}
@@ -959,7 +967,10 @@ export function AttendeeOperationsPanel({
               ) : selectedContact ? (
                 <PurchaserContactDrawer
                   contact={selectedContact}
-                  onClose={() => setSelectedContact(undefined)}
+                  onClose={() => {
+                    setSelectedContactId(undefined);
+                    setDismissedSelection(true);
+                  }}
                 />
               ) : (
                 <p className="font-mono text-xs theme-muted">
