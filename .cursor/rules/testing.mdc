@@ -39,7 +39,8 @@ alwaysApply: false
 ## Tooling & Execution
 - **Focused:** Run the affected Vitest file or `pnpm test:unit` / `pnpm test:integration` while
   iterating.
-- **Source handoff:** Run `pnpm check` and `pnpm test`.
+- **Source handoff:** Run `pnpm check` and tests covering the changed behavior. Run the full
+  `pnpm test` suite for cross-feature changes or release candidates.
 - **Release:** Run `pnpm verify:release` with Postgres, object storage, and Chromium available.
 - **Setup:** Use `beforeEach` to clear mocks/stores. Avoid state leaks.
 - **CLI Parity:** Ensure `scripts/*` can be invoked in tests without side effects.
