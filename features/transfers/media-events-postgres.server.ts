@@ -8,35 +8,77 @@ import type { TransferFile } from "./types";
 const CHANNEL = "transfer_media_events_v1";
 type Event = { transferId: string; file: TransferFile; at: string };
 type Listener = (event: Event) => void;
-const listeners = new Map<string, Set<Listener>>();
-let subscriber: PoolClient | null = null;
-let connecting: Promise<void> | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let closing = false;
+// Nitro and SSR evaluate separate bundles. Keep their subscriber and shutdown owner shared,
+// just like the process-wide Postgres pool that supplies this dedicated connection.
+type SubscriberState = {
+  listeners: Map<string, Set<Listener>>;
+  subscriber: PoolClient | null;
+  connecting: Promise<void> | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  closing: boolean;
+  closed: boolean;
+};
+const processState = globalThis as typeof globalThis & {
+  __mahTransferMediaSubscriber?: SubscriberState;
+};
+const state = (processState.__mahTransferMediaSubscriber ??= {
+  listeners: new Map<string, Set<Listener>>(),
+  subscriber: null,
+  connecting: null,
+  reconnectTimer: null,
+  closing: false,
+  closed: false,
+});
 
 function hasListeners() {
-  return [...listeners.values()].some((entries) => entries.size > 0);
+  return [...state.listeners.values()].some((entries) => entries.size > 0);
 }
 
 function scheduleReconnect() {
-  if (closing || !hasListeners() || reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    void ensureSubscribed().catch((error: unknown) => {
-      log.warn("transfer.media.events", "Postgres event reconnect failed", {
-        error: error instanceof Error ? error.message : String(error),
+  if (state.closing || !hasListeners() || state.reconnectTimer) return;
+  state.reconnectTimer = setTimeout(() => {
+    state.reconnectTimer = null;
+    void ensureSubscribed()
+      .then(reconcileListeners)
+      .catch((error: unknown) => {
+        log.warn("transfer.media.events", "Postgres event reconnect failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        scheduleReconnect();
       });
-      scheduleReconnect();
-    });
   }, 2_000);
-  reconnectTimer.unref?.();
+  state.reconnectTimer.unref?.();
 }
 
 function releaseSubscriber(client: PoolClient) {
-  if (subscriber !== client) return;
-  subscriber = null;
+  if (state.subscriber !== client) return;
+  state.subscriber = null;
   client.release(true);
   scheduleReconnect();
+}
+
+function notify(transferId: string, file: TransferFile, at: string) {
+  for (const listener of state.listeners.get(transferId) ?? []) {
+    try {
+      listener({ transferId, file, at });
+    } catch (error) {
+      log.warn("transfer.media.events", "Postgres event listener threw", {
+        transferId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
+async function reconcileListeners() {
+  // Browser streams survive a backplane outage, so they will not rerun the route snapshot.
+  // LISTEN must be restored before reading authoritative state to cover the missed interval.
+  for (const transferId of state.listeners.keys()) {
+    if (state.closing) return;
+    const transfer = await getTransfer(transferId);
+    const at = new Date().toISOString();
+    for (const file of transfer?.files ?? []) notify(transferId, file, at);
+  }
 }
 
 async function dispatch(message: Notification) {
@@ -51,21 +93,12 @@ async function dispatch(message: Notification) {
   const { transferId, fileId, at } = payload as Record<string, unknown>;
   if (typeof transferId !== "string" || typeof fileId !== "string" || typeof at !== "string")
     return;
-  if (!listeners.has(transferId)) return;
+  if (!state.listeners.has(transferId)) return;
   try {
     const transfer = await getTransfer(transferId);
     const file = transfer?.files.find(({ id }) => id === fileId);
     if (!file) return;
-    for (const listener of listeners.get(transferId) ?? []) {
-      try {
-        listener({ transferId, file, at });
-      } catch (error) {
-        log.warn("transfer.media.events", "Postgres event listener threw", {
-          transferId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    notify(transferId, file, at);
   } catch (error) {
     log.warn("transfer.media.events", "Postgres event snapshot failed", {
       transferId,
@@ -76,9 +109,10 @@ async function dispatch(message: Notification) {
 }
 
 async function ensureSubscribed() {
-  if (subscriber) return;
-  if (connecting) return connecting;
-  connecting = (async () => {
+  if (state.closing) throw new Error("Transfer media subscriber is closed");
+  if (state.subscriber) return;
+  if (state.connecting) return state.connecting;
+  state.connecting = (async () => {
     const pool = getPool();
     if (!pool) throw new Error("Postgres is unavailable for transfer events");
     const client = await pool.connect();
@@ -94,16 +128,20 @@ async function ensureSubscribed() {
     client.once("end", () => releaseSubscriber(client));
     try {
       await client.query(`listen ${CHANNEL}`);
-      subscriber = client;
+      if (state.closing) {
+        client.release(true);
+        return;
+      }
+      state.subscriber = client;
     } catch (error) {
       client.release(true);
       throw error;
     }
   })();
   try {
-    await connecting;
+    await state.connecting;
   } finally {
-    connecting = null;
+    state.connecting = null;
   }
 }
 
@@ -118,30 +156,36 @@ export async function subscribeToPostgresTransferMediaEvents(
   transferId: string,
   listener: Listener,
 ): Promise<() => void> {
-  closing = false;
-  const current = listeners.get(transferId) ?? new Set<Listener>();
+  if (state.closed) throw new Error("Transfer media subscriber is closed");
+  state.closing = false;
+  const current = state.listeners.get(transferId) ?? new Set<Listener>();
   current.add(listener);
-  listeners.set(transferId, current);
+  state.listeners.set(transferId, current);
   try {
     await ensureSubscribed();
   } catch (error) {
     current.delete(listener);
-    if (current.size === 0) listeners.delete(transferId);
+    if (current.size === 0) state.listeners.delete(transferId);
     throw error;
   }
   return () => {
     current.delete(listener);
-    if (current.size === 0) listeners.delete(transferId);
+    if (current.size === 0) state.listeners.delete(transferId);
   };
 }
 
-export async function closePostgresTransferMediaEventSubscriber() {
-  closing = true;
-  listeners.clear();
-  if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = null;
-  const client = subscriber;
-  subscriber = null;
+export async function closePostgresTransferMediaEventSubscriber(
+  options: { permanent?: boolean } = {},
+) {
+  state.closed ||= options.permanent === true;
+  state.closing = true;
+  state.listeners.clear();
+  if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+  state.reconnectTimer = null;
+  // A LISTEN still being established must release its checkout before pool shutdown.
+  await state.connecting?.catch(() => undefined);
+  const client = state.subscriber;
+  state.subscriber = null;
   if (!client) return;
   try {
     await client.query(`unlisten ${CHANNEL}`);

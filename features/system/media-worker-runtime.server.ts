@@ -30,6 +30,7 @@ import {
 import { summarizeMediaWorkerError } from "@/features/transfers/media-worker-health";
 import { TransferOperationsService } from "@/features/transfers/transfer-operations-service.server";
 import { TransferMediaOperationsService } from "@/features/transfers/transfer-media-operations-service.server";
+import { closeTransferMediaEventSubscriber } from "@/features/transfers/media-events.server";
 import { MediaMaintenanceService } from "./media-maintenance-service.server";
 import { WordMediaService } from "@/features/words/word-media-service.server";
 import { WordOperationsService } from "@/features/words/word-operations-service.server";
@@ -706,8 +707,13 @@ async function stopMediaWorkerLoop(): Promise<void> {
   }
 }
 
-function disposeMediaWorkerRuntime(): Promise<void> {
-  return mediaWorkerRuntime.dispose();
+async function disposeMediaWorkerRuntime(): Promise<void> {
+  try {
+    await mediaWorkerRuntime.dispose();
+  } finally {
+    // SSE can acquire its subscriber even when no media workflow has built the lazy Layer.
+    await closeTransferMediaEventSubscriber({ permanent: true });
+  }
 }
 
 function drainMediaQueuesUntilIdle(): Promise<DrainMediaQueuesResult> {
