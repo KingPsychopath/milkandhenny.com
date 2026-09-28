@@ -475,9 +475,16 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   and the three focused reruns cover the integrated user journeys without repeating the 69 already
   passing journeys. `pnpm format:check`, `git diff --check`, local Markdown link resolution,
   and package-script checks passed for the documentation and rules update.
-- Next action: review the local worktree. Production-proxy measurements and a release-candidate
-  gate remain separate follow-up acceptance work; pushing, merging, and deploying need user
-  authorization.
+- Integration: the refactor branch carries the 50 storage-migration commits already present on
+  local `main` when the isolated worktree was created. The public word journey depends on that
+  Postgres-backed store, so the branch is integrated rather than replayed onto the older remote
+  base. The shorter repository agent guidance was merged separately in PR #12 and then merged
+  into this branch. Playwright now selects its Postgres fixture stores within its own process,
+  allowing the release gate's Redis-focused unit tests and browser journeys to run together.
+  The production dependency audit passes after updating the transitive `adm-zip` override.
+- Remaining acceptance: production-proxy streaming and performance measurements, plus the broader
+  private-scope and mutation-freshness scenarios above, still need evidence before claiming the
+  target meets every stated performance and isolation goal.
 - Commit record: `aba7708d` proposed the architecture on `main`; `5c6415c1` opened the worktree
   implementation plan; `9141051c` integrated Query SSR, the poll slice, and identity cache reset;
   `50dfb9a3` recorded that milestone; `ae1812aa` migrated public and attendee views; `ef14de0d`
