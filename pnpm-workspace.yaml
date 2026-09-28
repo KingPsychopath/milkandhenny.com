@@ -19,7 +19,7 @@ minimumReleaseAgeExclude:
 # build chain only; the overrides keep `pnpm audit` clean without touching the
 # runtime dependency graph.
 overrides:
-  adm-zip@<0.6.0: 0.6.0
+  adm-zip@<0.6.1: 0.6.1
   brace-expansion@2: ">=2.1.4 <3"
   brace-expansion@>=4 <6: ">=5.0.9 <6"
   clsx: npm:cn@0.2.2
