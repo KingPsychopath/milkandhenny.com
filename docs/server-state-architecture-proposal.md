@@ -481,7 +481,15 @@ the release candidate uses `pnpm verify:release` under the repository verificati
   base. The shorter repository agent guidance was merged separately in PR #12 and then merged
   into this branch. Playwright now selects its Postgres fixture stores within its own process,
   allowing the release gate's Redis-focused unit tests and browser journeys to run together.
-  The production dependency audit passes after updating the transitive `adm-zip` override.
+  Its Redis HTTP bridge uses a configurable address so concurrent checkouts cannot share the
+  wrong test database. The production dependency audit passes after updating the transitive
+  `adm-zip` override.
+- Integrated release verification: `pnpm verify:release` passed in the isolated worktree:
+  formatting, CLI parity, types, lint, all 275 Vitest files (2,107 tests), all 72 Playwright
+  journeys, and the production build. `pnpm audit --prod --audit-level high` also passed.
+  GitHub CI still stops before source verification at the unchanged Hot & Cold daily puzzle
+  approval gate; the same check fails on current `main` because puzzles #36–65 require renewed
+  human review. This content approval remains separate from the refactor verification.
 - Remaining acceptance: production-proxy streaming and performance measurements, plus the broader
   private-scope and mutation-freshness scenarios above, still need evidence before claiming the
   target meets every stated performance and isolation goal.
