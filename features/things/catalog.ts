@@ -2,6 +2,7 @@ import { THING_OFFLINE } from "./offline";
 
 export interface Thing {
   slug:
+    | "pairs"
     | "icebreaker"
     | "heads-up"
     | "spelling-bee"
@@ -18,6 +19,7 @@ export interface Thing {
   description: string;
   eyebrow: string;
   href:
+    | "/things/pairs"
     | "/things/icebreaker"
     | "/things/heads-up"
     | "/things/spelling-bee"
@@ -38,6 +40,16 @@ export interface Thing {
 }
 
 export const THINGS = [
+  {
+    slug: "pairs",
+    name: "pairs",
+    description: "Flip two cards. Find their other halves. Watch the table fall away.",
+    eyebrow: "memory cards · solo, shared table or two-device race",
+    href: "/things/pairs",
+    status: "ready",
+    mark: { kind: "symbol", value: "♠" },
+    offline: null,
+  },
   {
     slug: "family-feud",
     name: "family feud",

@@ -60,6 +60,7 @@ import { Route as ThingsIcebreakerRouteImport } from './routes/things.icebreaker
 import { Route as ThingsImposterRouteImport } from './routes/things.imposter'
 import { Route as ThingsLiarsRouteImport } from './routes/things.liars'
 import { Route as ThingsMafiaRouteImport } from './routes/things.mafia'
+import { Route as ThingsPairsRouteImport } from './routes/things.pairs'
 import { Route as ThingsPitchesRouteImport } from './routes/things.pitches'
 import { Route as ThingsSameBrainRouteImport } from './routes/things.same-brain'
 import { Route as ThingsSpellingBeeRouteImport } from './routes/things.spelling-bee'
@@ -137,6 +138,7 @@ import { Route as ThingsJudgeRoomIdRouteImport } from './routes/things.judge.$ro
 import { Route as ThingsLiarsRoomIdRouteImport } from './routes/things.liars_.$roomId'
 import { Route as ThingsLiarsDevRouteImport } from './routes/things.liars_.dev'
 import { Route as ThingsLiarsPhoneRouteImport } from './routes/things.liars_.phone'
+import { Route as ThingsPairsDevRouteImport } from './routes/things.pairs_.dev'
 import { Route as ThingsPitchesDeckIdRouteImport } from './routes/things.pitches_.$deckId'
 import { Route as ThingsPitchesDemoRouteImport } from './routes/things.pitches_.demo'
 import { Route as ThingsPitchesNewRouteImport } from './routes/things.pitches_.new'
@@ -200,6 +202,7 @@ import { Route as ThingsFamilyFeudRoomIdControlRouteImport } from './routes/thin
 import { Route as ThingsFamilyFeudRoomIdPresentRouteImport } from './routes/things.family-feud_.$roomId_.present'
 import { Route as ThingsHotAndColdDailyPuzzleRouteImport } from './routes/things.hot-and-cold_.daily_.$puzzle'
 import { Route as ThingsLiarsRoomIdPresentRouteImport } from './routes/things.liars_.$roomId_.present'
+import { Route as ThingsPairsRaceRoomIdRouteImport } from './routes/things.pairs_.race.$roomId'
 import { Route as ThingsPitchesDeckIdEditRouteImport } from './routes/things.pitches_.$deckId_.edit'
 import { Route as ThingsPitchesPresentRoomIdRouteImport } from './routes/things.pitches_.present_.$roomId'
 import { Route as ThingsPitchesRemoteRoomIdRouteImport } from './routes/things.pitches_.remote_.$roomId'
@@ -493,6 +496,11 @@ const ThingsLiarsRoute = ThingsLiarsRouteImport.update({
 const ThingsMafiaRoute = ThingsMafiaRouteImport.update({
   id: '/mafia',
   path: '/mafia',
+  getParentRoute: () => ThingsRoute,
+} as any)
+const ThingsPairsRoute = ThingsPairsRouteImport.update({
+  id: '/pairs',
+  path: '/pairs',
   getParentRoute: () => ThingsRoute,
 } as any)
 const ThingsPitchesRoute = ThingsPitchesRouteImport.update({
@@ -908,6 +916,11 @@ const ThingsLiarsPhoneRoute = ThingsLiarsPhoneRouteImport.update({
   path: '/liars/phone',
   getParentRoute: () => ThingsRoute,
 } as any)
+const ThingsPairsDevRoute = ThingsPairsDevRouteImport.update({
+  id: '/pairs_/dev',
+  path: '/pairs/dev',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsPitchesDeckIdRoute = ThingsPitchesDeckIdRouteImport.update({
   id: '/pitches_/$deckId',
   path: '/pitches/$deckId',
@@ -1263,6 +1276,11 @@ const ThingsLiarsRoomIdPresentRoute =
     path: '/liars/$roomId/present',
     getParentRoute: () => ThingsRoute,
   } as any)
+const ThingsPairsRaceRoomIdRoute = ThingsPairsRaceRoomIdRouteImport.update({
+  id: '/pairs_/race/$roomId',
+  path: '/pairs/race/$roomId',
+  getParentRoute: () => ThingsRoute,
+} as any)
 const ThingsPitchesDeckIdEditRoute = ThingsPitchesDeckIdEditRouteImport.update({
   id: '/pitches_/$deckId_/edit',
   path: '/pitches/$deckId/edit',
@@ -1545,6 +1563,7 @@ export interface FileRoutesByFullPath {
   '/things/imposter': typeof ThingsImposterRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/mafia': typeof ThingsMafiaRoute
+  '/things/pairs': typeof ThingsPairsRoute
   '/things/pitches': typeof ThingsPitchesRoute
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
@@ -1625,6 +1644,7 @@ export interface FileRoutesByFullPath {
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
   '/things/liars/phone': typeof ThingsLiarsPhoneRoute
+  '/things/pairs/dev': typeof ThingsPairsDevRoute
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
@@ -1688,6 +1708,7 @@ export interface FileRoutesByFullPath {
   '/things/family-feud/$roomId/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
+  '/things/pairs/race/$roomId': typeof ThingsPairsRaceRoomIdRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -1777,6 +1798,7 @@ export interface FileRoutesByTo {
   '/things/imposter': typeof ThingsImposterRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/mafia': typeof ThingsMafiaRoute
+  '/things/pairs': typeof ThingsPairsRoute
   '/things/pitches': typeof ThingsPitchesRoute
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
@@ -1857,6 +1879,7 @@ export interface FileRoutesByTo {
   '/things/liars/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars/dev': typeof ThingsLiarsDevRoute
   '/things/liars/phone': typeof ThingsLiarsPhoneRoute
+  '/things/pairs/dev': typeof ThingsPairsDevRoute
   '/things/pitches/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches/new': typeof ThingsPitchesNewRoute
@@ -1920,6 +1943,7 @@ export interface FileRoutesByTo {
   '/things/family-feud/$roomId/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold/daily/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars/$roomId/present': typeof ThingsLiarsRoomIdPresentRoute
+  '/things/pairs/race/$roomId': typeof ThingsPairsRaceRoomIdRoute
   '/things/pitches/$deckId/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches/present/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches/remote/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -2010,6 +2034,7 @@ export interface FileRoutesById {
   '/things/imposter': typeof ThingsImposterRoute
   '/things/liars': typeof ThingsLiarsRoute
   '/things/mafia': typeof ThingsMafiaRoute
+  '/things/pairs': typeof ThingsPairsRoute
   '/things/pitches': typeof ThingsPitchesRoute
   '/things/same-brain': typeof ThingsSameBrainRoute
   '/things/spelling-bee': typeof ThingsSpellingBeeRoute
@@ -2090,6 +2115,7 @@ export interface FileRoutesById {
   '/things/liars_/$roomId': typeof ThingsLiarsRoomIdRoute
   '/things/liars_/dev': typeof ThingsLiarsDevRoute
   '/things/liars_/phone': typeof ThingsLiarsPhoneRoute
+  '/things/pairs_/dev': typeof ThingsPairsDevRoute
   '/things/pitches_/$deckId': typeof ThingsPitchesDeckIdRoute
   '/things/pitches_/demo': typeof ThingsPitchesDemoRoute
   '/things/pitches_/new': typeof ThingsPitchesNewRoute
@@ -2153,6 +2179,7 @@ export interface FileRoutesById {
   '/things/family-feud_/$roomId_/present': typeof ThingsFamilyFeudRoomIdPresentRoute
   '/things/hot-and-cold_/daily_/$puzzle': typeof ThingsHotAndColdDailyPuzzleRoute
   '/things/liars_/$roomId_/present': typeof ThingsLiarsRoomIdPresentRoute
+  '/things/pairs_/race/$roomId': typeof ThingsPairsRaceRoomIdRoute
   '/things/pitches_/$deckId_/edit': typeof ThingsPitchesDeckIdEditRoute
   '/things/pitches_/present_/$roomId': typeof ThingsPitchesPresentRoomIdRoute
   '/things/pitches_/remote_/$roomId': typeof ThingsPitchesRemoteRoomIdRoute
@@ -2244,6 +2271,7 @@ export interface FileRouteTypes {
     | '/things/imposter'
     | '/things/liars'
     | '/things/mafia'
+    | '/things/pairs'
     | '/things/pitches'
     | '/things/same-brain'
     | '/things/spelling-bee'
@@ -2324,6 +2352,7 @@ export interface FileRouteTypes {
     | '/things/liars/$roomId'
     | '/things/liars/dev'
     | '/things/liars/phone'
+    | '/things/pairs/dev'
     | '/things/pitches/$deckId'
     | '/things/pitches/demo'
     | '/things/pitches/new'
@@ -2387,6 +2416,7 @@ export interface FileRouteTypes {
     | '/things/family-feud/$roomId/present'
     | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
+    | '/things/pairs/race/$roomId'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
@@ -2476,6 +2506,7 @@ export interface FileRouteTypes {
     | '/things/imposter'
     | '/things/liars'
     | '/things/mafia'
+    | '/things/pairs'
     | '/things/pitches'
     | '/things/same-brain'
     | '/things/spelling-bee'
@@ -2556,6 +2587,7 @@ export interface FileRouteTypes {
     | '/things/liars/$roomId'
     | '/things/liars/dev'
     | '/things/liars/phone'
+    | '/things/pairs/dev'
     | '/things/pitches/$deckId'
     | '/things/pitches/demo'
     | '/things/pitches/new'
@@ -2619,6 +2651,7 @@ export interface FileRouteTypes {
     | '/things/family-feud/$roomId/present'
     | '/things/hot-and-cold/daily/$puzzle'
     | '/things/liars/$roomId/present'
+    | '/things/pairs/race/$roomId'
     | '/things/pitches/$deckId/edit'
     | '/things/pitches/present/$roomId'
     | '/things/pitches/remote/$roomId'
@@ -2708,6 +2741,7 @@ export interface FileRouteTypes {
     | '/things/imposter'
     | '/things/liars'
     | '/things/mafia'
+    | '/things/pairs'
     | '/things/pitches'
     | '/things/same-brain'
     | '/things/spelling-bee'
@@ -2788,6 +2822,7 @@ export interface FileRouteTypes {
     | '/things/liars_/$roomId'
     | '/things/liars_/dev'
     | '/things/liars_/phone'
+    | '/things/pairs_/dev'
     | '/things/pitches_/$deckId'
     | '/things/pitches_/demo'
     | '/things/pitches_/new'
@@ -2851,6 +2886,7 @@ export interface FileRouteTypes {
     | '/things/family-feud_/$roomId_/present'
     | '/things/hot-and-cold_/daily_/$puzzle'
     | '/things/liars_/$roomId_/present'
+    | '/things/pairs_/race/$roomId'
     | '/things/pitches_/$deckId_/edit'
     | '/things/pitches_/present_/$roomId'
     | '/things/pitches_/remote_/$roomId'
@@ -3392,6 +3428,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsMafiaRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/pairs': {
+      id: '/things/pairs'
+      path: '/pairs'
+      fullPath: '/things/pairs'
+      preLoaderRoute: typeof ThingsPairsRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/pitches': {
       id: '/things/pitches'
       path: '/pitches'
@@ -3931,6 +3974,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsLiarsPhoneRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/pairs_/dev': {
+      id: '/things/pairs_/dev'
+      path: '/pairs/dev'
+      fullPath: '/things/pairs/dev'
+      preLoaderRoute: typeof ThingsPairsDevRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/pitches_/$deckId': {
       id: '/things/pitches_/$deckId'
       path: '/pitches/$deckId'
@@ -4372,6 +4422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThingsLiarsRoomIdPresentRouteImport
       parentRoute: typeof ThingsRoute
     }
+    '/things/pairs_/race/$roomId': {
+      id: '/things/pairs_/race/$roomId'
+      path: '/pairs/race/$roomId'
+      fullPath: '/things/pairs/race/$roomId'
+      preLoaderRoute: typeof ThingsPairsRaceRoomIdRouteImport
+      parentRoute: typeof ThingsRoute
+    }
     '/things/pitches_/$deckId_/edit': {
       id: '/things/pitches_/$deckId_/edit'
       path: '/pitches/$deckId/edit'
@@ -4658,6 +4715,7 @@ interface ThingsRouteChildren {
   ThingsImposterRoute: typeof ThingsImposterRoute
   ThingsLiarsRoute: typeof ThingsLiarsRoute
   ThingsMafiaRoute: typeof ThingsMafiaRoute
+  ThingsPairsRoute: typeof ThingsPairsRoute
   ThingsPitchesRoute: typeof ThingsPitchesRoute
   ThingsSameBrainRoute: typeof ThingsSameBrainRoute
   ThingsSpellingBeeRoute: typeof ThingsSpellingBeeRoute
@@ -4675,6 +4733,7 @@ interface ThingsRouteChildren {
   ThingsLiarsRoomIdRoute: typeof ThingsLiarsRoomIdRoute
   ThingsLiarsDevRoute: typeof ThingsLiarsDevRoute
   ThingsLiarsPhoneRoute: typeof ThingsLiarsPhoneRoute
+  ThingsPairsDevRoute: typeof ThingsPairsDevRoute
   ThingsPitchesDeckIdRoute: typeof ThingsPitchesDeckIdRoute
   ThingsPitchesDemoRoute: typeof ThingsPitchesDemoRoute
   ThingsPitchesNewRoute: typeof ThingsPitchesNewRoute
@@ -4693,6 +4752,7 @@ interface ThingsRouteChildren {
   ThingsFamilyFeudRoomIdPresentRoute: typeof ThingsFamilyFeudRoomIdPresentRoute
   ThingsHotAndColdDailyPuzzleRoute: typeof ThingsHotAndColdDailyPuzzleRoute
   ThingsLiarsRoomIdPresentRoute: typeof ThingsLiarsRoomIdPresentRoute
+  ThingsPairsRaceRoomIdRoute: typeof ThingsPairsRaceRoomIdRoute
   ThingsPitchesDeckIdEditRoute: typeof ThingsPitchesDeckIdEditRoute
   ThingsPitchesPresentRoomIdRoute: typeof ThingsPitchesPresentRoomIdRoute
   ThingsPitchesRemoteRoomIdRoute: typeof ThingsPitchesRemoteRoomIdRoute
@@ -4709,6 +4769,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsImposterRoute: ThingsImposterRoute,
   ThingsLiarsRoute: ThingsLiarsRoute,
   ThingsMafiaRoute: ThingsMafiaRoute,
+  ThingsPairsRoute: ThingsPairsRoute,
   ThingsPitchesRoute: ThingsPitchesRoute,
   ThingsSameBrainRoute: ThingsSameBrainRoute,
   ThingsSpellingBeeRoute: ThingsSpellingBeeRoute,
@@ -4726,6 +4787,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsLiarsRoomIdRoute: ThingsLiarsRoomIdRoute,
   ThingsLiarsDevRoute: ThingsLiarsDevRoute,
   ThingsLiarsPhoneRoute: ThingsLiarsPhoneRoute,
+  ThingsPairsDevRoute: ThingsPairsDevRoute,
   ThingsPitchesDeckIdRoute: ThingsPitchesDeckIdRoute,
   ThingsPitchesDemoRoute: ThingsPitchesDemoRoute,
   ThingsPitchesNewRoute: ThingsPitchesNewRoute,
@@ -4744,6 +4806,7 @@ const ThingsRouteChildren: ThingsRouteChildren = {
   ThingsFamilyFeudRoomIdPresentRoute: ThingsFamilyFeudRoomIdPresentRoute,
   ThingsHotAndColdDailyPuzzleRoute: ThingsHotAndColdDailyPuzzleRoute,
   ThingsLiarsRoomIdPresentRoute: ThingsLiarsRoomIdPresentRoute,
+  ThingsPairsRaceRoomIdRoute: ThingsPairsRaceRoomIdRoute,
   ThingsPitchesDeckIdEditRoute: ThingsPitchesDeckIdEditRoute,
   ThingsPitchesPresentRoomIdRoute: ThingsPitchesPresentRoomIdRoute,
   ThingsPitchesRemoteRoomIdRoute: ThingsPitchesRemoteRoomIdRoute,

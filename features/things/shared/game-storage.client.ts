@@ -16,6 +16,7 @@ const GAME_PREFIXES = [
   "things:same-brain:",
   "things:game-pool:",
   "things:family-feud:",
+  "things:pairs:",
   "pitch-remote:",
 ];
 
