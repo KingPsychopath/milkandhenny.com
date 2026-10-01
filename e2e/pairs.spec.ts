@@ -116,7 +116,10 @@ test("Pairs solo works on a narrow screen with keyboard play and blocked storage
   await expect(page.getByRole("button", { name: "deal me in" })).toBeVisible();
 });
 
-test("Pairs multiplayer setup names players and catches duplicate names", async ({ page }) => {
+test("Pairs multiplayer setup names players and catches duplicate names", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/things/pairs");
   await waitForAppHydration(page);
   await page.getByRole("button", { name: "with friends one device" }).click();
@@ -128,4 +131,5 @@ test("Pairs multiplayer setup names players and catches duplicate names", async 
   await page.getByRole("button", { name: "deal us in" }).click();
   await expect(page.getByRole("heading", { name: "Alex’s turn." })).toBeVisible();
   await expect(page.getByRole("button", { name: /face down/ })).toHaveCount(12);
+  await page.screenshot({ path: testInfo.outputPath("pairs-shared-table.png"), fullPage: true });
 });
