@@ -53,7 +53,8 @@ async function main() {
     await writeFile(".local-dev/auth-secret", secret, { mode: 0o600, flag: "wx" });
   }
   const portIndex = args.indexOf("--port");
-  const port = portIndex < 0 ? 3000 : Number(args[portIndex + 1]);
+  const inlinePort = args.find((arg) => arg.startsWith("--port="))?.slice(7);
+  const port = Number(portIndex < 0 ? (inlinePort ?? 3000) : args[portIndex + 1]);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid local port.");
   const env = localDevEnvironment(process.env, secret, port);
   await run(
@@ -132,7 +133,7 @@ async function main() {
   console.log(
     `\nApp: http://127.0.0.1:${port}\nInbox: http://127.0.0.1:18025\nAdmin password: local-admin-password\nUpload PIN: local-upload-pin\nData persists between starts. Stop services with pnpm dev:stop.\n`,
   );
-  await run("pnpm", ["dev:server", "--host", "127.0.0.1", ...args], env);
+  await run("pnpm", ["dev:server", "--host", "127.0.0.1", "--strictPort", ...args], env);
 }
 main().catch((error) => {
   console.error(
