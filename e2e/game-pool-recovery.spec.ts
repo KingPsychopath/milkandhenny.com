@@ -96,6 +96,8 @@ for (const game of GAME_SETTINGS_GAMES)
       const leave = guest.page
         .getByRole("button", { name: /^(leave room|← leave|leave)$/ })
         .first();
+      if (!(await leave.isVisible()))
+        await guest.page.getByRole("button", { name: "menu", exact: true }).click();
       await leave.click();
       const dialog = guest.page.getByRole("dialog", { name: /^Leave this (room|game)\?/ });
       if (game !== "hot-and-cold")
