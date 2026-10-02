@@ -153,7 +153,7 @@ function ThingsRoute() {
           things<span className="theme-faint">+</span>
         </h1>
         <p className="mt-5 max-w-lg font-serif text-lg leading-relaxed theme-muted">
-          Pick something to play or make.
+          Things are made to be used. Small tools, games and experiments.
         </p>
         <div className="mt-10 grid items-end gap-6 md:grid-cols-[minmax(0,1fr)_9rem]">
           <div className="min-w-0">
