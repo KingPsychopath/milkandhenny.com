@@ -101,7 +101,7 @@ export function LiarsSetupApp({ mode }: { mode: LiarsMode }) {
   return (
     <GameFrame tone="night">
       <GameFrameHeader className="flex items-center">
-        <Link to="/things" className="mh-action mh-action--quiet">
+        <Link to="/things" className="inline-flex min-h-11 items-center opacity-60 hover:opacity-100">
           ← things
         </Link>
       </GameFrameHeader>
