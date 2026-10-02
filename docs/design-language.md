@@ -165,8 +165,9 @@ variant.
 Games share `GameFrame`, `GameFrameHeader`, and `GameFrameFooter`. The frame owns palette,
 header spacing, safe-area padding, the menu position, and footer rhythm. Games supply the back
 action, public status, necessary live controls, optional menu controls (such as sound), and their
-own main content. The common menu always offers Things and home; explicit leave remains a
-game-owned action. Rules and settings use the native `Disclosure` / `DisclosureSummary` primitive,
+own main content. The common menu always offers Things and home; shared room headers put
+departures and sound controls in that menu, with departure behavior owned by the game. Do not repeat the site
+brand or game name in a header that already has contextual navigation. Rules and settings use the native `Disclosure` / `DisclosureSummary` primitive,
 with a consistent 44px trigger, plus/minus indicator, and keyboard focus.
 
 Keep one focal task per phone state. A private Imposter reveal makes the word or role dominant,
@@ -175,6 +176,11 @@ shortlist during the quick reveal; imposters receive it when enabled. Header and
 are hidden while a private role is visible and return when it is concealed. Lobby invites show
 the QR and room code together by default, followed by players/readiness, settings, and the one
 start action. Optional rules follow the start action rather than interrupting joining.
+
+The public account control shares the theme pull's cord and handle geometry, with a cog, a longer
+cord, and enough separation for two independent touch targets. Keep it visible and raised on
+account and sign-in pages; pulling it again returns to the source page. Its page transition respects
+reduced motion. Games keep account access in their shared menu.
 
 The site is a sequence of rooms, not a dashboard with the same navigation on
 every page. The home page presents the main destinations. Deep public pages

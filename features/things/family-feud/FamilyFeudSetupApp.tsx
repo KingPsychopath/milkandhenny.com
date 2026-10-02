@@ -131,7 +131,6 @@ export function FamilyFeudSetupApp() {
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <span>Family Feud</span>
       </GameFrameHeader>
       <main id="main" className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 pb-14">
         <div className="my-auto py-10">

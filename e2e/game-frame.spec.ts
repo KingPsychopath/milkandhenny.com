@@ -68,7 +68,37 @@ test("Imposter lobby shows its invite QR by default and keeps help after the sta
       );
     }),
   ).toBe(true);
+  await page.getByRole("button", { name: "menu", exact: true }).click();
   await page.getByRole("button", { name: "leave room", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "leave room", exact: true }).click();
   await expect(page).toHaveURL(/\/things\/imposter$/);
+});
+
+test("Mafia presenter invites players and labels readiness without a cramped header", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/things/mafia");
+  await waitForAppHydration(page);
+  await page.getByRole("button", { name: "play together", exact: true }).click();
+  const screen = await Promise.all([
+    page.waitForEvent("popup"),
+    page.getByRole("link", { name: "big screen ↗", exact: true }).click(),
+  ]).then(([popup]) => popup);
+  await screen.setViewportSize({ width: 375, height: 812 });
+  await expect(
+    screen.getByRole("heading", { name: "Get everyone in.", exact: true }),
+  ).toBeVisible();
+  await expect(screen.getByRole("img", { name: /QR code to join room/ })).toBeVisible();
+  await expect(screen.getByRole("list", { name: "Players in the room" })).toContainText(
+    "host · ready",
+  );
+  const header = screen.locator(".game-frame-header");
+  await expect(header).not.toContainText(/mafia|waiting|alive/i);
+  expect(await screen.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+    true,
+  );
+  await screen.getByRole("link", { name: "← room", exact: true }).click();
+  await expect(screen.getByRole("region", { name: "Room lobby", exact: true })).toBeVisible();
+  await screen.close();
 });

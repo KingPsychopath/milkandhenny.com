@@ -152,7 +152,6 @@ export function CentreApp({
     <GameFrame tone="theme" className="centre">
       <GameFrameHeader className="centre-header">
         <Link to="/things">← things</Link>
-        <span>centre</span>
       </GameFrameHeader>
       <main id="main" className="centre-launch">
         <GameLaunch

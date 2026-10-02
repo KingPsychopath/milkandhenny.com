@@ -114,7 +114,6 @@ export function TwinApp({
         <Link to="/things" className="twin-header-back">
           ← things
         </Link>
-        <span className="twin-header-meta">twin</span>
       </GameFrameHeader>
       <main id="main" className="twin-launch">
         <GameLaunch

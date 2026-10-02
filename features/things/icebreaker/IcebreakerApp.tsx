@@ -142,7 +142,7 @@ export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExpe
             ← things
           </Link>
         )}
-        <span>{experience?.eventLabel ?? "icebreaker"}</span>
+        {experience?.eventLabel ? <span>{experience.eventLabel}</span> : null}
       </GameFrameHeader>
 
       <main id="main" className="flex-1 flex items-center justify-center px-6 py-10">

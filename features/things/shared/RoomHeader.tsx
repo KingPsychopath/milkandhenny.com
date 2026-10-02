@@ -46,14 +46,23 @@ export function ThingsRoomHeader({
   menu?: ReactNode;
 }) {
   return (
-    <GameFrameHeader menu={menu} className={`things-room-header things-room-header--${tone}`}>
+    <GameFrameHeader
+      menu={
+        menu || right ? (
+          <>
+            {menu}
+            {right}
+          </>
+        ) : undefined
+      }
+      className={`things-room-header things-room-header--${tone}`}
+    >
       <div className="things-room-header-start">{back}</div>
       <div className="things-room-header-meta">
         <span className="things-room-header-code">{roomId}</span>
         {connection ? <RoomConnectionIndicator state={connection} label={connectionLabel} /> : null}
         {detail ? <span className="things-room-header-detail">· {detail}</span> : null}
       </div>
-      <div className="things-room-header-actions">{right}</div>
     </GameFrameHeader>
   );
 }

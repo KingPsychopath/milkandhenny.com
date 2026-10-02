@@ -5,12 +5,17 @@ import { RoomLoadingState } from "../shared/RoomLoadingState";
 
 import { readExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
-import { LIARS_MODE_COPY, LIARS_ROLES } from "./liars-rules";
+import { LIARS_ROLES } from "./liars-rules";
 import { PhaseTimer } from "./LiarsViews";
 import { LiarsVillage } from "./LiarsVillage";
 import { speakLiarsNarration } from "./narration.client";
 import { useGameSound } from "../shared/useGameSound";
 import { useLiarsRoom } from "./useLiarsRoom";
+import { AppImage } from "@/components/AppImage";
+import { useQrCode } from "@/hooks/useQrCode";
+import { buildLiarsPlayerInviteUrl } from "./liars-invite";
+import { gamePoolRoomInviteUrl } from "../pool/pool-session.client";
+import "./LiarsPresenter.css";
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: "waiting",
@@ -50,6 +55,17 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
   });
   const snapshot = live.snapshot;
   const clockOffset = live.clockOffset;
+  const inviteUrl =
+    typeof window === "undefined" || !snapshot
+      ? null
+      : snapshot.managed
+        ? gamePoolRoomInviteUrl("liars", roomId)
+        : buildLiarsPlayerInviteUrl(
+            window.location.origin,
+            roomId,
+            readExpiringLocalValue<string>(liarsBrowserKeys.invite(roomId)) ?? undefined,
+          );
+  const { dataUrl: qr } = useQrCode(inviteUrl, 320);
   const message = hostToken ? live.message : "Open this from the device that created the room.";
 
   // The presenter is the narrator whenever it is attached, so phones stay quiet in a shared room.
@@ -69,25 +85,44 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
 
   return (
     <GameFrame tone="night">
-      <div className="flex min-h-0 flex-1 flex-col px-[4vw] py-[3vh] text-white">
-        <GameFrameHeader className="flex items-baseline justify-between font-mono text-[1.6vh] uppercase tracking-[0.2em] text-white/40">
-          <Link to="/things" className="mh-action mh-action--quiet">
-            ← all games
+      <div className="liars-presenter">
+        <GameFrameHeader
+          className="liars-presenter-header"
+          menu={
+            <button type="button" onClick={sound.cycle} title={sound.description}>
+              {sound.label}
+            </button>
+          }
+        >
+          <Link to="/things/liars/$roomId" params={{ roomId }} className="liars-presenter-back">
+            ← room
           </Link>
-          <span>
-            {LIARS_MODE_COPY[snapshot.mode].name} · {snapshot.roomId}
-          </span>
-          <span>
-            {PHASE_LABEL[snapshot.phase]}
-            {snapshot.round > 0 ? ` · ${snapshot.round}` : ""}
-          </span>
-          <span>
-            {alive.length} alive · {gone.length} gone
-          </span>
+          <span className="liars-presenter-room-code">{snapshot.roomId}</span>
         </GameFrameHeader>
 
-        <main id="main" className="flex flex-1 flex-col justify-center">
-          {ending ? (
+        <main id="main" className="liars-presenter-main">
+          {snapshot.phase === "lobby" ? (
+            <section className="liars-presenter-invite" aria-label="Join this room">
+              <p className="liars-presenter-eyebrow">scan to join</p>
+              <h1>Get everyone in.</h1>
+              <p className="liars-presenter-description">
+                Join on your phone. The host starts when everyone is ready.
+              </p>
+              <div className="liars-presenter-join">
+                {qr ? (
+                  <AppImage
+                    src={qr}
+                    alt={`QR code to join room ${roomId}`}
+                    className="liars-presenter-qr"
+                  />
+                ) : null}
+                <div>
+                  <p className="liars-presenter-eyebrow">room code</p>
+                  <p className="liars-presenter-code">{roomId}</p>
+                </div>
+              </div>
+            </section>
+          ) : ending ? (
             <>
               <h1 className="font-serif text-[9vh] font-semibold leading-[1]">{ending.headline}</h1>
               {ending.word ? (
@@ -162,15 +197,13 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
               <h1 className="font-serif text-[10vh] font-semibold leading-[1]">
                 {PHASE_LABEL[snapshot.phase]}
               </h1>
-              {snapshot.phase !== "lobby" ? (
-                <div className="mt-[2vh] text-[3vh]">
-                  <PhaseTimer
-                    endsAt={snapshot.phaseEndsAt}
-                    clockOffset={clockOffset}
-                    label={snapshot.phase === "night" ? "night ends in" : "ends in"}
-                  />
-                </div>
-              ) : null}
+              <div className="mt-[2vh] text-[3vh]">
+                <PhaseTimer
+                  endsAt={snapshot.phaseEndsAt}
+                  clockOffset={clockOffset}
+                  label={snapshot.phase === "night" ? "night ends in" : "ends in"}
+                />
+              </div>
               {snapshot.phase === "night" ? (
                 <>
                   <div className="mx-auto mt-[3vh] w-full max-w-[70vw]">
@@ -191,25 +224,30 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
         </main>
 
         {!ending ? (
-          <GameFrameFooter className="border-t border-white/10 pt-[2vh]">
-            <ul className="flex flex-wrap gap-x-[3vw] gap-y-[1vh] font-serif text-[2.6vh]">
+          <GameFrameFooter className="liars-presenter-players">
+            <p className="liars-presenter-eyebrow">
+              {snapshot.phase === "lobby"
+                ? `players · ${snapshot.players.length}`
+                : `${alive.length} in · ${gone.length} out`}
+            </p>
+            <ul aria-label="Players in the room" className="liars-presenter-roster">
               {snapshot.players.map((player) => (
-                <li
-                  key={player.id}
-                  className={`flex items-baseline gap-2 ${player.alive ? "" : "opacity-35"}`}
-                >
-                  <span className={player.alive ? "" : "line-through decoration-white/40"}>
-                    {player.name}
+                <li key={player.id} className={player.alive ? "" : "liars-presenter-player-out"}>
+                  <span className="liars-presenter-player-name">{player.name}</span>
+                  <span className="liars-presenter-player-status">
+                    {player.host ? "host · " : ""}
+                    {snapshot.phase === "lobby"
+                      ? player.ready
+                        ? "ready"
+                        : "not ready"
+                      : player.left
+                        ? "left"
+                        : player.alive
+                          ? "in"
+                          : "out"}
+                    {player.votes ? ` · ${player.votes} votes` : ""}
+                    {player.marks.includes("moved") ? " · moved" : ""}
                   </span>
-                  {player.votes ? (
-                    <span className="font-mono text-[1.6vh] text-white/55">{player.votes}</span>
-                  ) : null}
-                  {player.marks.includes("moved") ? (
-                    <span className="font-mono text-[1.6vh] text-[var(--things-amber)]">→</span>
-                  ) : null}
-                  {!player.alive ? (
-                    <span className="font-mono text-[1.6vh] text-[var(--liars-dead)]">✕</span>
-                  ) : null}
                 </li>
               ))}
             </ul>

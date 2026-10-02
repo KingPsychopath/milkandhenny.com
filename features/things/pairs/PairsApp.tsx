@@ -170,9 +170,6 @@ export function PairsApp({
     <GameFrame className="pairs-app">
       <GameFrameHeader className="pairs-header">
         <Link to="/things">← things</Link>
-        <span>
-          milk & henny <span className="pairs-header-divider">/</span> pairs
-        </span>
       </GameFrameHeader>
       <main id="main" className={`pairs-main ${table ? "pairs-main--playing" : ""}`}>
         <div className="pairs-intro">

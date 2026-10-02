@@ -276,7 +276,7 @@ export function LiarsRoom({
           connection={room.connectionState}
           detail={
             snapshot.phase === "lobby"
-              ? LIARS_MODE_COPY[snapshot.mode].name
+              ? undefined
               : `${snapshot.livingCount} alive · ${snapshot.players.length - snapshot.livingCount} gone`
           }
           menu={

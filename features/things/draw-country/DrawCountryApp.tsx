@@ -185,7 +185,6 @@ export function DrawCountryApp({
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <span>draw the country</span>
       </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-16 pt-3 sm:pt-8">
         <GameLaunch
