@@ -22,6 +22,30 @@ test("recovers an event draft across workspaces, browser Back, and refresh on a 
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await unlock(page);
+  // Root hydration does not mean a lazy, server-rendered workspace has its handlers yet.
+  let releaseEditor!: () => void;
+  let editorRequested!: () => void;
+  const editorGate = new Promise<void>((resolve) => {
+    releaseEditor = resolve;
+  });
+  const editorRequest = new Promise<void>((resolve) => {
+    editorRequested = resolve;
+  });
+  await page.route("**/features/admin/ui/components/EventsPanel.tsx*", async (route) => {
+    editorRequested();
+    await editorGate;
+    await route.continue();
+  });
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await editorRequest;
+    await expect(
+      page.locator("#events-manager button:not([disabled])").filter({ hasText: "+ new event" }),
+    ).toHaveCount(0);
+  } finally {
+    releaseEditor();
+    await page.unrouteAll({ behavior: "wait" });
+  }
   await page.getByRole("button", { name: "+ new event", exact: true }).click();
   await page.getByLabel("title (required)", { exact: true }).fill("Unfinished event draft");
   const switcher = page.getByRole("button", { name: "Admin work area", exact: true });

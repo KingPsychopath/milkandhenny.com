@@ -126,7 +126,7 @@ export function EventsPanel({
   useEffect(() => {
     if (editorError) editorErrorRef.current?.focus();
   }, [editorError]);
-  const [editor, setEditor] = useAdminDraftState<{
+  const [editor, setEditor, , editorHydrated] = useAdminDraftState<{
     selection: EventsWorkspaceSelection;
     draft: Draft | null;
   }>(
@@ -271,8 +271,10 @@ export function EventsPanel({
     }
   };
 
+  // Restore the tab's draft before a URL/default selection can replace it.
   useEffect(() => {
     if (
+      !editorHydrated ||
       draft !== null ||
       !initialEventSlug ||
       openedTarget.current === initialEventSlug ||
@@ -283,10 +285,11 @@ export function EventsPanel({
     openedTarget.current = initialEventSlug;
     setSelection({ kind: "operations", slug: initialEventSlug });
     setDraft(null);
-  }, [draft, events, initialEventSlug, setDraft, setSelection]);
+  }, [draft, editorHydrated, events, initialEventSlug, setDraft, setSelection]);
 
   useEffect(() => {
     if (
+      !editorHydrated ||
       draft !== null ||
       initialEventSlug ||
       appliedDefaultSelection.current ||
@@ -301,7 +304,7 @@ export function EventsPanel({
     if (!preferred) return;
     setSelection({ kind: "operations", slug: preferred.slug });
     setDraft(null);
-  }, [draft, events, initialEventSlug, loadError, loading, setDraft, setSelection]);
+  }, [draft, editorHydrated, events, initialEventSlug, loadError, loading, setDraft, setSelection]);
 
   const save = async () => {
     if (!draft) return;
@@ -457,12 +460,13 @@ export function EventsPanel({
           {permissions.manageEvents ? (
             <button
               type="button"
+              disabled={!editorHydrated}
               onClick={async () => {
                 if (!(await canReplaceDraft())) return;
                 setSelection({ kind: "create" });
                 setDraft(EMPTY_DRAFT);
               }}
-              className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
+              className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors disabled:opacity-50"
             >
               + new event
             </button>
