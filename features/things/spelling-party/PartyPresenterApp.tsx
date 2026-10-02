@@ -1,4 +1,7 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
+import { exitRoom } from "../shared/room-exit.client";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
@@ -68,7 +71,7 @@ function roomTokens(roomId: string) {
 }
 
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
   const [tokensReadyForRoom, setTokensReadyForRoom] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -235,12 +238,14 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     }
     setEndConfirmationOpen(false);
     setClosing(true);
-    await closePartyRoomFn({ data: { roomId, presenterToken: tokens.presenterToken } }).catch(
-      () => null,
+    await exitRoom(
+      () => closePartyRoomFn({ data: { roomId, presenterToken: tokens.presenterToken } }),
+      () => {
+        removeStorageKeys(sessionStorage, [partyBrowserKeys.presenterSession(roomId)]);
+        removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
+        void navigate({ to: "/things/spelling-party", replace: true });
+      },
     );
-    sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
-    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
-    await navigate({ to: "/things/spelling-party" });
   };
   const players = snapshot?.players ?? [];
   const leaderboard = useMemo(
@@ -278,7 +283,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     <div className="things-game things-game--night text-white">
       <ThingsRoomHeader
         tone="night"
-        back={<span className="things-room-header-utility">spelling party</span>}
+        back={<Link to="/things/spelling-party">← spelling party</Link>}
         roomId={roomId}
         connection={live.connectionState}
         right={
@@ -530,6 +535,7 @@ function PartyScreenMessage({ title, detail }: { title: string; detail: string }
       <div>
         <h1 className="font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+        <GameNavigationLinks gamePath="/things/spelling-party" />
       </div>
     </main>
   );

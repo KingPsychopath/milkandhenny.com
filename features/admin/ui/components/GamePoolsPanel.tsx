@@ -829,16 +829,7 @@ export function GamePoolsPanel({
                           />
                           use as this game’s public default
                         </label>
-                        <PoolCheck
-                          label="automatically continue repeat scans"
-                          checked={draft.autoJoin}
-                          onChange={(autoJoin) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [entrance.id]: { ...draft, autoJoin },
-                            }))
-                          }
-                        />
+
                         <PoolCheck
                           label="let players choose a room"
                           checked={draft.allowRoomChoice}

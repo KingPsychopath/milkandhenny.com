@@ -8,12 +8,12 @@ describe("things catalogue", () => {
     expect(THINGS.find((thing) => thing.slug === "mafia")).toMatchObject({
       name: "mafia",
       href: "/things/mafia",
-      eyebrow: "social deduction · 5–16 people",
+      eyebrow: "5–16 players",
     });
     expect(THINGS.find((thing) => thing.slug === "imposter")).toMatchObject({
       name: "imposter",
       href: "/things/imposter",
-      eyebrow: "social deduction · 4–16 people",
+      eyebrow: "4–16 players",
     });
     expect(THINGS.some((thing) => (thing.slug as string) === "liars")).toBe(false);
   });

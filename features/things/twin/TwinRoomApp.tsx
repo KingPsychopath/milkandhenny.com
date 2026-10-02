@@ -1,10 +1,14 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
+
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import {
+  removeStorageKeys,
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
   writeExpiringLocalValue,
@@ -25,17 +29,13 @@ import type { TwinHeartbeatTiming } from "./twin-rules";
 import { useTwinPalette } from "./useTwinPalette";
 import { useTwinRoom } from "./useTwinRoom";
 import type { TwinAction, TwinPlayerCredentials } from "./types";
-import {
-  clearUnavailableGamePoolMembership,
-  leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
-} from "../pool/pool-session.client";
+import { clearUnavailableGamePoolMembership, leaveGamePoolRoom } from "../pool/pool-session.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function TwinRoomApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [credentials, setCredentials] = useState<TwinPlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -48,21 +48,21 @@ export function TwinRoomApp({ roomId }: { roomId: string }) {
     setLoaded(true);
   }, [roomId]);
 
-  if (!loaded) return <div className="things-game things-game--night twin" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState gamePath="/things/twin" />;
   if (!credentials) return <JoinTwinRoom roomId={roomId} onJoined={setCredentials} />;
   return (
     <TwinRoom
       roomId={roomId}
       credentials={credentials}
       onUnavailable={() => {
-        localStorage.removeItem(twinBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [twinBrowserKeys.playerSession(roomId)]);
         void clearUnavailableGamePoolMembership("twin", roomId);
       }}
       onLeft={() => {
-        localStorage.removeItem(twinBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [twinBrowserKeys.playerSession(roomId)]);
         void leaveGamePoolRoom("twin", roomId).then((entrance) => {
-          if (entrance) window.location.assign(entrance);
-          else void navigate({ to: "/things/twin" });
+          if (entrance && navigator.onLine) void navigate({ to: entrance, replace: true });
+          else void navigate({ to: navigator.onLine ? "/things/twin" : "/things", replace: true });
         });
       }}
     />
@@ -102,11 +102,6 @@ export function TwinRoom({
     onUnavailable,
   });
   useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "twin",
-    roomId,
-  });
   const haptics = useWebHaptics();
   const palette = useTwinPalette();
   // Two states, not three: twin has nothing that reads aloud, so "no voice" would be a dead option.
@@ -226,16 +221,10 @@ export function TwinRoom({
   };
 
   const leaveRoom = async () => {
-    const result = await send({ type: "player.leave" }, true);
-    if (result?.ok && result.accepted) {
-      onLeft?.();
-      return true;
-    }
-    if (result && !result.ok && result.errorCode === "room_unavailable") {
-      onLeft?.();
-      return true;
-    }
-    return false;
+    return exitRoom(
+      () => send({ type: "player.leave" }, true),
+      () => onLeft?.(),
+    );
   };
 
   if (roomUnavailable)
@@ -245,7 +234,7 @@ export function TwinRoom({
       </div>
     );
 
-  if (!snapshot) return <div className="things-game things-game--night twin" aria-busy="true" />;
+  if (!snapshot) return <RoomLoadingState gamePath="/things/twin" />;
 
   if (snapshot.phase === "lobby")
     return (

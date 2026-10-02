@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 import { GameShell } from "../shared/GameShell";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { liarsImposterBlurb, liarsImposterRange } from "./liars-rules";
@@ -27,6 +28,11 @@ export function LiarsPassPhoneApp() {
   const [seats, setSeats] = useState<LiarsPassPhoneSeat[]>([]);
   const [index, setIndex] = useState(0);
   const [stage, setStage] = useState<Stage>("setup");
+  useGameScreenHistory({
+    active: stage !== "setup",
+    screen: "imposter-pass-phone",
+    onBack: () => setStage("setup"),
+  });
 
   useWakeLock(stage !== "setup");
   const range = liarsImposterRange(players);
@@ -47,8 +53,8 @@ export function LiarsPassPhoneApp() {
         <Eyebrow>imposter · one phone</Eyebrow>
         <Headline>Pass it round</Headline>
         <p className="mt-4 font-serif text-lg text-white/65">{liarsImposterBlurb(imposterCount)}</p>
-        <p className="mt-2 font-mono text-xs text-white/40">
-          nobody needs an app, a code or a signal — just this phone and a circle
+        <p className="mt-2 font-mono text-xs text-white/55">
+          Hold to read your role. Let go to hide it and pass to the next person.
         </p>
 
         <div className="mt-8">
@@ -239,7 +245,40 @@ function HoldToSee({
 }) {
   const [held, setHeld] = useState(false);
   const cardDetailsId = useId();
-  const [seen, setSeen] = useState(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roleVisible = useRef(false);
+  const cancel = useCallback(() => {
+    if (revealTimer.current !== null) clearTimeout(revealTimer.current);
+    revealTimer.current = null;
+    roleVisible.current = false;
+    setHeld(false);
+  }, []);
+  useEffect(() => {
+    const hideWhenAway = () => {
+      if (document.visibilityState !== "visible") cancel();
+    };
+    document.addEventListener("visibilitychange", hideWhenAway);
+    window.addEventListener("blur", cancel);
+    return () => {
+      document.removeEventListener("visibilitychange", hideWhenAway);
+      window.removeEventListener("blur", cancel);
+      if (revealTimer.current !== null) clearTimeout(revealTimer.current);
+    };
+  }, [cancel]);
+  const reveal = () => {
+    if (revealTimer.current !== null || roleVisible.current) return;
+    // A quick tap must not flash a role that could then be passed to the wrong person.
+    revealTimer.current = setTimeout(() => {
+      revealTimer.current = null;
+      roleVisible.current = true;
+      setHeld(true);
+    }, 600);
+  };
+  const release = () => {
+    const hasRead = roleVisible.current;
+    cancel();
+    if (hasRead) onDone();
+  };
 
   return (
     <>
@@ -252,24 +291,27 @@ function HoldToSee({
         onKeyDown={(event) => {
           if (event.key !== " " && event.key !== "Enter") return;
           event.preventDefault();
-          setHeld(true);
-          setSeen(true);
+          if (!event.repeat) reveal();
         }}
         onKeyUp={(event) => {
           if (event.key === " " || event.key === "Enter") {
             event.preventDefault();
-            setHeld(false);
+            release();
           }
         }}
-        onBlur={() => setHeld(false)}
-        onPointerCancel={() => setHeld(false)}
-        onPointerDown={() => {
-          setHeld(true);
-          setSeen(true);
+        onBlur={cancel}
+        onPointerCancel={cancel}
+        onLostPointerCapture={cancel}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          reveal();
         }}
-        onPointerUp={() => setHeld(false)}
-        onPointerLeave={() => setHeld(false)}
-        className="mt-8 min-h-56 select-none border-y border-white/15 py-12 text-center"
+        onPointerUp={(event) => {
+          if (event.isPrimary && event.button === 0) release();
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+        className="mt-8 min-h-56 touch-none select-none border-y border-white/15 py-12 text-center"
       >
         <div id={cardDetailsId} aria-live="polite">
           {held ? (
@@ -319,11 +361,9 @@ function HoldToSee({
           )}
         </div>
       </div>
-      <div className="mt-6">
-        <ActionButton disabled={!seen} onClick={onDone}>
-          {seen ? "got it — pass it on" : "hold the card first"}
-        </ActionButton>
-      </div>
+      <p className="mt-6 font-mono text-xs text-white/55">
+        Hold to read. Let go to hide your role and pass the phone.
+      </p>
     </>
   );
 }

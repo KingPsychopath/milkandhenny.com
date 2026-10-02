@@ -1,10 +1,11 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { createPresentationRoomFn } from "../presentation.functions";
 
 export function PresentationSetup({ authorised }: { authorised: boolean }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [title, setTitle] = useState("The Pitch Night");
   const [creating, setCreating] = useState(false);
   const [hydrated, setHydrated] = useState(false);

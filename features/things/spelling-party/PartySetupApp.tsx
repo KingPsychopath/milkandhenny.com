@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { createPartyRoomFn, joinPartyRoomFn } from "./party-room.functions";
 import type { PartyDeckSummary } from "./types";
@@ -25,7 +26,7 @@ import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const { customDecks, saveDeck, deleteDeck } = useCustomSpellingDecks();
   const [deckId, setDeckId] = useState(decks[0]?.id ?? "");
   const { preferences, set } = useGamePreferences("spelling-party", {

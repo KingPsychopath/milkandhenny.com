@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { GameNavigationLinks } from "../../shared/GameNavigationLinks";
 
 import { useRememberedPlayerName } from "@/features/things/shared/useRememberedPlayerName";
 import { BrowserProfileHint } from "@/components/BrowserProfileHint";
@@ -138,6 +139,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           </button>
         </form>
         {message ? <p className="mt-4 font-mono text-xs theme-muted">{message}</p> : null}
+        <GameNavigationLinks gamePath="/things/pitches" />
         <ReportIssueButton
           type="pitch_issue"
           payload={{
@@ -163,6 +165,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
           <p className="mt-4 font-mono text-sm theme-muted">
             Keep this open. The controls appear when the host approves you.
           </p>
+          <GameNavigationLinks gamePath="/things/pitches" />
           <ReportIssueButton
             type="pitch_issue"
             payload={{
@@ -183,6 +186,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
       <main id="main" className="flex min-h-screen items-center justify-center px-6 text-center">
         <div>
           <h1 className="font-serif text-4xl text-foreground">The host kept the remote.</h1>
+          <GameNavigationLinks gamePath="/things/pitches" />
           <ReportIssueButton
             type="pitch_issue"
             payload={{ surface: "remote_revoked", roomId, operation: "poll", status: "revoked" }}
@@ -195,6 +199,7 @@ export function PresentationRemote({ roomId }: { roomId: string }) {
 
   return (
     <main id="main" className="mx-auto min-h-screen max-w-lg px-6 py-10">
+      <GameNavigationLinks gamePath="/things/pitches" />
       <p className="font-mono text-micro uppercase tracking-[0.16em] theme-muted">
         you have the room · {roomId}
       </p>

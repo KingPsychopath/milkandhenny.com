@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useState } from "react";
 import { EndGameDialog } from "../shared/EndGameDialog";
 
@@ -19,7 +19,7 @@ export function PairedGamePlayerReady({
   onFullscreen?: () => void;
   onLeave: () => Promise<void>;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [leaveConfirmationOpen, setLeaveConfirmationOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const handleLeave = async () => {

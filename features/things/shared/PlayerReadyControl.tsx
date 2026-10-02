@@ -1,34 +1,44 @@
 interface PlayerReadyControlProps {
   ready: boolean;
   onChange: (ready: boolean) => void;
-  tone?: "light" | "dark";
+  tone?: "light" | "dark" | "theme";
 }
 
 export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerReadyControlProps) {
   const light = tone === "light";
-  const surface = light
-    ? "border-black/15 bg-white/30 text-black"
-    : "border-white/15 bg-white/[0.05] text-white";
-  const muted = light ? "text-black/50" : "text-white/50";
-  const icon = ready
-    ? light
-      ? "border-black bg-black text-white"
-      : "border-[var(--things-amber)] bg-[var(--things-amber)] text-black"
+  const theme = tone === "theme";
+  const surface = theme
+    ? "theme-border text-[var(--foreground)]"
     : light
-      ? "border-black/25 text-black/35"
-      : "border-white/25 text-white/40";
-  const action = ready
-    ? light
-      ? "text-black/55"
-      : "text-white/55"
-    : light
-      ? "border-black bg-black text-white"
-      : "border-[var(--things-amber)] bg-[var(--things-amber)] text-black";
+      ? "border-black/15 bg-white/30 text-black"
+      : "border-white/15 bg-white/[0.05] text-white";
+  const icon = theme
+    ? ready
+      ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+      : "theme-border theme-muted"
+    : ready
+      ? light
+        ? "border-black bg-black text-white"
+        : "border-[var(--things-amber)] bg-[var(--things-amber)] text-black"
+      : light
+        ? "border-black/25 text-black/35"
+        : "border-white/25 text-white/40";
+  const action = theme
+    ? ready
+      ? "theme-muted"
+      : "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+    : ready
+      ? light
+        ? "text-black/55"
+        : "text-white/55"
+      : light
+        ? "border-black bg-black text-white"
+        : "border-[var(--things-amber)] bg-[var(--things-amber)] text-black";
 
   return (
     <section
       aria-label="Your ready status"
-      className={`mt-5 w-full rounded-3xl border p-4 text-left ${surface}`}
+      className={`mt-5 flex w-full items-center justify-between gap-3 border-b py-3 text-left ${surface}`}
     >
       <div className="flex items-center gap-3" aria-live="polite" aria-atomic="true">
         <span
@@ -47,11 +57,6 @@ export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerRea
           <strong className="block font-mono text-sm">
             {ready ? "You’re ready" : "You’re not ready"}
           </strong>
-          <span className={`mt-0.5 block font-mono text-xs leading-relaxed ${muted}`}>
-            {ready
-              ? "You’re all set — wait for the host to start."
-              : "Tap “I’m ready” when you’re back."}
-          </span>
         </span>
       </div>
       <button
@@ -59,11 +64,11 @@ export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerRea
         onClick={() => onChange(!ready)}
         className={
           ready
-            ? `ml-11 mt-1 min-h-11 px-2 font-mono text-xs ${action}`
-            : `mt-4 min-h-11 w-full rounded-full border px-5 font-mono text-xs font-semibold ${action}`
+            ? `min-h-11 shrink-0 px-2 font-mono text-xs ${action}`
+            : `min-h-11 shrink-0 rounded-full border px-5 font-mono text-xs font-semibold ${action}`
         }
       >
-        {ready ? "step away for now" : "I’m ready"}
+        {ready ? "not ready" : "I’m ready"}
       </button>
     </section>
   );

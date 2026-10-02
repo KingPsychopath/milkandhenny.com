@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -19,7 +20,7 @@ import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function FamilyFeudSetupApp() {
   useSafeGameNavigation(true);
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const custom = useFamilyFeudCustomDecks();
   const [vibeId, setVibeId] = useState<FamilyFeudVibeId>("london-link-up");
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([

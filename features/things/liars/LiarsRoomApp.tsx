@@ -1,3 +1,6 @@
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
@@ -16,7 +19,6 @@ import {
   clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
   leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
@@ -74,7 +76,7 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
     setLoaded(true);
   }, [roomId]);
 
-  if (!loaded) return <div className="things-game things-game--night" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState />;
 
   if (!credentials)
     return (
@@ -119,6 +121,7 @@ export function LiarsRoom({
   credentials: LiarsPlayerCredentials;
   onUnavailable?: () => void;
 }) {
+  const navigate = useGameNavigate();
   const { roomId, playerId, playerToken } = credentials;
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useLiarsRoom({
@@ -144,11 +147,6 @@ export function LiarsRoom({
       roomExpiry,
     );
   }, [credentials, roomExpiry, roomId]);
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "liars",
-    roomId,
-  });
   const isNarrator = snapshot?.narratorPlayerId === playerId;
   const notes = useLiarsNotes(roomId, playerId, snapshot?.gameNumber ?? 1);
   const { overlay } = useLiarsEffects({
@@ -190,6 +188,23 @@ export function LiarsRoom({
   const busyRef = useRef(false);
   const send = useCallback(
     async (action: Record<string, unknown>) => {
+      if (action.type === "room.leave") {
+        await exitRoom(
+          () => dispatchPlayerAction(action),
+          () => {
+            forgetLiarsRoomRecovery(roomId);
+            void leaveGamePoolRoom("liars", roomId).then((entrance) => {
+              void navigate({
+                to: navigator.onLine
+                  ? (entrance ?? liarsSetupPath(snapshot?.mode ?? "mafia"))
+                  : "/things",
+                replace: true,
+              });
+            });
+          },
+        );
+        return;
+      }
       if (busyRef.current) return;
       busyRef.current = true;
       primeLiarsAudio();
@@ -204,23 +219,13 @@ export function LiarsRoom({
           action.type !== "room.leave"
         )
           markUnavailable();
-        if (
-          action.type === "room.leave" &&
-          (result.accepted ||
-            (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
-        ) {
-          forgetLiarsRoomRecovery(roomId);
-          const entrance = await leaveGamePoolRoom("liars", roomId);
-          window.location.assign(entrance ?? liarsSetupPath(snapshot?.mode ?? "mafia"));
-          return;
-        }
       } catch {
         room.setMessage("That did not go through. Try again.");
       } finally {
         busyRef.current = false;
       }
     },
-    [dispatchPlayerAction, markUnavailable, room, roomId, snapshot?.mode],
+    [dispatchPlayerAction, markUnavailable, navigate, room, roomId, snapshot?.mode],
   );
 
   const sendHost = useCallback(
@@ -248,7 +253,7 @@ export function LiarsRoom({
   if (!snapshot)
     return (
       <GameShell tone="night">
-        <p className="m-auto font-mono text-xs text-white/50">{room.message ?? "joining…"}</p>
+        <RoomLoadingState message={room.message ?? "Connecting…"} />
       </GameShell>
     );
 

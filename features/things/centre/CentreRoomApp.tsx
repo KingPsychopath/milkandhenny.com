@@ -1,4 +1,7 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -6,6 +9,7 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import {
+  removeStorageKeys,
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
   writeExpiringLocalValue,
@@ -36,7 +40,6 @@ import {
   clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
   leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { CentreReportButton } from "./CentreReportButton";
@@ -46,7 +49,7 @@ import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
 export function CentreRoomApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [credentials, setCredentials] = useState<CentrePlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
@@ -57,21 +60,22 @@ export function CentreRoomApp({ roomId }: { roomId: string }) {
     captureCentreInvite(roomId);
     setLoaded(true);
   }, [roomId]);
-  if (!loaded) return <div className="things-game things-game--night centre" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState gamePath="/things/centre" />;
   if (!credentials) return <JoinCentreRoom roomId={roomId} onJoined={setCredentials} />;
   return (
     <CentreRoom
       roomId={roomId}
       credentials={credentials}
       onUnavailable={() => {
-        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [centreBrowserKeys.playerSession(roomId)]);
         void clearUnavailableGamePoolMembership("centre", roomId);
       }}
       onLeft={() => {
-        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [centreBrowserKeys.playerSession(roomId)]);
         void leaveGamePoolRoom("centre", roomId).then((entrance) => {
-          if (entrance) window.location.assign(entrance);
-          else void navigate({ to: "/things/centre" });
+          if (entrance && navigator.onLine) void navigate({ to: entrance, replace: true });
+          else
+            void navigate({ to: navigator.onLine ? "/things/centre" : "/things", replace: true });
         });
       }}
     />
@@ -100,11 +104,6 @@ export function CentreRoom({
     roomKey: roomId,
     unavailable: live.ended || snapshot?.phase === "closed",
     onUnavailable,
-  });
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "centre",
-    roomId,
   });
   const haptics = useWebHaptics();
   const sound = useGameSound(gameBrowserKey("centre", 1, "sound"), ["all", "off"]);
@@ -212,16 +211,7 @@ export function CentreRoom({
   );
 
   const leaveRoom = useCallback(async () => {
-    const result = await send({ type: "player.leave" }, true);
-    if (result?.ok && result.accepted) {
-      onLeft();
-      return true;
-    }
-    if (result && !result.ok && result.errorCode === "room_unavailable") {
-      onLeft();
-      return true;
-    }
-    return false;
+    return exitRoom(() => send({ type: "player.leave" }, true), onLeft);
   }, [onLeft, send]);
 
   useEffect(() => {
@@ -372,7 +362,7 @@ export function CentreRoom({
       </div>
     );
 
-  if (!snapshot) return <div className="things-game things-game--night centre" aria-busy="true" />;
+  if (!snapshot) return <RoomLoadingState gamePath="/things/centre" />;
 
   if (snapshot.phase === "lobby") {
     const token = sessionStorage.getItem(centreBrowserKeys.invite(roomId));
@@ -475,7 +465,7 @@ export function CentreRoom({
     );
 
   if (!maze || me?.entranceIndex === null || me?.entranceIndex === undefined)
-    return <div className="things-game things-game--night centre" aria-busy="true" />;
+    return <RoomLoadingState gamePath="/things/centre" message="Opening the maze…" />;
 
   const localStartsAt = course?.startsAt ? course.startsAt - live.clockOffset : null;
   const ownDone = me.elapsedMs !== null || me.retired;

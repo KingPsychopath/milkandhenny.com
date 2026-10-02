@@ -187,7 +187,11 @@ export function PairsApp({
           </h1>
           <p className="pairs-description" role={game ? "status" : undefined} aria-live="polite">
             {!game
-              ? "Two cards. One pair. Remember what you saw, and watch the table fall away."
+              ? raceMode
+                ? "Flip two cards to find a matching rank. Clear your board first to win the round. Win two rounds to take the match."
+                : friends
+                  ? "Take turns finding matching ranks. Find a pair and go again. Collect the most pairs to win."
+                  : "Flip two cards to find a matching rank. Remember each reveal and clear every pair in as few tries as you can."
               : game.phase === "finished"
                 ? solo
                   ? `${game.cards.length / 2} pairs in ${game.tries} tries. ${game.tries === game.cards.length / 2 ? "Perfect memory." : "There’s always another shuffle."}`
@@ -208,7 +212,6 @@ export function PairsApp({
           <div className="pairs-launch-layout">
             <div className="pairs-preview">
               <PairsBoard game={PREVIEW} preview />
-              <p>same rank. different suits. a perfect pair.</p>
             </div>
             <div className="pairs-setup">
               <form
@@ -340,7 +343,6 @@ export function PairsApp({
                     resume {saved.game.phase === "finished" ? "last result" : "saved table"}
                   </button>
                 ) : null}
-                <p className="pairs-small">no account. no timer. just one more pair.</p>
               </form>
               {raceMode ? <PairsRaceLaunch pairCount={pairCount} /> : null}
             </div>

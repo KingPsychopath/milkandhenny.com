@@ -1,5 +1,8 @@
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
+import { exitRoom } from "../shared/room-exit.client";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -125,7 +128,7 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
   return (
     <main
       id="main"
-      className="things-game things-game--night flex items-center justify-center px-6 text-white"
+      className="things-game things-game--night flex items-center justify-center gap-6 px-6 text-white"
     >
       {nameLoaded && name && !editingName ? (
         <div className="w-full max-w-sm text-center">
@@ -188,12 +191,13 @@ export function PartyPlayerApp({ roomId }: { roomId: string }) {
           </p>
         </form>
       )}
+      <GameNavigationLinks gamePath="/things/spelling-party" />
     </main>
   );
 }
 
 function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const isHost = Boolean(credentials.presenterToken);
   const live = usePartyLiveSnapshot({
     roomId: credentials.roomId,
@@ -705,22 +709,21 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
 
   const handleLeave = async () => {
     setLeaving(true);
-    if (isHost && credentials.presenterToken) {
-      await closePartyRoomFn({
-        data: { roomId: credentials.roomId, presenterToken: credentials.presenterToken },
-      }).catch(() => null);
-    } else {
-      const accepted = await send({ actionId: crypto.randomUUID(), type: "room.leave" });
-      if (!accepted) {
-        setLeaving(false);
-        return;
-      }
-    }
-    sessionStorage.removeItem(partyBrowserKeys.invite(credentials.roomId));
-    removeStorageKeys(localStorage, [playerKey(credentials.roomId), queueKey]);
-    removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
-    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(credentials.roomId)]);
-    await navigate({ to: "/things/spelling-party" });
+    await exitRoom(
+      () =>
+        isHost && credentials.presenterToken
+          ? closePartyRoomFn({
+              data: { roomId: credentials.roomId, presenterToken: credentials.presenterToken },
+            })
+          : send({ actionId: crypto.randomUUID(), type: "room.leave" }),
+      () => {
+        removeStorageKeys(sessionStorage, [partyBrowserKeys.invite(credentials.roomId)]);
+        removeStorageKeys(localStorage, [playerKey(credentials.roomId), queueKey]);
+        removeStoragePrefix(localStorage, partyBrowserKeys.draftPrefix(credentials.roomId));
+        removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(credentials.roomId)]);
+        void navigate({ to: "/things/spelling-party", replace: true });
+      },
+    );
   };
 
   const leaderboard = useMemo(
@@ -743,7 +746,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
     <div className="things-game things-game--night text-white">
       <ThingsRoomHeader
         tone="night"
-        back={<span className="things-room-header-utility">spelling party</span>}
+        back={<Link to="/things/spelling-party">← spelling party</Link>}
         roomId={credentials.roomId}
         connection={live.connectionState}
         connectionLabel={connectionLabel}
@@ -1224,6 +1227,7 @@ function PlayerMessage({ title, detail }: { title: string; detail: string }) {
       <div>
         <h1 className="font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+        <GameNavigationLinks gamePath="/things/spelling-party" />
       </div>
     </main>
   );

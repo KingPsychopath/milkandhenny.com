@@ -1,3 +1,4 @@
+import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -155,7 +156,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
     removeStorageKeys(localStorage, [familyFeudBrowserKeys.presenterRecovery(roomId)]);
   }, [live.ended, roomId]);
 
-  if (!ready) return <div className="things-game things-game--night" aria-busy="true" />;
+  if (!ready) return <RoomLoadingState gamePath="/things/family-feud" />;
   if (!session)
     return (
       <div className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
@@ -180,14 +181,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
       </div>
     );
   if (!snapshot)
-    return (
-      <div
-        className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
-        aria-busy="true"
-      >
-        <p className="font-mono text-sm text-white/50">{live.message ?? "opening the room…"}</p>
-      </div>
-    );
+    return <RoomLoadingState gamePath="/things/family-feud" message={live.message ?? undefined} />;
 
   const round = snapshot.round;
   const activeTeam = round
@@ -204,7 +198,9 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
     <div ref={fullscreen.targetRef} className="things-game-fullscreen">
       <div className="things-game things-game--night min-h-screen text-white">
         <header className="flex items-center justify-between gap-3 px-5 py-3 font-mono text-[11px] text-white/45 sm:px-7">
-          <span>Family Feud · {roomId}</span>
+          <Link to="/things/family-feud" className="mh-action mh-action--quiet">
+            ← setup
+          </Link>
           <div className="flex items-center gap-3">
             <span>{live.connectionState}</span>
             <button

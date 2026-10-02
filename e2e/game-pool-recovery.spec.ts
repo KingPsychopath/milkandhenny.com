@@ -44,6 +44,7 @@ for (const game of GAME_SETTINGS_GAMES)
       for (const surface of surfaces) {
         await surface.page.goto(`/play/${opened.token}`);
         await waitForAppHydration(surface.page);
+        await surface.page.getByRole("button", { name: "join a room", exact: true }).click();
         await expect(surface.page.getByRole("button", { name: "change my name" })).toBeVisible({
           timeout: 15_000,
         });
@@ -67,6 +68,7 @@ for (const game of GAME_SETTINGS_GAMES)
           .first(),
       ).toBeVisible({ timeout: 15_000 });
       await guest.context.setOffline(false);
+
       await expect(guest.page.getByText(/Maya/).first()).toBeVisible();
       expect(new URL(guest.page.url()).pathname).toBe(roomPath);
       const database = await import("@/lib/platform/postgres.server");
@@ -75,6 +77,68 @@ for (const game of GAME_SETTINGS_GAMES)
         [opened.run!.id],
       );
       expect(counts[0]?.count).toBe(2);
+
+      // Browsing away preserves a recoverable seat, but the entrance never joins automatically.
+      await guest.page.goBack();
+      await expect(guest.page).toHaveURL(`/play/${opened.token}`);
+      await expect(
+        guest.page.getByRole("link", { name: "return to my room", exact: true }),
+      ).toBeVisible();
+      await guest.page.reload();
+      await waitForAppHydration(guest.page);
+      await expect(guest.page).toHaveURL(`/play/${opened.token}`);
+      await guest.page.getByRole("link", { name: "return to my room", exact: true }).click();
+      await expect(guest.page).toHaveURL(new RegExp(roomPath));
+      await expect(guest.page.getByText(/Maya/).first()).toBeVisible();
+
+      // A disconnected player can give up their seat locally without waiting for the network.
+      await guest.context.setOffline(true);
+      const leave = guest.page
+        .getByRole("button", { name: /^(leave room|← leave|leave)$/ })
+        .first();
+      await leave.click();
+      const dialog = guest.page.getByRole("dialog", { name: /^Leave this (room|game)\?/ });
+      if (game !== "hot-and-cold")
+        await dialog.getByRole("button", { name: "leave room", exact: true }).click();
+      await expect(guest.page).not.toHaveURL(new RegExp(roomPath), { timeout: 10_000 });
+      await expect(guest.page).toHaveURL(/\/things$/);
+      await expect(guest.page.getByRole("heading", { name: "things+", exact: true })).toBeVisible();
+      await guest.context.setOffline(false);
+      if (game === "same-brain") {
+        // Leaving a pending join must cancel it so its response cannot reopen the game later.
+        await guest.page.goto(`/play/${opened.token}`);
+        await waitForAppHydration(guest.page);
+        let unblock: (() => void) | undefined;
+        let joinedRequest: (() => void) | undefined;
+        const blocked = new Promise<void>((resolve) => {
+          joinedRequest = resolve;
+        });
+        const gate = new Promise<void>((resolve) => {
+          unblock = resolve;
+        });
+        await guest.page.route("**/_serverFn/**", async (route) => {
+          if (route.request().method() === "POST") {
+            joinedRequest?.();
+            await gate;
+          }
+          await route.continue().catch(() => undefined);
+        });
+        try {
+          await guest.page.getByRole("button", { name: "join a room", exact: true }).click();
+          await blocked;
+          const cancelled = guest.page.waitForEvent("requestfailed", {
+            predicate: (request) =>
+              request.url().includes("/_serverFn/") && request.method() === "POST",
+            timeout: 5000,
+          });
+          await guest.page.getByRole("link", { name: "← all games", exact: true }).click();
+          await cancelled;
+          await expect(guest.page).toHaveURL(/\/things$/);
+        } finally {
+          unblock?.();
+          await guest.page.unrouteAll({ behavior: "wait" });
+        }
+      }
     } finally {
       await closeGameSurfaces(surfaces);
       await pools.setGamePoolRunStatus(entrance.id, "closed");

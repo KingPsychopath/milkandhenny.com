@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-
 import { centreBrowserKeys } from "../centre/centre-keys";
 import type { CentrePlayerCredentials } from "../centre/types";
 import { drawCountryBrowserKeys } from "../draw-country/draw-country-keys";
@@ -16,6 +14,7 @@ import { twinBrowserKeys } from "../twin/twin-keys";
 import type { TwinPlayerCredentials } from "../twin/types";
 import type { GamePoolAssignment, GamePoolGame } from "./types";
 import { releaseGamePoolAssignmentFn } from "./pool.functions";
+import { removeStorageKeys } from "../shared/game-storage.client";
 
 interface GamePoolMembership {
   token: string;
@@ -42,13 +41,18 @@ export function readActiveGamePoolMembership(game: GamePoolGame, token?: string)
   // The room record is enough to recover after an interrupted write of the active marker.
   const roomPrefix = gameBrowserKey("game-pool", 1, game, "room");
   const roomSuffix = ":membership";
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (!key?.startsWith(`${roomPrefix}:`) || !key.endsWith(roomSuffix)) continue;
-    const roomId = key.slice(roomPrefix.length + 1, -roomSuffix.length);
-    const membership = readExpiringLocalValue<GamePoolMembership>(key);
-    if (membership && roomId && (!token || membership.token === token))
-      return { ...membership, roomId };
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(`${roomPrefix}:`) || !key.endsWith(roomSuffix)) continue;
+      const roomId = key.slice(roomPrefix.length + 1, -roomSuffix.length);
+      const membership = readExpiringLocalValue<GamePoolMembership>(key);
+      if (membership && roomId && (!token || membership.token === token))
+        return { ...membership, roomId };
+    }
+  } catch {
+    // Browsing and leaving must also work when the browser blocks persistence.
+    return null;
   }
   return null;
 }
@@ -153,40 +157,11 @@ export function adoptGamePoolAssignment(
 
 export function forgetGamePoolRoomMembership(game: GamePoolGame, roomId: string) {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(gamePoolMembershipKey(game, roomId));
   const active = readActiveGamePoolMembership(game);
-  if (active?.roomId === roomId) localStorage.removeItem(gamePoolActiveMembershipKey(game));
-}
-
-export function useGamePoolRoomBackNavigation({
-  enabled,
-  game,
-  roomId,
-}: {
-  enabled: boolean;
-  game: GamePoolGame;
-  roomId: string;
-}) {
-  useEffect(() => {
-    if (!enabled) return;
-
-    const marker = `game-pool-room:${game}:${roomId}`;
-    const guardState = { gamePoolRoom: marker };
-    window.history.pushState(guardState, "", window.location.href);
-    let leaving = false;
-
-    const handlePopState = () => {
-      if (leaving) return;
-      leaving = true;
-      window.history.pushState(guardState, "", window.location.href);
-      void leaveGamePoolRoom(game, roomId).then((entrance) => {
-        window.location.assign(entrance ?? `/things/${game}`);
-      });
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [enabled, game, roomId]);
+  removeStorageKeys(localStorage, [
+    gamePoolMembershipKey(game, roomId),
+    ...(active?.roomId === roomId ? [gamePoolActiveMembershipKey(game)] : []),
+  ]);
 }
 
 export async function releaseGamePoolMembership(game: GamePoolGame, roomId: string) {
@@ -195,10 +170,26 @@ export async function releaseGamePoolMembership(game: GamePoolGame, roomId: stri
   const membership =
     readExpiringLocalValue<GamePoolMembership>(key) ?? (active?.roomId === roomId ? active : null);
   if (!membership) return null;
-  await releaseGamePoolAssignmentFn({ data: membership });
-  localStorage.removeItem(key);
-  if (active?.roomId === roomId) localStorage.removeItem(gamePoolActiveMembershipKey(game));
-  return `/play/${encodeURIComponent(membership.token)}?choose=1`;
+  // Clear recovery before the request, including when a connection never answers.
+  forgetGamePoolRoomMembership(game, roomId);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const controller = new AbortController();
+  try {
+    await Promise.race([
+      releaseGamePoolAssignmentFn({ data: membership, signal: controller.signal }).catch(
+        () => undefined,
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          resolve();
+        }, 1500);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+  return `/play/${encodeURIComponent(membership.token)}`;
 }
 
 export async function clearUnavailableGamePoolMembership(game: GamePoolGame, roomId: string) {

@@ -18,15 +18,13 @@ test("one-phone Imposter keeps handoffs private with keyboard controls and block
     const card = page.getByRole("button", { name: "Hold to reveal your role", exact: true });
     await expect(card).toContainText("hold to reveal");
     await expect(
-      page.getByRole("button", { name: "hold the card first", exact: true }),
-    ).toBeDisabled();
+      page.getByRole("heading", { name: `player ${seat + 1}`, exact: true }),
+    ).toBeVisible();
     await card.focus();
     await page.keyboard.down("Space");
     await expect(card).toContainText("the category is");
+    await page.waitForTimeout(650);
     await page.keyboard.up("Space");
-    await expect(card).toContainText("hold to reveal");
-    await page.getByRole("button", { name: "got it — pass it on", exact: true }).focus();
-    await page.keyboard.press("Enter");
   }
   await expect(
     page.getByRole("heading", { name: "Put the phone down", exact: true }),
@@ -39,4 +37,46 @@ test("one-phone Imposter keeps handoffs private with keyboard controls and block
   await expect(
     page.getByRole("button", { name: "Hold to reveal your role", exact: true }),
   ).toContainText("hold to reveal");
+});
+
+test("one-phone handoff ignores quick taps and cancelled holds, then advances on release", async ({
+  page,
+}) => {
+  await page.goto("/things/imposter/phone");
+  await waitForAppHydration(page);
+  await page.getByRole("button", { name: "deal", exact: true }).click();
+  const card = page.getByRole("button", { name: "Hold to reveal your role", exact: true });
+  const firstPlayer = page.getByRole("heading", { name: "player 1", exact: true });
+  await card.click();
+  await expect(firstPlayer).toBeVisible();
+  await expect(card).toContainText("hold to reveal");
+  await card.focus();
+  await page.keyboard.down("Enter");
+  await expect(page.getByText("the category is", { exact: true })).toHaveCount(0);
+  await page.keyboard.up("Enter");
+  await expect(firstPlayer).toBeVisible();
+  await page.keyboard.down("Enter");
+  await expect(card).toContainText("the category is");
+  await page.waitForTimeout(650);
+  await card.blur();
+  await page.keyboard.up("Enter");
+  await expect(firstPlayer).toBeVisible();
+  await expect(card).toContainText("hold to reveal");
+  const box = await card.boundingBox();
+  if (!box) throw new Error("Missing role card");
+  await page.mouse.move(box.x + box.width / 2, box.y + 20);
+  await page.mouse.down();
+  await expect(card).toContainText("the category is");
+  await page.waitForTimeout(650);
+  await card.dispatchEvent("pointercancel");
+  await page.mouse.up();
+  await expect(firstPlayer).toBeVisible();
+  await expect(card).toContainText("hold to reveal");
+  await page.mouse.down();
+  await expect(card).toContainText("the category is");
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  await expect(page.getByRole("heading", { name: "player 2", exact: true })).toBeVisible();
+  await expect(card).toContainText("hold to reveal");
+  await expect(page.getByText("the category is", { exact: true })).toHaveCount(0);
 });

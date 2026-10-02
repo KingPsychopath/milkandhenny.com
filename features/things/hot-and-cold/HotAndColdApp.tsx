@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
@@ -29,7 +30,7 @@ export function HotAndColdApp({
   history: HotAndColdArchiveEntry[];
   defaultPool?: GamePoolDefaultLaunchTarget | null;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const { name, setName, remember } = useRememberedPlayerName(24);
   const [panel, setPanel] = useState<"room" | "join" | "settings" | null>(null);
   const [roomCode, setRoomCode] = useState("");

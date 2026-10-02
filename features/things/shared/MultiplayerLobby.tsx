@@ -144,9 +144,7 @@ export function MultiplayerLobby({
   const nativeShare = useNativeShareAvailability({ coarsePointerOnly: true });
   const light = tone === "light";
   const muted = light ? "text-black/50" : "text-white/50";
-  const faint = light ? "text-black/40" : "text-white/40";
   const border = light ? "border-black/15" : "border-white/15";
-  const buttonBorder = light ? "border-black/20" : "border-white/20";
 
   const shareInvite = async () => {
     if (!inviteUrl) return;
@@ -178,33 +176,36 @@ export function MultiplayerLobby({
 
   return (
     <section className="mt-6 w-full text-left" aria-label="Room lobby">
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 border-y py-3"
+        style={{ borderColor: "color-mix(in oklab, currentColor 18%, transparent)" }}
+      >
+        <span className="font-mono text-xs">
+          {inviteLabel} <strong className="ml-2 tracking-widest">{roomId}</strong>
+        </span>
+        {inviteUrl ? (
+          <button
+            type="button"
+            onClick={() => void shareInvite()}
+            className="min-h-11 px-2 font-mono text-xs underline underline-offset-4"
+          >
+            {nativeShare ? "share invite" : "copy invite link"}
+          </button>
+        ) : null}
+      </div>
+      {shareMessage ? (
+        <p role="status" className={`mt-2 font-mono text-xs ${muted}`}>
+          {shareMessage}
+        </p>
+      ) : null}
       {inviteUrl ? (
-        <details
-          open={present.length <= 1 ? true : undefined}
-          className={`overflow-hidden rounded-3xl border ${border}`}
-        >
-          <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-3 [&::-webkit-details-marker]:hidden">
-            <span>
-              <span className={`block font-mono text-micro uppercase tracking-[0.18em] ${faint}`}>
-                {inviteLabel}
-              </span>
-              <span
-                className={`mt-1 block font-mono text-xl font-bold tracking-[0.18em] ${light ? "text-black" : "text-[var(--things-amber)]"}`}
-              >
-                {roomId}
-              </span>
-            </span>
-            <span className={`font-mono text-xs ${muted}`}>invite people ↓</span>
+        <details className={`border-b ${border}`}>
+          <summary
+            className={`flex min-h-11 cursor-pointer items-center font-mono text-xs ${muted}`}
+          >
+            show QR code
           </summary>
           <div className={`border-t px-5 pb-5 pt-4 text-center ${border}`}>
-            {admissionLocked !== undefined ? (
-              <RoomAdmissionControl
-                locked={admissionLocked}
-                canChange={canSetAdmission}
-                onChange={onAdmissionChange}
-                tone={tone}
-              />
-            ) : null}
             {qr ? (
               <AppImage
                 src={qr}
@@ -218,18 +219,17 @@ export function MultiplayerLobby({
                 QR unavailable — share the link or read the room code out.
               </p>
             ) : null}
-            <button
-              type="button"
-              onClick={() => void shareInvite()}
-              className={`mt-4 min-h-12 rounded-full border px-6 font-mono text-xs ${buttonBorder}`}
-            >
-              {nativeShare ? "share invite" : "copy invite link"}
-            </button>
-            <p aria-live="polite" className={`mt-2 min-h-5 font-mono text-xs ${muted}`}>
-              {shareMessage}
-            </p>
           </div>
         </details>
+      ) : null}
+
+      {admissionLocked !== undefined ? (
+        <RoomAdmissionControl
+          locked={admissionLocked}
+          canChange={canSetAdmission}
+          onChange={onAdmissionChange}
+          tone={tone}
+        />
       ) : null}
 
       {ready !== undefined && onReadyChange ? (
@@ -237,19 +237,19 @@ export function MultiplayerLobby({
       ) : null}
 
       <div className="multiplayer-lobby-panel">
-        <h2 className="multiplayer-lobby-panel-heading">who is here · {present.length}</h2>
+        <h2 className="multiplayer-lobby-panel-heading">players · {present.length}</h2>
         <ul className="multiplayer-lobby-roster" aria-label="Players in the room">
           {ordered.map((player) => (
             <li key={player.id}>
               <span>
                 {player.name ?? "guest"}
                 {player.id === currentPlayerId ? " · you" : ""}
-                {player.lead ? " · room lead" : ""}
+                {player.lead ? " · host" : ""}
               </span>
               <span>{player.ready ? "ready" : "not ready"}</span>
               {canPassLead && !player.lead && onPassLead ? (
                 <button type="button" onClick={() => onPassLead(player.id)}>
-                  make lead
+                  make host
                 </button>
               ) : null}
             </li>

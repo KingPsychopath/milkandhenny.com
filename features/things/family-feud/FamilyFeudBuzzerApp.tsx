@@ -1,3 +1,4 @@
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { useEffect, useRef, useState } from "react";
 
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
@@ -145,6 +146,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
               retry connection
             </button>
           ) : null}
+          <GameNavigationLinks gamePath="/things/family-feud" />
         </main>
       </div>
     );
@@ -154,6 +156,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
         <main className="max-w-md">
           <h1 className="font-serif text-4xl">Buzzer link missing.</h1>
           <p className="mt-4 text-white/55">Ask the MC to show the optional buzzer QR again.</p>
+          <GameNavigationLinks gamePath="/things/family-feud" />
         </main>
       </div>
     );
@@ -168,6 +171,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   return (
     <div className="things-game things-game--night flex min-h-[100dvh] flex-col text-white">
       <header className="px-5 py-4 text-center">
+        <GameNavigationLinks gamePath="/things/family-feud" />
         <RoomConnectionIndicator state={live.connectionState} />
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
           Family Feud · {session.teamId ? "team buzzer" : "shared buzzer"} · {roomId}

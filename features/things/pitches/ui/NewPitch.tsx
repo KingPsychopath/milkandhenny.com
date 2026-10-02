@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
@@ -28,7 +29,7 @@ export function NewPitch({
   creatorIdentity: PitchCreatorIdentity | null;
   emailDestination: "inbox" | "mailpit" | "unavailable";
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const queryClient = useQueryClient();
   const { name, email, setName, setEmail, remember } = useBrowserProfileForm();
   const [title, setTitle] = useState("");

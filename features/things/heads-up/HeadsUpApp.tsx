@@ -1,3 +1,4 @@
+import { removeStorageKeys } from "../shared/game-storage.client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
@@ -179,7 +180,7 @@ function HeadsUpExperience({
     setResults([]);
     setInterrupted(false);
     setRemotePaused(false);
-    sessionStorage.removeItem(roundStorageKey);
+    removeStorageKeys(sessionStorage, [roundStorageKey]);
     restoredRound.current = false;
     setPhase("setup");
   }, [clearDecisionTimeout, clearOrientationLock, roundStorageKey]);
@@ -298,13 +299,13 @@ function HeadsUpExperience({
       if (value.phase !== "results") setInterrupted(true);
       restoredRound.current = true;
     } catch {
-      sessionStorage.removeItem(roundStorageKey);
+      removeStorageKeys(sessionStorage, [roundStorageKey]);
     }
   }, [roundStorageKey]);
 
   useEffect(() => {
     if (phase === "setup" || phase === "builder") {
-      if (restoredRound.current) sessionStorage.removeItem(roundStorageKey);
+      if (restoredRound.current) removeStorageKeys(sessionStorage, [roundStorageKey]);
       return;
     }
     sessionStorage.setItem(

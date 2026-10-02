@@ -22,7 +22,6 @@ export function ThingsConcierge() {
         }}
         label="A small games concierge walks through the room"
       />
-      <p aria-hidden="true">ask me where the good games are</p>
     </aside>
   );
 }

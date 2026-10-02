@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { AppSelect } from "@/components/AppSelect";
@@ -32,7 +33,7 @@ export function TwinApp({
   defaultPool?: GamePoolDefaultLaunchTarget | null;
   initialBoard?: "duel" | "solo";
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
   const { name, setName, remember } = useRememberedPlayerName(32);

@@ -1,3 +1,4 @@
+import { removeStorageKeys } from "../shared/game-storage.client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
@@ -439,7 +440,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
         remoteExclusive?: boolean;
       };
       if (!value.savedAt || Date.now() - value.savedAt > 2 * 60 * 60 * 1000) {
-        sessionStorage.removeItem(roundStorageKey);
+        removeStorageKeys(sessionStorage, [roundStorageKey]);
         return;
       }
       if (
@@ -452,11 +453,11 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
             typeof (entry as { word?: unknown }).word === "string",
         )
       ) {
-        sessionStorage.removeItem(roundStorageKey);
+        removeStorageKeys(sessionStorage, [roundStorageKey]);
         return;
       }
       if (!Array.isArray(value.results)) {
-        sessionStorage.removeItem(roundStorageKey);
+        removeStorageKeys(sessionStorage, [roundStorageKey]);
         return;
       }
       const restoredResults = value.results.filter((result): result is SpellingResult => {
@@ -473,7 +474,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
         );
       });
       if (value.phase !== "playing" && value.phase !== "countdown" && value.phase !== "results") {
-        sessionStorage.removeItem(roundStorageKey);
+        removeStorageKeys(sessionStorage, [roundStorageKey]);
         return;
       }
       setDeckId(typeof value.deckId === "string" ? value.deckId : SPELLING_DECKS[0].id);
@@ -507,13 +508,13 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       }
       restoredRound.current = true;
     } catch {
-      sessionStorage.removeItem(roundStorageKey);
+      removeStorageKeys(sessionStorage, [roundStorageKey]);
     }
   }, [roundStorageKey]);
 
   useEffect(() => {
     if (phase === "setup" || phase === "builder") {
-      if (restoredRound.current) sessionStorage.removeItem(roundStorageKey);
+      if (restoredRound.current) removeStorageKeys(sessionStorage, [roundStorageKey]);
       return;
     }
     sessionStorage.setItem(
@@ -607,7 +608,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
       setFeedback(null);
       setResults([]);
       setWordState({ status: "idle" });
-      sessionStorage.removeItem(roundStorageKey);
+      removeStorageKeys(sessionStorage, [roundStorageKey]);
       restoredRound.current = false;
       setPhase("setup");
     },

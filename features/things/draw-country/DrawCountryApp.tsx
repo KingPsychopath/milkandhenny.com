@@ -1,5 +1,6 @@
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { AppSelect } from "@/components/AppSelect";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { GameSettingsTransfer } from "../shared/GameSettingsTransfer";
@@ -73,7 +74,7 @@ export function DrawCountryApp({
   defaultPool?: GamePoolDefaultLaunchTarget | null;
   initialSoloMode?: SoloDrawCountryMode;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
   const [country, setCountry] = useState(initialCountry);

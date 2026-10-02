@@ -1,5 +1,7 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
 import { useWebHaptics } from "web-haptics/react";
 import { GameLaunch, GameLaunchButton, GameLaunchChoices } from "../shared/GameLaunch";
 import { RoomJoinControl } from "../shared/RoomJoinControl";
@@ -44,7 +46,7 @@ export function CentreApp({
   defaultPool?: GamePoolDefaultLaunchTarget | null;
   initialSolo?: "new" | "daily" | "ghost";
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const haptics = useWebHaptics();
   const { preferences, set, replace } = useGamePreferences("centre", {
     difficulty: CENTRE_GAME_SETTINGS.difficulty,
@@ -64,6 +66,11 @@ export function CentreApp({
   const [panel, setPanel] = useState<"friends" | "join" | "options" | null>(null);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  useGameScreenHistory({
+    active: Boolean(solo) && !initialSolo,
+    screen: "centre-solo",
+    onBack: () => setSolo(null),
+  });
 
   useEffect(() => {
     void recentSoloCentreReplays()

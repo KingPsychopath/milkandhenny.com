@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
+import { Link } from "@tanstack/react-router";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { GameShell } from "../shared/GameShell";
 import { readExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
@@ -58,12 +60,7 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
     void speakLiarsNarration(dawn.narration);
   }, [snapshot, sound.voice]);
 
-  if (!snapshot)
-    return (
-      <GameShell tone="night">
-        <p className="m-auto font-mono text-sm text-white/50">{message ?? "connecting…"}</p>
-      </GameShell>
-    );
+  if (!snapshot) return <RoomLoadingState message={message ?? undefined} />;
 
   const alive = snapshot.players.filter(({ alive: isAlive }) => isAlive);
   const gone = snapshot.players.filter(({ alive: isAlive }) => !isAlive);
@@ -73,6 +70,9 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
     <GameShell tone="night">
       <div className="flex min-h-0 flex-1 flex-col px-[4vw] py-[3vh] text-white">
         <header className="flex items-baseline justify-between font-mono text-[1.6vh] uppercase tracking-[0.2em] text-white/40">
+          <Link to="/things" className="mh-action mh-action--quiet">
+            ← all games
+          </Link>
           <span>
             {LIARS_MODE_COPY[snapshot.mode].name} · {snapshot.roomId}
           </span>

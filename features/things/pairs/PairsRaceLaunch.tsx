@@ -1,11 +1,11 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useState } from "react";
 import { createPairsRaceFn } from "./pairs-race.functions";
 import { savePairsRaceSession } from "./pairs-race-session.client";
 import type { PairsSize } from "./pairs-rules";
 
 export function PairsRaceLaunch({ pairCount }: { pairCount: PairsSize }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,10 +27,6 @@ export function PairsRaceLaunch({ pairCount }: { pairCount: PairsSize }) {
   }
   return (
     <div className="pairs-race-launch">
-      <p className="pairs-small">
-        same shuffle. your own cards. first to clear the table wins the round; first to two rounds
-        wins the match.
-      </p>
       <form
         onSubmit={(event) => {
           event.preventDefault();

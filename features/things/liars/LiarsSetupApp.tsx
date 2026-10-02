@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   GameLaunch,
@@ -38,7 +39,7 @@ import type { LiarsMode, LiarsRoomMode, LiarsToggles } from "./types";
  * turn the game somebody selected into the other one.
  */
 export function LiarsSetupApp({ mode }: { mode: LiarsMode }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than eight.
   const { preferences, set, replace } = useGamePreferences("liars", {
     mode: LIARS_GAME_SETTINGS.mode,

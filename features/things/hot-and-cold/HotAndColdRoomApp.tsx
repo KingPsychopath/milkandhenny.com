@@ -28,6 +28,8 @@ import { useAutomaticRoomJoin, useMultiplayerJoinAttempt } from "../shared/multi
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { RoomAdmissionControl } from "../shared/MultiplayerLobby";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
 import { RoomConnectionIndicator } from "../shared/RoomHeader";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
@@ -249,8 +251,7 @@ export function HotAndColdRoomApp({
     return result.errorCode === "duplicate_guess" ? "discarded" : "retryable";
   };
   const leave = async () => {
-    const result = await send({ type: "player.leave" });
-    if (result.accepted || result.errorCode === "room_unavailable") onLeave();
+    await exitRoom(() => send({ type: "player.leave" }), onLeave);
   };
   if (roomUnavailable)
     return (
@@ -259,15 +260,13 @@ export function HotAndColdRoomApp({
           gameName="hot and cold"
           gamePath="/things/hot-and-cold"
           title="This room has cooled down."
-          detail="It is not accepting guesses anymore. We cleared it from your active rooms, so you will not be sent back here again."
+          detail="Start a new game or choose another one."
         />
       </div>
     );
   if (!snapshot)
     return (
-      <div className="hot-and-cold grid min-h-svh place-items-center font-mono text-xs">
-        {live.message ?? "warming the room…"}
-      </div>
+      <RoomLoadingState gamePath="/things/hot-and-cold" message={live.message ?? "Connecting…"} />
     );
   const me = snapshot.players.find(({ id }) => id === credentials.playerId);
   const current = snapshot.players.find(({ id }) => id === snapshot.round?.currentPlayerId);
@@ -296,60 +295,76 @@ export function HotAndColdRoomApp({
     return (
       <div className="hot-and-cold min-h-svh">
         <header className="mx-auto flex max-w-lg items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
-          <button type="button" onClick={() => void leave()} className="min-h-11">
+          <Link to="/things/hot-and-cold" className="mh-action mh-action--quiet">
             ← hot and cold
-          </button>
+          </Link>
           <span className="flex flex-wrap items-center justify-end gap-2">
             {snapshot.roomId}
             <RoomConnectionIndicator state={live.connectionState} />
+            <button
+              type="button"
+              onClick={() => void leave()}
+              className="mh-action mh-action--quiet"
+            >
+              leave room
+            </button>
           </span>
         </header>
         <main id="main" className="mx-auto max-w-lg px-5 pb-20 pt-12">
-          <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">
-            the room is open
-          </p>
           <h1 className="mt-3 font-serif text-5xl font-semibold">find the heat together.</h1>
-          <section
-            className="mt-8 flex flex-col items-center text-center"
-            aria-label="Join the room"
-          >
+          <p className="mt-4 font-serif text-lg theme-muted">
+            Take turns guessing the hidden word. Find it, or get closest, to win a round. Win the
+            most rounds to take the match.
+          </p>
+          <section className="mt-6" aria-label="Join the room">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-y theme-border py-3">
+              <span className="font-mono text-xs">
+                room code <strong className="ml-2 tracking-widest">{snapshot.roomId}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(invite)
+                    .then(() => setMessage("Invite copied."))
+                    .catch(() => setMessage("Could not copy. Use the room code."))
+                }
+                className="mh-action mh-action--quiet"
+              >
+                copy invite link
+              </button>
+            </div>
+            <details className="border-b theme-border">
+              <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs theme-muted">
+                show QR code
+              </summary>
+              <div className="pb-4 text-center">
+                {inviteQr ? (
+                  <AppImage
+                    src={inviteQr}
+                    alt={`QR code to join room ${snapshot.roomId}`}
+                    width={320}
+                    height={320}
+                    className="w-56 rounded-3xl bg-white p-3"
+                  />
+                ) : inviteQrFailed ? (
+                  <p className="font-mono text-xs theme-muted">
+                    QR unavailable — use the room code or invite link.
+                  </p>
+                ) : (
+                  <div className="grid size-56 place-items-center rounded-3xl border theme-border font-mono text-xs theme-muted">
+                    making QR…
+                  </div>
+                )}
+              </div>
+            </details>
             <RoomAdmissionControl
               locked={snapshot.joinLocked}
               canChange={snapshot.canControl && !snapshot.managed}
               onChange={(locked) => void send({ type: "room.admission.set", locked })}
               tone="theme"
             />
-            {inviteQr ? (
-              <AppImage
-                src={inviteQr}
-                alt={`QR code to join room ${snapshot.roomId}`}
-                width={320}
-                height={320}
-                className="w-56 rounded-3xl bg-white p-3"
-              />
-            ) : inviteQrFailed ? (
-              <p className="font-mono text-xs theme-muted">
-                QR unavailable — use the room code or invite link.
-              </p>
-            ) : (
-              <div className="grid size-56 place-items-center rounded-3xl border theme-border font-mono text-xs theme-muted">
-                making QR…
-              </div>
-            )}
-            <p className="mt-5 font-mono text-micro uppercase tracking-[.18em] theme-muted">
-              scan to join
-            </p>
-            <p className="mt-1 font-mono text-3xl font-bold tracking-[.2em] text-[var(--things-amber)]">
-              {snapshot.roomId}
-            </p>
           </section>
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard.writeText(invite)}
-            className="mt-7 min-h-12 w-full rounded-full border theme-border px-6 font-mono text-xs"
-          >
-            copy invite · {snapshot.roomId}
-          </button>
           <button
             type="button"
             className="mh-action mh-action--quiet mt-3"
@@ -370,6 +385,11 @@ export function HotAndColdRoomApp({
             change my name
           </button>
           {dialog}
+          <PlayerReadyControl
+            ready={me?.ready ?? false}
+            tone="theme"
+            onChange={(ready) => void send({ type: "readiness.set", ready })}
+          />
           <ul aria-label="Players in the room" className="mt-10 border-t theme-border">
             {snapshot.players
               .filter(({ withdrawn }) => !withdrawn)
@@ -381,17 +401,13 @@ export function HotAndColdRoomApp({
                   <span>
                     {player.name}
                     {player.id === credentials.playerId ? " · you" : ""}
-                    {player.host ? " · lead" : ""}
+                    {player.host ? " · host" : ""}
                   </span>
                   <span className="theme-muted">{player.ready ? "ready" : "not ready"}</span>
                 </li>
               ))}
           </ul>
-          <PlayerReadyControl
-            ready={me?.ready ?? false}
-            tone="light"
-            onChange={(ready) => void send({ type: "readiness.set", ready })}
-          />
+
           <details className="mt-8 border-y theme-border py-3">
             <summary className="min-h-11 cursor-pointer font-mono text-xs theme-muted">
               room settings
@@ -469,7 +485,7 @@ export function HotAndColdRoomApp({
               start the hunt
             </button>
           ) : (
-            <p className="mt-8 font-mono text-xs theme-muted">waiting for the room lead</p>
+            <p className="mt-8 font-mono text-xs theme-muted">waiting for the host</p>
           )}
           {message ? (
             <p role="status" className="mt-4 font-mono text-xs text-[var(--things-amber)]">

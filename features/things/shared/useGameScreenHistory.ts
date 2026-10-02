@@ -42,6 +42,12 @@ export function useGameScreenHistory({
     if (typeof window === "undefined") return;
 
     if (active && !entryActive.current) {
+      // A refresh restores the active round on its existing marker. Adding another marker would
+      // require another Back press every time the player reloads.
+      if (isScreenState(window.history.state, screen)) {
+        entryActive.current = true;
+        return;
+      }
       const currentState = window.history.state;
       const nextState = {
         ...(typeof currentState === "object" && currentState !== null ? currentState : {}),

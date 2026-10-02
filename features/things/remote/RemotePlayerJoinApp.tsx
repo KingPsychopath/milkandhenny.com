@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { prepareThingOffline } from "@/features/offline/client";
 import { HeadsUpApp } from "../heads-up/HeadsUpApp";
 import { SpellingBeeApp } from "../spelling-bee/SpellingBeeApp";
@@ -140,6 +141,7 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
             try again
           </button>
         ) : null}
+        <GameNavigationLinks />
       </div>
     </main>
   );
@@ -157,6 +159,7 @@ function PlayerInviteMessage({ title, detail }: { title: string; detail: string 
         </p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+        <GameNavigationLinks />
       </div>
     </main>
   );

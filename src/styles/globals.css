@@ -1366,6 +1366,21 @@
     background: var(--things-night);
   }
 
+  .things-game--night .mh-action--secondary,
+  .things-game--night .mh-action--quiet {
+    color: var(--things-dark-foreground);
+    border-color: color-mix(in oklab, var(--things-dark-foreground) 18%, transparent);
+  }
+
+  .things-game--night .room-unavailable {
+    --background: var(--things-night);
+    --foreground: var(--things-dark-foreground);
+    --stone-300: color-mix(in oklab, var(--things-dark-foreground) 18%, transparent);
+    --stone-400: var(--things-dark-muted);
+    --stone-500: var(--things-dark-muted);
+    color: var(--foreground);
+  }
+
   .things-game--amber {
     background: var(--things-amber);
   }

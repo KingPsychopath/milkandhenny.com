@@ -1,4 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   GameLaunch,
@@ -36,7 +37,7 @@ export function SameBrainSetupApp({
   defaultPool?: GamePoolDefaultLaunchTarget | null;
   initialSolo?: boolean;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   // Remembered on this device, so a group's setup is one tap next time rather than five.
   const { preferences, set, replace } = useGamePreferences("same-brain", {
     rounds: SAME_BRAIN_GAME_SETTINGS.rounds,
