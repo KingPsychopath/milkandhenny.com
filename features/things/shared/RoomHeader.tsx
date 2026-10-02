@@ -1,3 +1,4 @@
+import { GameFrameHeader } from "@/features/things/shared/GameFrame";
 import type { ReactNode } from "react";
 import type { MultiplayerConnectionState } from "./multiplayer";
 import "./RoomHeader.css";
@@ -33,6 +34,7 @@ export function ThingsRoomHeader({
   connectionLabel,
   detail,
   right,
+  menu,
 }: {
   tone: "cream" | "night";
   back: ReactNode;
@@ -41,16 +43,26 @@ export function ThingsRoomHeader({
   connectionLabel?: string;
   detail?: ReactNode;
   right?: ReactNode;
+  menu?: ReactNode;
 }) {
   return (
-    <header className={`things-room-header things-room-header--${tone}`}>
+    <GameFrameHeader
+      menu={
+        menu || right ? (
+          <>
+            {menu}
+            {right}
+          </>
+        ) : undefined
+      }
+      className={`things-room-header things-room-header--${tone}`}
+    >
       <div className="things-room-header-start">{back}</div>
       <div className="things-room-header-meta">
         <span className="things-room-header-code">{roomId}</span>
         {connection ? <RoomConnectionIndicator state={connection} label={connectionLabel} /> : null}
         {detail ? <span className="things-room-header-detail">· {detail}</span> : null}
       </div>
-      <div className="things-room-header-actions">{right}</div>
-    </header>
+    </GameFrameHeader>
   );
 }

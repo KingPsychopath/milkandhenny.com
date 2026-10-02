@@ -1,7 +1,38 @@
+name: milkandhenny-local
 services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-development
+      POSTGRES_DB: milkandhenny
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d milkandhenny"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  storage:
+    image: chrislusf/seaweedfs:4.48
+    command: ["mini", "-dir=/data"]
+    restart: unless-stopped
+    environment:
+      AWS_ACCESS_KEY_ID: local-development
+      AWS_SECRET_ACCESS_KEY: local-development-secret
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - storage:/data
   mailpit:
     image: axllent/mailpit:v1.30.6
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8025:8025"
-      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:18025:8025"
+      - "127.0.0.1:11025:1025"
+volumes:
+  postgres:
+  storage:

@@ -1,8 +1,12 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { GameShell } from "../shared/GameShell";
+
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -41,7 +45,6 @@ import {
   clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
   leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
@@ -62,7 +65,7 @@ export function SameBrainRoomApp({ roomId }: { roomId: string }) {
     setLoaded(true);
   }, [roomId]);
 
-  if (!loaded) return <div className="things-game things-game--night" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState gamePath="/things/same-brain" />;
 
   if (!credentials)
     return (
@@ -103,6 +106,7 @@ export function SameBrainRoom({
   credentials: SameBrainPlayerCredentials;
   onUnavailable?: () => void;
 }) {
+  const navigate = useGameNavigate();
   const { roomId, playerId, playerToken } = credentials;
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useSameBrainRoom({
@@ -127,11 +131,6 @@ export function SameBrainRoom({
       roomExpiry,
     );
   }, [credentials, roomExpiry, roomId]);
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "same-brain",
-    roomId,
-  });
   useWakeLock(Boolean(snapshot) && snapshot?.phase !== "lobby");
 
   const haptics = useWebHaptics();
@@ -163,6 +162,21 @@ export function SameBrainRoom({
   const busyRef = useRef(false);
   const send = useCallback(
     async (action: Record<string, unknown>) => {
+      if (action.type === "room.leave") {
+        await exitRoom(
+          () => dispatchPlayerAction(action),
+          () => {
+            removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)]);
+            void leaveGamePoolRoom("same-brain", roomId).then((entrance) => {
+              void navigate({
+                to: navigator.onLine ? (entrance ?? "/things/same-brain") : "/things",
+                replace: true,
+              });
+            });
+          },
+        );
+        return;
+      }
       if (busyRef.current) return;
       busyRef.current = true;
       try {
@@ -176,16 +190,6 @@ export function SameBrainRoom({
           action.type !== "room.leave"
         )
           markUnavailable();
-        if (
-          action.type === "room.leave" &&
-          (result.accepted ||
-            (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
-        ) {
-          removeStorageKeys(localStorage, [sameBrainBrowserKeys.playerSession(roomId)]);
-          const entrance = await leaveGamePoolRoom("same-brain", roomId);
-          window.location.assign(entrance ?? "/things/same-brain");
-          return;
-        }
         // Everyone else is waiting on a poll to learn the round moved on.
         if (result.accepted) room.notify();
       } catch {
@@ -194,7 +198,7 @@ export function SameBrainRoom({
         busyRef.current = false;
       }
     },
-    [dispatchPlayerAction, markUnavailable, room, roomId],
+    [dispatchPlayerAction, markUnavailable, navigate, room, roomId],
   );
 
   const sendHost = useCallback(
@@ -228,24 +232,22 @@ export function SameBrainRoom({
    */
   if (roomUnavailable)
     return (
-      <GameShell tone="night">
+      <GameFrame tone="night">
         <RoomUnavailableState gameName="same brain" gamePath="/things/same-brain" />
-      </GameShell>
+      </GameFrame>
     );
 
   if (!snapshot)
     return (
-      <GameShell tone="night">
-        <div className="flex min-h-svh items-center justify-center text-white/50">
-          <p className="font-mono text-xs">joining…</p>
-        </div>
-      </GameShell>
+      <GameFrame tone="night">
+        <RoomLoadingState gamePath="/things/same-brain" />
+      </GameFrame>
     );
 
   const isHost = snapshot.hostPlayerId === playerId;
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-svh flex-col text-white">
         <ThingsRoomHeader
           tone="night"
@@ -328,7 +330,7 @@ export function SameBrainRoom({
           ) : null}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 
@@ -367,9 +369,9 @@ function LobbyPhase({
       <LobbyIntro
         title="Find the answer you share."
         description="Answer on your own phone. When the round locks, the room sees every answer together."
-        rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
       />
       <MultiplayerLobby
+        rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
         admissionLocked={snapshot.joinLocked}
         actions={
           isHost ? (

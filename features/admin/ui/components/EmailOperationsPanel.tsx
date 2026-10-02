@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -835,12 +836,12 @@ export function EmailOperationsPanel({
                 </p>
               ) : null}
 
-              <details className="mt-3 font-mono text-xs">
-                <summary className="min-h-11 cursor-pointer py-3 theme-muted">
+              <Disclosure className="mt-3 font-mono text-xs">
+                <DisclosureSummary className="min-h-11 cursor-pointer py-3 theme-muted">
                   {thread.length === 1
                     ? "delivery details and controls"
                     : `${thread.length} delivery attempts and controls`}
-                </summary>
+                </DisclosureSummary>
                 <div className="divide-y theme-border-faint border-t theme-border-faint">
                   {thread.map((attempt) => {
                     const tone = emailEntryTone(attempt);
@@ -949,7 +950,7 @@ export function EmailOperationsPanel({
                     );
                   })}
                 </div>
-              </details>
+              </Disclosure>
             </article>
           );
         })}

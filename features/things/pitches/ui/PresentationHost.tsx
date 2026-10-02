@@ -128,6 +128,12 @@ export function PresentationHost({ roomId }: { roomId: string }) {
 
   return (
     <main id="main" className="relative h-screen overflow-hidden bg-background">
+      <Link
+        to="/things/pitches"
+        className="mh-action mh-action--secondary absolute left-4 top-4 z-40"
+      >
+        ← studio
+      </Link>
       {slide ? (
         <>
           <PitchMediaAvailabilityNotice

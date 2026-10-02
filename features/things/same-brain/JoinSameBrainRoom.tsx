@@ -1,6 +1,7 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { GameShell } from "../shared/GameShell";
+
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { SAME_BRAIN_MAX_NAME_LENGTH } from "./same-brain-rules";
 import { joinSameBrainRoomFn } from "./same-brain-room.functions";
@@ -65,7 +66,7 @@ export function JoinSameBrainRoom({
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
         <ThingsRoomHeader
           tone="night"
@@ -136,6 +137,6 @@ export function JoinSameBrainRoom({
           ) : null}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }

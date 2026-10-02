@@ -1,3 +1,4 @@
+import { GameFrameFooter } from "@/features/things/shared/GameFrame";
 import { useRouterState } from "@tanstack/react-router";
 import { ReportIssueButton } from "@/features/reports/ReportIssueButton";
 
@@ -9,8 +10,8 @@ export function ThingsReportFooter() {
     return null;
 
   return (
-    <footer className="things-report-footer flex justify-center px-5 py-5">
+    <GameFrameFooter className="things-report-footer flex justify-center px-5 py-5">
       <ReportIssueButton type="things_room_issue" payload={{ game }} className="justify-center" />
-    </footer>
+    </GameFrameFooter>
   );
 }

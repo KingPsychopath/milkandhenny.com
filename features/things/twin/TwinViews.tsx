@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
@@ -104,16 +105,17 @@ export function TwinLobby({
   const me = snapshot.players.find(({ id }) => id === playerId);
 
   return (
-    <div className="things-game things-game--night twin">
+    <GameFrame tone="night" className="twin">
       <TwinHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main id="main" className="twin-lobby">
         <LobbyIntro
           title="Find the shared symbol."
           description="Every card pair has one symbol in common. Find it before the table moves on."
-          rules="The host chooses how many cards each player starts with. Everyone looks for the shared symbol, taps it, and keeps the game moving."
+
           tone="dark"
         />
         <MultiplayerLobby
+          rules="The host chooses how many cards each player starts with. Everyone looks for the shared symbol, taps it, and keeps the game moving."
           admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
@@ -195,7 +197,7 @@ export function TwinLobby({
           {message}
         </p>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 

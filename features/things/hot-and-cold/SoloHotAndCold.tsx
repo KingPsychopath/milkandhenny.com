@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useEffect, useMemo, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GiveUpControl } from "../shared/GiveUpControl";
@@ -332,8 +333,8 @@ export function SoloHotAndCold({
     null,
   );
   return (
-    <div className="hot-and-cold min-h-svh" data-words-hidden={wordsHidden || undefined}>
-      <header className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
+    <GameFrame className="hot-and-cold min-h-svh" data-words-hidden={wordsHidden || undefined}>
+      <GameFrameHeader className="mx-auto grid w-full max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={onExit}>
           ← hot and cold
         </button>
@@ -350,7 +351,7 @@ export function SoloHotAndCold({
             {showHow ? "close guide" : "how to play"}
           </button>
         </span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="heat-game-main mx-auto w-full max-w-2xl px-5">
         <div className="heat-source">
           <HeatGauge
@@ -481,6 +482,6 @@ export function SoloHotAndCold({
           sharePath={`/things/hot-and-cold/daily/${puzzle}`}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }

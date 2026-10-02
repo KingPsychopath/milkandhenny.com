@@ -1,4 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { createPartyRoomFn, joinPartyRoomFn } from "./party-room.functions";
 import type { PartyDeckSummary } from "./types";
@@ -25,7 +27,7 @@ import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const { customDecks, saveDeck, deleteDeck } = useCustomSpellingDecks();
   const [deckId, setDeckId] = useState(decks[0]?.id ?? "");
   const { preferences, set } = useGamePreferences("spelling-party", {
@@ -161,13 +163,13 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
     );
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
         <span className="inline-flex min-h-11 items-center">play together</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="flex-1 px-5 pb-10">
         <GameLaunch
           tone="night"
@@ -384,6 +386,6 @@ export function PartySetupApp({ decks }: { decks: PartyDeckSummary[] }) {
           </section>
         ) : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

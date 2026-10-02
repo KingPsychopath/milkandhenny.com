@@ -238,8 +238,7 @@ export function GamePoolSettingsTransfer({
                 settings bundle valid
               </AdminStatus>
               <p className="mt-1 font-mono text-xs theme-muted">
-                {parsed.game} · {parsed.targetSize} per room ·{" "}
-                {parsed.admission.autoJoin ? "fast repeat joins" : "confirm every join"}
+                {parsed.game} · {parsed.targetSize} per room · confirm every join
               </p>
               <div className="mt-3 flex flex-wrap gap-4">
                 {parsed.game === entrance.game ? (

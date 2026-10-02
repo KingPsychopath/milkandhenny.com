@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { DECK_CATEGORIES, type GameDeck } from "./decks";
@@ -89,20 +90,24 @@ export function HeadsUpSetup({
   };
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center gap-4 p-5 pr-28 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader
+        menu={
+          <button
+            type="button"
+            onClick={onToggleSound}
+            className="min-h-11 rounded-full border border-white/12 px-4 hover:text-white"
+            aria-pressed={soundEnabled}
+          >
+            sound {soundEnabled ? "on" : "off"}
+          </button>
+        }
+        className="flex items-center gap-4 p-5 pr-28 font-mono text-xs text-white/55"
+      >
         <Link to="/things" className="min-h-11 inline-flex items-center hover:text-white">
           ← things
         </Link>
-        <button
-          type="button"
-          onClick={onToggleSound}
-          className="min-h-11 rounded-full border border-white/12 px-4 hover:text-white"
-          aria-pressed={soundEnabled}
-        >
-          sound {soundEnabled ? "on" : "off"}
-        </button>
-      </header>
+      </GameFrameHeader>
 
       <main id="main" className="flex-1 px-5 pb-10">
         <GameLaunch
@@ -280,6 +285,6 @@ export function HeadsUpSetup({
 
         {panel === "judge" ? <div className="mx-auto max-w-lg">{remoteControls}</div> : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useState } from "react";
 
 import {
@@ -167,10 +168,10 @@ export function TransferRecoveryPanel({
           </p>
         </div>
 
-        <details className="mt-2 font-mono text-micro theme-muted" open={expectedCount <= 5}>
-          <summary className="min-h-11 cursor-pointer py-3">
+        <Disclosure className="mt-2 font-mono text-micro theme-muted" open={expectedCount <= 5}>
+          <DisclosureSummary className="min-h-11 cursor-pointer py-3">
             files in this transfer ({expectedCount})
-          </summary>
+          </DisclosureSummary>
           <ul className="space-y-2">
             {fileRows.slice(0, 20).map((file, index) => (
               <li key={`${file.name}-${file.size}-${index}`} className="flex gap-3">
@@ -187,7 +188,7 @@ export function TransferRecoveryPanel({
             ))}
             {fileRows.length > 20 ? <li>and {fileRows.length - 20} more</li> : null}
           </ul>
-        </details>
+        </Disclosure>
 
         <div className="mt-3 flex flex-wrap gap-3">
           {canContinue ? (

@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { rankTwinFinish } from "./twin-rules";
@@ -64,7 +65,7 @@ export function TwinFinished({
   );
 
   return (
-    <div className="things-game things-game--night twin">
+    <GameFrame tone="night" className="twin">
       <TwinHeader
         roomId={snapshot.roomId}
         right={`game ${snapshot.gameNumber} · finished`}
@@ -158,6 +159,6 @@ export function TwinFinished({
           leave the room
         </Link>
       </main>
-    </div>
+    </GameFrame>
   );
 }

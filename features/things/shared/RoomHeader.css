@@ -1,6 +1,6 @@
 .things-room-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   width: 100%;
   max-width: 42rem;
   min-height: 3.5rem;
@@ -61,6 +61,20 @@
 
 .things-room-header-code {
   letter-spacing: 0.12em;
+}
+
+@media (max-width: 480px) {
+  .things-room-header-meta {
+    flex-wrap: nowrap;
+  }
+  .things-room-header-detail {
+    display: none;
+  }
+  .things-room-header-code {
+    white-space: nowrap;
+    font-size: 0.625rem;
+    letter-spacing: 0.06em;
+  }
 }
 
 .things-room-header-detail {

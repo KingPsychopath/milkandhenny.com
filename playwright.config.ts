@@ -45,7 +45,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: `pnpm dev --host 127.0.0.1 --port ${webPort} --strictPort`,
+      command: `pnpm dev:server --host 127.0.0.1 --port ${webPort} --strictPort`,
       url: `${baseURL}/things/pitches/new`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

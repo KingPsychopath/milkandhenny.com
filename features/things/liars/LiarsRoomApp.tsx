@@ -1,3 +1,8 @@
+import { ImposterRoleReveal } from "./ImposterRoleReveal";
+import { GameFrame } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
@@ -5,7 +10,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { GameShell } from "../shared/GameShell";
+
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -16,7 +21,6 @@ import {
   clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
   leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import {
@@ -74,7 +78,7 @@ export function LiarsRoomApp({ roomId }: { roomId: string }) {
     setLoaded(true);
   }, [roomId]);
 
-  if (!loaded) return <div className="things-game things-game--night" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState />;
 
   if (!credentials)
     return (
@@ -119,6 +123,7 @@ export function LiarsRoom({
   credentials: LiarsPlayerCredentials;
   onUnavailable?: () => void;
 }) {
+  const navigate = useGameNavigate();
   const { roomId, playerId, playerToken } = credentials;
   const [confirmingLeave, setConfirmingLeave] = useState(false);
   const room = useLiarsRoom({
@@ -144,11 +149,6 @@ export function LiarsRoom({
       roomExpiry,
     );
   }, [credentials, roomExpiry, roomId]);
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "liars",
-    roomId,
-  });
   const isNarrator = snapshot?.narratorPlayerId === playerId;
   const notes = useLiarsNotes(roomId, playerId, snapshot?.gameNumber ?? 1);
   const { overlay } = useLiarsEffects({
@@ -190,6 +190,23 @@ export function LiarsRoom({
   const busyRef = useRef(false);
   const send = useCallback(
     async (action: Record<string, unknown>) => {
+      if (action.type === "room.leave") {
+        await exitRoom(
+          () => dispatchPlayerAction(action),
+          () => {
+            forgetLiarsRoomRecovery(roomId);
+            void leaveGamePoolRoom("liars", roomId).then((entrance) => {
+              void navigate({
+                to: navigator.onLine
+                  ? (entrance ?? liarsSetupPath(snapshot?.mode ?? "mafia"))
+                  : "/things",
+                replace: true,
+              });
+            });
+          },
+        );
+        return;
+      }
       if (busyRef.current) return;
       busyRef.current = true;
       primeLiarsAudio();
@@ -204,23 +221,13 @@ export function LiarsRoom({
           action.type !== "room.leave"
         )
           markUnavailable();
-        if (
-          action.type === "room.leave" &&
-          (result.accepted ||
-            (!result.accepted && "errorCode" in result && result.errorCode === "room_unavailable"))
-        ) {
-          forgetLiarsRoomRecovery(roomId);
-          const entrance = await leaveGamePoolRoom("liars", roomId);
-          window.location.assign(entrance ?? liarsSetupPath(snapshot?.mode ?? "mafia"));
-          return;
-        }
       } catch {
         room.setMessage("That did not go through. Try again.");
       } finally {
         busyRef.current = false;
       }
     },
-    [dispatchPlayerAction, markUnavailable, room, roomId, snapshot?.mode],
+    [dispatchPlayerAction, markUnavailable, navigate, room, roomId, snapshot?.mode],
   );
 
   const sendHost = useCallback(
@@ -240,16 +247,16 @@ export function LiarsRoom({
 
   if (roomUnavailable)
     return (
-      <GameShell tone="night">
+      <GameFrame tone="night">
         <RoomUnavailableState gameName="this game" gamePath="/things" />
-      </GameShell>
+      </GameFrame>
     );
 
   if (!snapshot)
     return (
-      <GameShell tone="night">
-        <p className="m-auto font-mono text-xs text-white/50">{room.message ?? "joining…"}</p>
-      </GameShell>
+      <GameFrame tone="night">
+        <RoomLoadingState message={room.message ?? "Connecting…"} />
+      </GameFrame>
     );
 
   const you = snapshot.player;
@@ -257,7 +264,7 @@ export function LiarsRoom({
   const dead = you ? !you.alive : false;
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <LiarsOverlayLayer overlay={overlay} />
       <div className={`flex min-h-0 flex-1 flex-col text-white ${dead ? "opacity-60" : ""}`}>
         <ThingsRoomHeader
@@ -269,28 +276,28 @@ export function LiarsRoom({
           connection={room.connectionState}
           detail={
             snapshot.phase === "lobby"
-              ? LIARS_MODE_COPY[snapshot.mode].name
+              ? undefined
               : `${snapshot.livingCount} alive · ${snapshot.players.length - snapshot.livingCount} gone`
           }
+          menu={
+            <button
+              type="button"
+              onClick={sound.cycle}
+              className="things-room-header-utility"
+              title={sound.description}
+            >
+              {sound.label}
+            </button>
+          }
           right={
-            <>
-              <button
-                type="button"
-                onClick={sound.cycle}
-                className="things-room-header-utility"
-                title={sound.description}
-              >
-                {sound.label}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmingLeave(true)}
-                className="things-room-header-cta"
-                aria-haspopup="dialog"
-              >
-                leave room
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => setConfirmingLeave(true)}
+              className="things-room-header-cta"
+              aria-haspopup="dialog"
+            >
+              leave room
+            </button>
           }
         />
 
@@ -321,40 +328,38 @@ export function LiarsRoom({
             </p>
           ) : null}
 
-          <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 pt-4">
-            <RulesSheet mode={snapshot.mode} yourRole={you?.role} />
-            {snapshot.phase !== "lobby" ? (
-              <>
-                {snapshot.mode === "mafia" ? <KnowledgeList snapshot={snapshot} /> : null}
-                <NotesPad
-                  notes={notes.notes}
-                  round={snapshot.round}
-                  full={notes.full}
-                  onAdd={notes.add}
-                  onRemove={notes.remove}
-                />
-              </>
-            ) : null}
-            {snapshot.hostDisconnectedSince !== null && !isHost ? (
-              <button
-                type="button"
-                onClick={() => void send({ type: "host.claim" })}
-                className="min-h-11 font-mono text-xs text-[var(--things-amber)]"
-              >
-                take over as host
-              </button>
-            ) : null}
-            {isHost ? (
-              <a
-                href={`/things/liars/${snapshot.roomId}/present`}
-                target="_blank"
-                rel="noreferrer"
-                className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-              >
-                big screen
-              </a>
-            ) : null}
-          </div>
+          {snapshot.phase !== "lobby" && snapshot.phase !== "deal" ? (
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 pt-4">
+              <RulesSheet mode={snapshot.mode} yourRole={you?.role} />
+              {snapshot.mode === "mafia" ? <KnowledgeList snapshot={snapshot} /> : null}
+              <NotesPad
+                notes={notes.notes}
+                round={snapshot.round}
+                full={notes.full}
+                onAdd={notes.add}
+                onRemove={notes.remove}
+              />
+              {snapshot.hostDisconnectedSince !== null && !isHost ? (
+                <button
+                  type="button"
+                  onClick={() => void send({ type: "host.claim" })}
+                  className="min-h-11 font-mono text-xs text-[var(--things-amber)]"
+                >
+                  take over as host
+                </button>
+              ) : null}
+              {isHost ? (
+                <a
+                  href={`/things/liars/${snapshot.roomId}/present`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
+                >
+                  big screen
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           {confirmingLeave ? (
             <GameActionDialog
               tone="dark"
@@ -377,7 +382,7 @@ export function LiarsRoom({
           ) : null}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 
@@ -438,11 +443,35 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
   return (
     <>
       <LobbyIntro
-        title="Set the roles, then start."
-        description="Everyone gets a secret role. Read the room, make your case, and find the liar."
-        rules="The host sets the roles, everyone taps ready, and the phone guides the night. Talk in the room; use the game only for private information, choices, and timing."
+        title={
+          snapshot.mode === "imposter"
+            ? "Get everyone in, then deal."
+            : "Set the roles, then start."
+        }
+        description={
+          snapshot.mode === "imposter"
+            ? "Give clues to the secret word. Find the imposter before they blend in."
+            : "Everyone gets a secret role. Read the room, make your case, and find the liar."
+        }
       />
       <MultiplayerLobby
+        rules={
+          snapshot.mode === "imposter"
+            ? "Hold to read your word or role. Take turns giving clues without saying the word, then discuss and vote for the imposter."
+            : "The host sets the roles, everyone taps ready, and the phone guides the night. Talk in the room; use the game only for private information, choices, and timing."
+        }
+        tools={
+          isHost ? (
+            <a
+              href={`/things/liars/${snapshot.roomId}/present`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center underline underline-offset-4"
+            >
+              big screen ↗
+            </a>
+          ) : null
+        }
         admissionLocked={snapshot.joinLocked}
         actions={
           isHost ? (
@@ -579,6 +608,18 @@ function LobbyPhase({ snapshot, isHost, send, sendHost }: PhaseProps) {
 /** Hold to reveal, so nobody catches your role over your shoulder. */
 function DealPhase({ snapshot, clockOffset }: PhaseProps) {
   const [held, setHeld] = useState(false);
+  useEffect(() => {
+    const hide = () => setHeld(false);
+    const hideWhenAway = () => {
+      if (document.visibilityState !== "visible") hide();
+    };
+    window.addEventListener("blur", hide);
+    document.addEventListener("visibilitychange", hideWhenAway);
+    return () => {
+      window.removeEventListener("blur", hide);
+      document.removeEventListener("visibilitychange", hideWhenAway);
+    };
+  }, []);
   const cardDetailsId = useId();
   const you = snapshot.player;
   if (!you) return null;
@@ -599,6 +640,7 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
         tabIndex={0}
         aria-label="Hold to reveal your role"
         aria-pressed={held}
+        data-private-reveal={held ? "true" : undefined}
         aria-describedby={held ? cardDetailsId : undefined}
         onKeyDown={(event) => {
           if (event.key !== " " && event.key !== "Enter") return;
@@ -613,59 +655,72 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
         }}
         onBlur={() => setHeld(false)}
         onPointerCancel={() => setHeld(false)}
-        onPointerDown={() => setHeld(true)}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setHeld(true);
+        }}
         onPointerUp={() => setHeld(false)}
-        onPointerLeave={() => setHeld(false)}
-        className="mt-6 min-h-64 select-none border-y border-white/15 py-10 text-center"
+        onLostPointerCapture={() => setHeld(false)}
+        onContextMenu={(event) => event.preventDefault()}
+        className="mt-6 min-h-64 touch-none select-none border-y border-white/15 py-8 text-center"
       >
         <div id={cardDetailsId} aria-live="polite">
           {held ? (
-            <>
-              <p className="font-serif text-5xl font-semibold">{definition.name}</p>
-              <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
-                {definition.summary}
-              </p>
-              {you.wordCategory ? (
-                <div className="mt-7">
-                  <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                    the category is
-                  </p>
-                  <p className="mt-1 font-serif text-2xl text-white/85">{you.wordCategory}</p>
-                </div>
-              ) : null}
-              {you.word ? (
-                <div className="mt-6">
-                  <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                    the word is
-                  </p>
-                  <p className="mt-2 font-serif text-5xl font-semibold leading-tight text-[var(--things-amber)] sm:text-6xl">
-                    {you.word}
-                  </p>
-                </div>
-              ) : you.wordCategory ? (
-                <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
-                  you don't have the word — it is one of these
+            snapshot.mode === "imposter" ? (
+              <ImposterRoleReveal
+                word={you.word ?? null}
+                category={you.wordCategory ?? ""}
+                board={you.wordBoard}
+              />
+            ) : (
+              <>
+                <p className="font-serif text-5xl font-semibold">{definition.name}</p>
+                <p className="mx-auto mt-4 max-w-sm font-serif text-base text-white/70">
+                  {definition.summary}
                 </p>
-              ) : null}
-              {you.wordBoard.length > 0 ? (
-                <p className="mt-5 font-mono text-xs text-white/35">
-                  the twelve it could be are on the next screen
-                </p>
-              ) : null}
-              {allies.length > 0 ? (
-                <p className="mt-6 font-mono text-xs text-white/55">
-                  with you · {allies.map(({ name }) => name).join(", ")}
-                </p>
-              ) : null}
-              {/* Mafia roles need their rules on the card; an imposter's summary is the whole rule. */}
-              {snapshot.mode === "mafia" ? (
-                <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
-                  {definition.rules.map((rule, index) => (
-                    <li key={index}>{rule}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
+                {you.wordCategory ? (
+                  <div className="mt-7">
+                    <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                      the category is
+                    </p>
+                    <p className="mt-1 font-serif text-2xl text-white/85">{you.wordCategory}</p>
+                  </div>
+                ) : null}
+                {you.word ? (
+                  <div className="mt-6">
+                    <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
+                      the word is
+                    </p>
+                    <p className="mt-2 font-serif text-5xl font-semibold leading-tight text-[var(--things-amber)] sm:text-6xl">
+                      {you.word}
+                    </p>
+                  </div>
+                ) : you.wordCategory ? (
+                  <p className="mt-6 font-serif text-xl text-[var(--liars-dead)]">
+                    you don't have the word — it is one of these
+                  </p>
+                ) : null}
+                {you.wordBoard.length > 0 ? (
+                  <p className="mt-5 font-mono text-xs text-white/35">
+                    the twelve it could be are on the next screen
+                  </p>
+                ) : null}
+                {allies.length > 0 ? (
+                  <p className="mt-6 font-mono text-xs text-white/55">
+                    with you · {allies.map(({ name }) => name).join(", ")}
+                  </p>
+                ) : null}
+                {/* Mafia roles need their rules on the card; an imposter's summary is the whole rule. */}
+                {snapshot.mode === "mafia" ? (
+                  <ul className="mx-auto mt-8 max-w-sm space-y-1.5 text-left font-mono text-xs text-white/45">
+                    {definition.rules.map((rule, index) => (
+                      <li key={index}>{rule}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            )
           ) : (
             <p className="pt-16 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
               hold to reveal
@@ -673,10 +728,7 @@ function DealPhase({ snapshot, clockOffset }: PhaseProps) {
           )}
         </div>
       </div>
-      <p className="mt-4 font-mono text-xs text-white/30">
-        everything about your role lives behind the hold, so a glance over your shoulder gets
-        nothing
-      </p>
+      <p className="mt-4 font-mono text-xs text-white/55">Let go to hide your role.</p>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -73,7 +74,7 @@ export function JoinDrawCountryRoom({
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
-    <div className="things-game things-game--cream text-black">
+    <GameFrame tone="cream" className="text-black">
       <ThingsRoomHeader
         tone="cream"
         back={<Link to="/things/draw-country">← game</Link>}
@@ -147,6 +148,6 @@ export function JoinDrawCountryRoom({
           </form>
         )}
       </main>
-    </div>
+    </GameFrame>
   );
 }

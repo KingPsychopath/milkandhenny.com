@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useMemo, useState } from "react";
 import {
   createCustomSpellingDeck,
@@ -29,13 +30,13 @@ export function SpellingDeckBuilder({
   const canSave = name.trim().length > 0 && words.length >= 3;
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
         <button type="button" onClick={onCancel} className="min-h-11">
           ← decks
         </button>
         <span>{deck ? "edit word list" : "new word list"}</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-10">
         <p className="mt-7 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
           your dictionary
@@ -127,6 +128,6 @@ export function SpellingDeckBuilder({
           onConfirm={() => onDelete(deck)}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }

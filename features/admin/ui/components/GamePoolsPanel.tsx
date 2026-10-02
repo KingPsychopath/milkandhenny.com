@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppImage } from "@/components/AppImage";
@@ -567,13 +568,15 @@ export function GamePoolsPanel({
           create entrance
         </button>
       </div>
-      <details className="mt-2 font-mono text-xs theme-muted">
-        <summary className="min-h-11 cursor-pointer py-3">How entrances work</summary>
+      <Disclosure className="mt-2 font-mono text-xs theme-muted">
+        <DisclosureSummary className="min-h-11 cursor-pointer py-3">
+          How entrances work
+        </DisclosureSummary>
         <p className="pb-3 leading-relaxed">
           Entrances arrange players into rooms. Results stay in the room and do not change tickets,
           teams, or attendee accounts. For one fixed room, use the game’s own launch screen.
         </p>
-      </details>
+      </Disclosure>
       <label className="mt-5 block max-w-40 font-mono text-xs theme-muted">
         open for minutes
         <input
@@ -829,16 +832,7 @@ export function GamePoolsPanel({
                           />
                           use as this game’s public default
                         </label>
-                        <PoolCheck
-                          label="automatically continue repeat scans"
-                          checked={draft.autoJoin}
-                          onChange={(autoJoin) =>
-                            setDrafts((current) => ({
-                              ...current,
-                              [entrance.id]: { ...draft, autoJoin },
-                            }))
-                          }
-                        />
+
                         <PoolCheck
                           label="let players choose a room"
                           checked={draft.allowRoomChoice}

@@ -1,4 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { AppSelect } from "@/components/AppSelect";
@@ -32,7 +34,7 @@ export function TwinApp({
   defaultPool?: GamePoolDefaultLaunchTarget | null;
   initialBoard?: "duel" | "solo";
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const haptics = useWebHaptics();
   const online = useNetworkAvailability();
   const { name, setName, remember } = useRememberedPlayerName(32);
@@ -107,13 +109,12 @@ export function TwinApp({
   };
 
   return (
-    <div className="things-game things-game--night twin">
-      <header className="twin-header">
+    <GameFrame tone="night" className="twin">
+      <GameFrameHeader className="twin-header">
         <Link to="/things" className="twin-header-back">
           ← things
         </Link>
-        <span className="twin-header-meta">twin</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="twin-launch">
         <GameLaunch
           tone="night"
@@ -284,6 +285,6 @@ export function TwinApp({
           </section>
         ) : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

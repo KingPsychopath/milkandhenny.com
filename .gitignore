@@ -23,7 +23,7 @@ tmp/
 # TypeScript incremental build cache
 *.tsbuildinfo
 
-# Downloaded model weights. 23MB that never changes, fetched by `pnpm model:same-brain` in
+# Downloaded model weights, fetched by `pnpm model:semantic` in
 # development and by the Dockerfile at build time. models/ultraface-320.onnx is committed because it
 # is small and hand-picked; anything pulled from a hub belongs here instead.
 models/Xenova/
@@ -49,3 +49,6 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+
+# Persistent local authentication secret; service data lives in Docker volumes.
+.local-dev/

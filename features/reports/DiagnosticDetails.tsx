@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ReportDiagnosticsInput } from "./types";
@@ -42,13 +43,13 @@ export function DiagnosticDetails({
   if (!import.meta.env.DEV) return null;
   const inline = placement === "inline";
   return (
-    <details
+    <Disclosure
       ref={detailsRef}
       open={open}
       suppressHydrationWarning
       className={inline ? "w-full border-t theme-border pt-3 text-left" : "relative text-left"}
     >
-      <summary
+      <DisclosureSummary
         ref={summaryRef}
         aria-expanded={open}
         onClick={(event) => {
@@ -65,7 +66,7 @@ export function DiagnosticDetails({
         <span aria-hidden="true" className="theme-faint">
           {open ? "hide" : "show"}
         </span>
-      </summary>
+      </DisclosureSummary>
       {open ? (
         <div
           className={
@@ -87,6 +88,6 @@ export function DiagnosticDetails({
           {children}
         </div>
       ) : null}
-    </details>
+    </Disclosure>
   );
 }

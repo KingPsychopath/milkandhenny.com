@@ -30,16 +30,16 @@ already explains the route.
 
 ## What belongs where
 
-| Surface                       | URL owns              | Browser Back                                   | Local or durable state                                                                  |
-| ----------------------------- | --------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Public editorial content      | The resource path     | The previous page                              | Server-rendered content and route data                                                  |
-| Album and photo journeys      | Album/photo path      | The previous resource or page                  | Photo selection and viewer controls are local to the resource                           |
-| Things index and setup        | The tool path         | Leave the tool when the user chooses Back      | Search, preferences, and setup choices are local unless they need a shareable URL       |
-| Local game round              | The tool path         | Return to setup; a second Back leaves the tool | Timers, scores, drawings, and motion state stay in React or tab-scoped recovery storage |
-| Daily puzzle and archive      | The numbered day path | Return to the archive or previous page         | Per-browser progress is local; completed community summaries are durable                |
-| Multiplayer room              | The room path         | Leave through the room's exit behaviour        | Server room state and short-lived browser credentials                                   |
-| Pitch studio and presentation | The deck or room path | Follow the studio or presentation control      | IndexedDB/browser working copy plus server versions where the feature supports them     |
-| Dialogs and menus             | No URL by default     | Close with their own control or Escape         | Component state; use a route only when the surface must be linkable or restorable       |
+| Surface                       | URL owns              | Browser Back                                          | Local or durable state                                                                  |
+| ----------------------------- | --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Public editorial content      | The resource path     | The previous page                                     | Server-rendered content and route data                                                  |
+| Album and photo journeys      | Album/photo path      | The previous resource or page                         | Photo selection and viewer controls are local to the resource                           |
+| Things index and setup        | The tool path         | Leave the tool when the user chooses Back             | Search, preferences, and setup choices are local unless they need a shareable URL       |
+| Local game round              | The tool path         | Return to setup; a second Back leaves the tool        | Timers, scores, drawings, and motion state stay in React or tab-scoped recovery storage |
+| Daily puzzle and archive      | The numbered day path | Return to the archive or previous page                | Per-browser progress is local; completed community summaries are durable                |
+| Multiplayer room              | The room path         | Return to the previous route; keep a recoverable seat | Server room state and short-lived browser credentials                                   |
+| Pitch studio and presentation | The deck or room path | Follow the studio or presentation control             | IndexedDB/browser working copy plus server versions where the feature supports them     |
+| Dialogs and menus             | No URL by default     | Close with their own control or Escape                | Component state; use a route only when the surface must be linkable or restorable       |
 
 ## URL rules
 
@@ -92,6 +92,16 @@ Room-based games are different. Their room URL is the identity shared between
 devices, and the room/server protocol remains authoritative. They should use
 explicit leave or return controls for product meaning and must not pretend that
 browser history can restore a disconnected room.
+
+Managed entrances always require a join or return tap, including repeat visits and refreshes.
+Browser Back must not be intercepted to wait for a server request or push the room into history
+again. Explicit leave clears local recovery and gives the server a bounded chance to record the
+departure; a rejected or unanswered request must still allow navigation. While offline, return to
+Things without requesting a fresh entrance. Loading, missing-access, expired, and shared
+presentation screens must retain a setup or Things link. Game dialogs remain dismissible while
+their action is pending; closing a dialog does not roll back an in-flight server mutation.
+Asynchronous setup and exit actions use `useGameNavigate` so completing an old request cannot
+reopen a game after its screen has closed. Managed join requests also abort on entrance changes.
 
 ## Headers, breadcrumbs, and footers
 

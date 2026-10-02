@@ -1,4 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppSelect } from "@/components/AppSelect";
 import { GamePoolDefaultLaunch } from "../pool/GamePoolDefaultLaunch";
@@ -9,7 +11,7 @@ import {
   GameLaunchChoices,
   GameLaunchMeta,
 } from "../shared/GameLaunch";
-import { GameShell } from "../shared/GameShell";
+
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { useGamePreferences } from "../shared/useGamePreferences";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
@@ -29,7 +31,7 @@ export function HotAndColdApp({
   history: HotAndColdArchiveEntry[];
   defaultPool?: GamePoolDefaultLaunchTarget | null;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const { name, setName, remember } = useRememberedPlayerName(24);
   const [panel, setPanel] = useState<"room" | "join" | "settings" | null>(null);
   const [roomCode, setRoomCode] = useState("");
@@ -74,16 +76,16 @@ export function HotAndColdApp({
     }
   };
   return (
-    <GameShell tone="stone">
-      <div className="hot-and-cold min-h-svh">
-        <header className="mx-auto max-w-lg px-5 pt-3">
+    <GameFrame tone="stone">
+      <GameFrame className="hot-and-cold min-h-svh">
+        <GameFrameHeader className="mx-auto max-w-lg px-5 pt-3">
           <Link
             to="/things"
             className="inline-flex min-h-11 items-center font-mono text-xs theme-muted"
           >
             ← things
           </Link>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="mx-auto max-w-lg px-5 pb-20">
           <GameLaunch
             tone="theme"
@@ -231,7 +233,7 @@ export function HotAndColdApp({
           </GameLaunch>
           <HotAndColdArchive history={history} />
         </main>
-      </div>
-    </GameShell>
+      </GameFrame>
+    </GameFrame>
   );
 }

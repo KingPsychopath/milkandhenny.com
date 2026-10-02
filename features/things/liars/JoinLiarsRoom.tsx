@@ -1,6 +1,7 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { GameShell } from "../shared/GameShell";
+
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { LIARS_MAX_NAME_LENGTH } from "./liars-rules";
 import { joinLiarsRoomFn } from "./liars-room.functions";
@@ -65,7 +66,7 @@ export function JoinLiarsRoom({
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
         <ThingsRoomHeader tone="night" back={<Link to="/things">← games</Link>} roomId={roomId} />
         <main
@@ -132,6 +133,6 @@ export function JoinLiarsRoom({
           ) : null}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }

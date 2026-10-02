@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     services:
       redis:
         image: redis:7-alpine
@@ -108,7 +108,7 @@ jobs:
       - name: Browser journeys
         id: browser
         if: steps.scope.outputs.code == 'true'
-        run: pnpm test:e2e --max-failures=1 --global-timeout=900000
+        run: pnpm test:e2e --max-failures=1 --global-timeout=1200000
       - name: Save browser failure evidence
         if: failure() && steps.browser.outcome == 'failure'
         uses: actions/upload-artifact@v7

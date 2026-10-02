@@ -13,7 +13,7 @@ import path from "path";
 
 /* ─── Load .env.local ─── */
 const envPath = path.join(process.cwd(), ".env.local");
-if (fs.existsSync(envPath)) {
+if (process.env.MAH_LOCAL_DEV !== "1" && fs.existsSync(envPath)) {
   const envFile = fs.readFileSync(envPath, "utf-8");
   for (const line of envFile.split("\n")) {
     const trimmed = line.trim();

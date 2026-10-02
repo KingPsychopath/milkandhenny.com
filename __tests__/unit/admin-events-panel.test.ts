@@ -37,10 +37,10 @@ describe("admin events panel", () => {
       }),
     );
 
-    expect(html).toContain("<details>");
+    expect(html).toMatch(/<details\b/);
     expect(html).toContain("net ticket sales");
     expect(html).toContain("£60");
-    expect(html).toContain("ticket split ↓");
+    expect(html).toContain("ticket split");
     expect(html).toContain("Standard");
     expect(html).toContain("Concession");
     expect(html).toContain("1 + 1 held");

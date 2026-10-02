@@ -177,6 +177,7 @@ export const Route = createFileRoute("/sitemap.xml")({
             "icebreaker",
             "imposter",
             "mafia",
+            "pairs",
             "pitches",
             "same-brain",
             "spelling-bee",

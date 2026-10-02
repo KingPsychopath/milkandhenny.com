@@ -1,6 +1,6 @@
 # Effect lifecycle contract
 
-This is the normative repository contract for Effect v4. The exact prerelease is pinned in
+This is the normative repository contract for Effect v4. The exact version is pinned in
 `package.json`; an upgrade is a coordinated change.
 
 ## Adoption boundary

@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useEffect, useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -6,7 +6,7 @@ import { listPitchCredentials } from "../browser-store.client";
 import type { PitchOwnerCredential } from "../types";
 
 export function PitchDeviceSwitcher({ deckId }: { deckId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [pitches, setPitches] = useState<PitchOwnerCredential[]>([]);
 
   useEffect(() => {

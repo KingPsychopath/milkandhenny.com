@@ -1,4 +1,8 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { useWakeLock } from "@/hooks/useWakeLock";
@@ -6,6 +10,7 @@ import { useActionDialog } from "@/hooks/useActionDialog";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { GiveUpControl } from "../shared/GiveUpControl";
 import {
+  removeStorageKeys,
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
   writeExpiringLocalValue,
@@ -36,7 +41,6 @@ import {
   clearUnavailableGamePoolMembership,
   gamePoolRoomInviteUrl,
   leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
 } from "../pool/pool-session.client";
 import { LobbyIntro, MultiplayerLobby } from "../shared/MultiplayerLobby";
 import { CentreReportButton } from "./CentreReportButton";
@@ -46,7 +50,7 @@ import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery
 const DIFFICULTY_LABELS = ["calm", "easy", "medium", "hard", "brutal"] as const;
 
 export function CentreRoomApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [credentials, setCredentials] = useState<CentrePlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
@@ -57,21 +61,22 @@ export function CentreRoomApp({ roomId }: { roomId: string }) {
     captureCentreInvite(roomId);
     setLoaded(true);
   }, [roomId]);
-  if (!loaded) return <div className="things-game things-game--night centre" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState gamePath="/things/centre" />;
   if (!credentials) return <JoinCentreRoom roomId={roomId} onJoined={setCredentials} />;
   return (
     <CentreRoom
       roomId={roomId}
       credentials={credentials}
       onUnavailable={() => {
-        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [centreBrowserKeys.playerSession(roomId)]);
         void clearUnavailableGamePoolMembership("centre", roomId);
       }}
       onLeft={() => {
-        localStorage.removeItem(centreBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [centreBrowserKeys.playerSession(roomId)]);
         void leaveGamePoolRoom("centre", roomId).then((entrance) => {
-          if (entrance) window.location.assign(entrance);
-          else void navigate({ to: "/things/centre" });
+          if (entrance && navigator.onLine) void navigate({ to: entrance, replace: true });
+          else
+            void navigate({ to: navigator.onLine ? "/things/centre" : "/things", replace: true });
         });
       }}
     />
@@ -100,11 +105,6 @@ export function CentreRoom({
     roomKey: roomId,
     unavailable: live.ended || snapshot?.phase === "closed",
     onUnavailable,
-  });
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "centre",
-    roomId,
   });
   const haptics = useWebHaptics();
   const sound = useGameSound(gameBrowserKey("centre", 1, "sound"), ["all", "off"]);
@@ -212,16 +212,7 @@ export function CentreRoom({
   );
 
   const leaveRoom = useCallback(async () => {
-    const result = await send({ type: "player.leave" }, true);
-    if (result?.ok && result.accepted) {
-      onLeft();
-      return true;
-    }
-    if (result && !result.ok && result.errorCode === "room_unavailable") {
-      onLeft();
-      return true;
-    }
-    return false;
+    return exitRoom(() => send({ type: "player.leave" }, true), onLeft);
   }, [onLeft, send]);
 
   useEffect(() => {
@@ -367,12 +358,12 @@ export function CentreRoom({
 
   if (roomUnavailable || snapshot?.phase === "closed")
     return (
-      <div className="things-game things-game--night centre">
+      <GameFrame tone="theme" className="centre">
         <RoomUnavailableState gameName="centre" gamePath="/things/centre" />
-      </div>
+      </GameFrame>
     );
 
-  if (!snapshot) return <div className="things-game things-game--night centre" aria-busy="true" />;
+  if (!snapshot) return <RoomLoadingState gamePath="/things/centre" />;
 
   if (snapshot.phase === "lobby") {
     const token = sessionStorage.getItem(centreBrowserKeys.invite(roomId));
@@ -423,12 +414,12 @@ export function CentreRoom({
 
   if (snapshot.phase === "finished" && maze)
     return (
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <Link to="/things/centre">← centre</Link>
           <span>{roomId}</span>
           <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-finished">
           <p className="centre-eyebrow">race complete</p>
           <h1 className="centre-title">
@@ -471,11 +462,11 @@ export function CentreRoom({
           )}
           <CentreReportButton phase="lobby" roomId={snapshot.roomId} />
         </main>
-      </div>
+      </GameFrame>
     );
 
   if (!maze || me?.entranceIndex === null || me?.entranceIndex === undefined)
-    return <div className="things-game things-game--night centre" aria-busy="true" />;
+    return <RoomLoadingState gamePath="/things/centre" message="Opening the maze…" />;
 
   const localStartsAt = course?.startsAt ? course.startsAt - live.clockOffset : null;
   const ownDone = me.elapsedMs !== null || me.retired;
@@ -487,15 +478,15 @@ export function CentreRoom({
     : [];
   return (
     <>
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <Link to="/things/centre">← centre</Link>
           <span>
             {roomId}
             <RoomConnectionIndicator state={live.connectionState} />
           </span>
           <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
             <p className="centre-eyebrow">
@@ -644,7 +635,7 @@ export function CentreRoom({
           </p>
           <CentreReportButton phase={snapshot.phase} roomId={roomId} />
         </main>
-      </div>
+      </GameFrame>
       {removePlayerIds ? (
         <GameActionDialog
           tone="dark"
@@ -702,23 +693,24 @@ function CentreLobby({
 }) {
   const me = snapshot.players.find(({ id }) => id === playerId);
   return (
-    <div className="things-game things-game--night centre">
-      <header className="centre-header">
+    <GameFrame tone="theme" className="centre">
+      <GameFrameHeader className="centre-header">
         <Link to="/things/centre">← centre</Link>
         <span>
           {snapshot.roomId}
           <RoomConnectionIndicator state={connection} />
         </span>
         <CentreLeaveButton onLeave={onLeave} tone="dark" />
-      </header>
+      </GameFrameHeader>
       <main id="main" className="centre-lobby">
         <LobbyIntro
           title="Ready to race?"
           description="Reach the centre of the maze before the clock runs out."
-          rules="Everyone gets the same maze. Use the controls to draw your route; the fastest clean route wins."
+
           tone="dark"
         />
         <MultiplayerLobby
+          rules="Everyone gets the same maze. Use the controls to draw your route; the fastest clean route wins."
           admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
@@ -787,7 +779,7 @@ function CentreLobby({
           {message}
         </p>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 

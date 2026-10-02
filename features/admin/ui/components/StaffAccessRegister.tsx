@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useMemo } from "react";
 
 import type { AdminStaffAssignment, AdminStaffRole, StaffAccessAction } from "./staff-access-types";
@@ -193,10 +194,10 @@ export function StaffRoleAccess({
       ) : null}
 
       {history.length > 0 ? (
-        <details className="mt-3 border-t theme-border pt-2">
-          <summary className="flex min-h-11 cursor-pointer items-center font-mono text-micro text-foreground">
+        <Disclosure className="mt-3 border-t theme-border pt-2">
+          <DisclosureSummary className="flex min-h-11 cursor-pointer items-center font-mono text-micro text-foreground">
             recent access history · {history.length}
-          </summary>
+          </DisclosureSummary>
           <p className="mb-2 font-mono text-micro leading-relaxed theme-muted">
             Expired and removed credentials stay in the event audit record but no longer work.
           </p>
@@ -212,7 +213,7 @@ export function StaffRoleAccess({
               </li>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       ) : null}
     </div>
   );
@@ -333,10 +334,10 @@ export function StaffAccessRegister({
       )}
 
       {history.length > 0 && (
-        <details className="mt-4 border-t theme-border pt-3">
-          <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs text-foreground">
+        <Disclosure className="mt-4 border-t theme-border pt-3">
+          <DisclosureSummary className="flex min-h-11 cursor-pointer items-center font-mono text-xs text-foreground">
             recent access history · {history.length}
-          </summary>
+          </DisclosureSummary>
           <p className="mb-2 font-mono text-micro leading-relaxed theme-muted">
             Revoked, declined, and expired access stays with the event audit record; credentials no
             longer work.
@@ -360,7 +361,7 @@ export function StaffAccessRegister({
               Showing the 20 most recent of {history.length} records.
             </p>
           )}
-        </details>
+        </Disclosure>
       )}
     </section>
   );

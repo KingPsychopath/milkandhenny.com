@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import type { ReactNode } from "react";
 import {
   LIARS_MODE_COPY,
@@ -534,42 +535,32 @@ function WishButton({
 
 /** The rules sheet, deep-linked to your own role. Reads from the same table the engine enforces. */
 export function RulesSheet({ mode, yourRole }: { mode: LiarsMode; yourRole?: LiarsRole }) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
   const roles = liarsRolesForMode(mode);
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className="min-h-11 font-mono text-xs text-white/45 hover:text-white/80"
-      >
+    <Disclosure className="w-full border-y border-white/15">
+      <DisclosureSummary className="flex items-center py-3 font-mono text-xs text-white/65">
         rules
-      </button>
-      {open ? (
-        <div id={panelId} className="mt-3 border-t border-white/10 pt-4">
-          <p className="font-serif text-sm text-white/70">{LIARS_MODE_COPY[mode].tagline}</p>
-          <ul className="mt-4">
-            {roles.map((role) => (
-              <li key={role.id} className="border-t border-white/10 py-3">
-                <p className="font-serif text-base">
-                  {role.name}
-                  {role.id === yourRole ? (
-                    <span className="ml-2 font-mono text-micro uppercase tracking-[0.14em] text-[var(--things-amber)]">
-                      you
-                    </span>
-                  ) : null}
-                </p>
-                <p className="mt-1 font-mono text-xs text-white/45">{role.summary}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
+      </DisclosureSummary>
+      <div className="pb-4">
+        <p className="font-serif text-sm text-white/70">{LIARS_MODE_COPY[mode].tagline}</p>
+        <ul className="mt-4">
+          {roles.map((role) => (
+            <li key={role.id} className="border-t border-white/10 py-3">
+              <p className="font-serif text-base">
+                {role.name}
+                {role.id === yourRole ? (
+                  <span className="ml-2 font-mono text-micro uppercase tracking-[0.14em] text-[var(--things-amber)]">
+                    you
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-1 font-mono text-xs text-white/45">{role.summary}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Disclosure>
   );
 }
 

@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -69,7 +70,7 @@ export function JoinTwinRoom({
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), handleJoin);
 
   return (
-    <div className="things-game things-game--night twin">
+    <GameFrame tone="night" className="twin">
       <ThingsRoomHeader tone="night" back={<Link to="/things/twin">← game</Link>} roomId={roomId} />
       <main id="main" className="twin-join">
         <h1 className="twin-title">Sharp eyes?</h1>
@@ -138,6 +139,6 @@ export function JoinTwinRoom({
           </form>
         )}
       </main>
-    </div>
+    </GameFrame>
   );
 }

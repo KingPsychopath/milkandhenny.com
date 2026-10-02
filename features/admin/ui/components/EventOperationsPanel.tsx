@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { AdminTextField as Field } from "./AdminTextField";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -155,8 +156,8 @@ export function TicketSalesBreakdown({
   const ticketTypes = Object.entries(summary.byType);
 
   return (
-    <details>
-      <summary className="min-h-11 cursor-pointer list-none font-mono marker:content-none">
+    <Disclosure>
+      <DisclosureSummary className="min-h-11 cursor-pointer list-none font-mono marker:content-none">
         <span className="block text-micro theme-muted">net ticket sales</span>
         <span className="text-lg text-foreground">
           {summary.currency ? formatMoney(summary.netMinor, summary.currency) : "—"}
@@ -166,7 +167,7 @@ export function TicketSalesBreakdown({
             ticket split ↓
           </span>
         ) : null}
-      </summary>
+      </DisclosureSummary>
       {ticketTypes.length > 0 ? (
         <ul className="mt-2 space-y-1 border-l theme-border pl-3 font-mono text-micro">
           {ticketTypes.map(([id, type]) => (
@@ -180,7 +181,7 @@ export function TicketSalesBreakdown({
           ))}
         </ul>
       ) : null}
-    </details>
+    </Disclosure>
   );
 }
 
@@ -1402,11 +1403,11 @@ function ScanningSection({
       )}
 
       {liveLinks.length > 0 && (
-        <details className="border-y theme-border py-4">
-          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 font-mono text-xs text-foreground">
+        <Disclosure className="border-y theme-border py-4">
+          <DisclosureSummary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 font-mono text-xs text-foreground">
             <span>older shared scanner links</span>
             <AdminStatus tone="attention">{liveLinks.length} to review</AdminStatus>
-          </summary>
+          </DisclosureSummary>
           <div className="pt-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
@@ -1541,7 +1542,7 @@ function ScanningSection({
               </p>
             )}
           </div>
-        </details>
+        </Disclosure>
       )}
 
       <div>
@@ -1563,11 +1564,11 @@ function ScanningSection({
                 )
                 .map((type) => `${type.name} ${checkpoint.allowances[type.id]}`);
               return (
-                <details
+                <Disclosure
                   key={checkpoint.id}
                   className="group border-b theme-border last:border-b-0"
                 >
-                  <summary className="grid min-h-16 cursor-pointer list-none gap-2 px-3 py-3 marker:content-none sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5">
+                  <DisclosureSummary className="grid min-h-16 cursor-pointer list-none gap-2 px-3 py-3 marker:content-none sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-5">
                     <span className="min-w-0">
                       <span className="block font-mono text-sm text-foreground">
                         {checkpoint.name}
@@ -1591,7 +1592,7 @@ function ScanningSection({
                         ↑
                       </span>
                     </span>
-                  </summary>
+                  </DisclosureSummary>
 
                   <div className="border-t theme-border bg-[var(--stone-50)] px-3 py-4 dark:bg-white/[0.02]">
                     <fieldset>
@@ -1705,7 +1706,7 @@ function ScanningSection({
                       </button>
                     </p>
                   </div>
-                </details>
+                </Disclosure>
               );
             })}
           </div>
