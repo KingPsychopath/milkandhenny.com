@@ -1,0 +1,111 @@
+.game-frame {
+  color: var(--foreground);
+}
+
+.things-game--night.game-frame {
+  color: var(--things-dark-foreground);
+}
+.things-game--amber.game-frame,
+.things-game--green.game-frame,
+.things-game--stone.game-frame,
+.things-game--cream.game-frame {
+  color: var(--things-night);
+}
+
+.game-frame-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding: max(0.75rem, env(safe-area-inset-top)) 1.25rem 0.5rem;
+  color: inherit;
+}
+
+.game-frame-bar:has(> .game-frame-header.sticky) {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.game-frame-bar > .game-frame-header {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  min-height: 2.75rem;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.game-frame-header > a,
+.game-frame-header > button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+}
+
+.game-frame-menu {
+  position: relative;
+  flex: none;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  z-index: 40;
+}
+
+.game-frame-menu > .game-frame-menu-trigger {
+  display: flex;
+  align-items: center;
+  padding-left: 0.5rem;
+}
+
+.game-frame-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  width: min(16rem, calc(100vw - 2.5rem));
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--stone-300);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 0.75rem 2rem color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.game-frame-menu-panel > a,
+.game-frame-menu-controls > button,
+.game-frame-menu-controls > a {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 2.75rem;
+  text-align: left;
+}
+
+.game-frame-menu-panel > a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+.game-frame-menu-controls {
+  border-bottom: 1px solid var(--stone-300);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.game-frame-footer {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* A private reveal has one focal point. Its controls return as soon as the role is hidden. */
+.game-frame:has([data-private-reveal="true"]) .game-frame-bar,
+.game-frame:has([data-private-reveal="true"]) .game-frame-footer {
+  visibility: hidden;
+}
+
+.things-game--night .game-frame-menu-panel {
+  --background: var(--things-night);
+  --foreground: var(--things-dark-foreground);
+  --stone-300: color-mix(in oklab, var(--things-dark-foreground) 18%, transparent);
+}

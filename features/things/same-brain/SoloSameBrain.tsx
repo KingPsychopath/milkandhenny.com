@@ -1,5 +1,6 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useState } from "react";
-import { GameShell } from "../shared/GameShell";
+
 import { SAME_BRAIN_QUESTIONS } from "./same-brain-questions";
 import { Eyebrow, Headline } from "./SameBrainViews";
 
@@ -25,16 +26,16 @@ export function SoloSameBrain({ onExit }: { onExit: () => void }) {
   };
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-svh flex-col text-white">
-        <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
+        <GameFrameHeader className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
           <button type="button" onClick={onExit} className="inline-flex min-h-11 items-center">
             ← same brain
           </button>
           <span className="tabular-nums text-white/30">
             {index + 1}/{deck.length}
           </span>
-        </header>
+        </GameFrameHeader>
         <main
           id="main"
           className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-5 pb-20"
@@ -54,7 +55,7 @@ export function SoloSameBrain({ onExit }: { onExit: () => void }) {
           </button>
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 

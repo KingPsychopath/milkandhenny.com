@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { exitRoom } from "../shared/room-exit.client";
@@ -357,9 +358,9 @@ export function CentreRoom({
 
   if (roomUnavailable || snapshot?.phase === "closed")
     return (
-      <div className="things-game things-game--night centre">
+      <GameFrame tone="theme" className="centre">
         <RoomUnavailableState gameName="centre" gamePath="/things/centre" />
-      </div>
+      </GameFrame>
     );
 
   if (!snapshot) return <RoomLoadingState gamePath="/things/centre" />;
@@ -413,12 +414,12 @@ export function CentreRoom({
 
   if (snapshot.phase === "finished" && maze)
     return (
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <Link to="/things/centre">← centre</Link>
           <span>{roomId}</span>
           <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-finished">
           <p className="centre-eyebrow">race complete</p>
           <h1 className="centre-title">
@@ -461,7 +462,7 @@ export function CentreRoom({
           )}
           <CentreReportButton phase="lobby" roomId={snapshot.roomId} />
         </main>
-      </div>
+      </GameFrame>
     );
 
   if (!maze || me?.entranceIndex === null || me?.entranceIndex === undefined)
@@ -477,15 +478,15 @@ export function CentreRoom({
     : [];
   return (
     <>
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <Link to="/things/centre">← centre</Link>
           <span>
             {roomId}
             <RoomConnectionIndicator state={live.connectionState} />
           </span>
           <CentreLeaveButton onLeave={leaveRoom} tone="dark" />
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
             <p className="centre-eyebrow">
@@ -634,7 +635,7 @@ export function CentreRoom({
           </p>
           <CentreReportButton phase={snapshot.phase} roomId={roomId} />
         </main>
-      </div>
+      </GameFrame>
       {removePlayerIds ? (
         <GameActionDialog
           tone="dark"
@@ -692,23 +693,24 @@ function CentreLobby({
 }) {
   const me = snapshot.players.find(({ id }) => id === playerId);
   return (
-    <div className="things-game things-game--night centre">
-      <header className="centre-header">
+    <GameFrame tone="theme" className="centre">
+      <GameFrameHeader className="centre-header">
         <Link to="/things/centre">← centre</Link>
         <span>
           {snapshot.roomId}
           <RoomConnectionIndicator state={connection} />
         </span>
         <CentreLeaveButton onLeave={onLeave} tone="dark" />
-      </header>
+      </GameFrameHeader>
       <main id="main" className="centre-lobby">
         <LobbyIntro
           title="Ready to race?"
           description="Reach the centre of the maze before the clock runs out."
-          rules="Everyone gets the same maze. Use the controls to draw your route; the fastest clean route wins."
+
           tone="dark"
         />
         <MultiplayerLobby
+          rules="Everyone gets the same maze. Use the controls to draw your route; the fastest clean route wins."
           admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
@@ -777,7 +779,7 @@ function CentreLobby({
           {message}
         </p>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 

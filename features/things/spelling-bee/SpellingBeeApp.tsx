@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { removeStorageKeys } from "../shared/game-storage.client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
@@ -12,7 +13,7 @@ import type {
   RemotePlayerSession,
   RemoteSpellingSetup,
 } from "../remote/types";
-import { GameShell } from "../shared/GameShell";
+
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { useFullscreen } from "../shared/useFullscreen";
 import { useTiltControl } from "../shared/useTiltControl";
@@ -791,8 +792,8 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
 
   if (phase === "countdown")
     return (
-      <GameShell tone="amber">
-        <header className="p-5 text-black">
+      <GameFrame tone="amber">
+        <GameFrameHeader className="p-5 text-black">
           <button
             type="button"
             onClick={() => setEndConfirmationOpen(true)}
@@ -800,7 +801,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
           >
             ← cancel round
           </button>
-        </header>
+        </GameFrameHeader>
         <main
           id="main"
           className="flex flex-1 flex-col items-center justify-center text-center text-black"
@@ -827,7 +828,7 @@ function SpellingBeeExperience({ remoteSession }: { remoteSession?: RemotePlayer
             onConfirm={() => endRound(false)}
           />
         ) : null}
-      </GameShell>
+      </GameFrame>
     );
 
   if (phase === "playing")

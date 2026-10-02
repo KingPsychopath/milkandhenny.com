@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader, GameFrameFooter } from "@/features/things/shared/GameFrame";
 import { useEffect, useState, type ReactNode } from "react";
 import type { SpellingWord } from "../spelling/decks";
 import type { MotionPauseReason } from "../shared/useTiltControl";
@@ -74,10 +75,11 @@ export function SpellingPlayArea({
           : "repeat at slowest";
 
   return (
-    <div
-      className={`things-game ${feedback === "correct" ? "things-game--green" : feedback ? "things-game--stone" : "things-game--amber"} text-black`}
+    <GameFrame
+      tone={feedback === "correct" ? "green" : feedback ? "stone" : "amber"}
+      className="text-black"
     >
-      <header className="spelling-play-header grid grid-cols-3 items-center px-5 py-4">
+      <GameFrameHeader className="spelling-play-header grid grid-cols-3 items-center px-5 py-4">
         <span className="flex items-center gap-3">
           <button
             type="button"
@@ -92,7 +94,7 @@ export function SpellingPlayArea({
           {seconds === null ? "∞" : seconds}
         </span>
         <span className="justify-self-end font-mono text-xs opacity-60">{score} correct</span>
-      </header>
+      </GameFrameHeader>
       <main
         id="main"
         className="spelling-play-main relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-6 text-center"
@@ -261,7 +263,7 @@ export function SpellingPlayArea({
           </>
         )}
       </main>
-      <footer className="spelling-play-footer grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] landscape:grid-cols-3">
+      <GameFrameFooter className="spelling-play-footer grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] landscape:grid-cols-3">
         <button
           type="button"
           disabled={paused || presenting || controlsLocked}
@@ -286,8 +288,8 @@ export function SpellingPlayArea({
         >
           skip this word
         </button>
-      </footer>
-    </div>
+      </GameFrameFooter>
+    </GameFrame>
   );
 }
 

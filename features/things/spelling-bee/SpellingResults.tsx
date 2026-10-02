@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { AppSelect } from "@/components/AppSelect";
 
 export interface SpellingResult {
@@ -21,13 +22,13 @@ export function SpellingResults({
 }) {
   const score = results.filter(({ decision }) => decision === "correct").length;
   return (
-    <div className="things-game things-game--cream text-black">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-black/55">
+    <GameFrame tone="cream" className="text-black">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-black/55">
         <button type="button" onClick={onBack} className="min-h-11">
           ← setup
         </button>
         <span>round complete</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-lg flex-1 px-6 pb-10 text-center">
         <p className="mt-8 font-mono text-micro uppercase tracking-[0.2em] text-black/50">
           correctly spelled
@@ -71,6 +72,6 @@ export function SpellingResults({
           </ul>
         </section>
       </main>
-    </div>
+    </GameFrame>
   );
 }

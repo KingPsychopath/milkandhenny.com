@@ -11,6 +11,9 @@ export function GameNavigationLinks({ gamePath }: { gamePath?: string }) {
       <Link to="/things" className="mh-action mh-action--quiet">
         all games
       </Link>
+      <Link to="/" className="mh-action mh-action--quiet">
+        home
+      </Link>
     </nav>
   );
 }

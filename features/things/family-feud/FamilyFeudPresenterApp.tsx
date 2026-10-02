@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -159,7 +160,10 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
   if (!ready) return <RoomLoadingState gamePath="/things/family-feud" />;
   if (!session)
     return (
-      <div className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
+      <GameFrame
+        tone="night"
+        className="flex items-center justify-center px-6 text-center text-white"
+      >
         <main className="max-w-lg">
           <h1 className="font-serif text-4xl">This screen link has expired.</h1>
           <p className="mt-4 text-white/55">
@@ -172,13 +176,13 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
             return to setup
           </Link>
         </main>
-      </div>
+      </GameFrame>
     );
   if (live.ended)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return <RoomLoadingState gamePath="/things/family-feud" message={live.message ?? undefined} />;
@@ -196,8 +200,8 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
 
   return (
     <div ref={fullscreen.targetRef} className="things-game-fullscreen">
-      <div className="things-game things-game--night min-h-screen text-white">
-        <header className="flex items-center justify-between gap-3 px-5 py-3 font-mono text-[11px] text-white/45 sm:px-7">
+      <GameFrame tone="night" className="min-h-screen text-white">
+        <GameFrameHeader className="flex items-center justify-between gap-3 px-5 py-3 font-mono text-[11px] text-white/45 sm:px-7">
           <Link to="/things/family-feud" className="mh-action mh-action--quiet">
             ← setup
           </Link>
@@ -238,7 +242,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
               </button>
             ) : null}
           </div>
-        </header>
+        </GameFrameHeader>
 
         {!snapshot.controllerConnected && snapshot.phase !== "lobby" ? (
           <aside
@@ -518,7 +522,7 @@ export function FamilyFeudPresenterApp({ roomId }: { roomId: string }) {
             </div>
           </main>
         )}
-      </div>
+      </GameFrame>
     </div>
   );
 }

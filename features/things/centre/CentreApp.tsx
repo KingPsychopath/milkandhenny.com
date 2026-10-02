@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -148,11 +149,11 @@ export function CentreApp({
   };
 
   return (
-    <div className="things-game things-game--night centre">
-      <header className="centre-header">
+    <GameFrame tone="theme" className="centre">
+      <GameFrameHeader className="centre-header">
         <Link to="/things">← things</Link>
         <span>centre</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="centre-launch">
         <GameLaunch
           tone="theme"
@@ -312,6 +313,6 @@ export function CentreApp({
         ) : null}
         <CentreReportButton phase="launch" />
       </main>
-    </div>
+    </GameFrame>
   );
 }

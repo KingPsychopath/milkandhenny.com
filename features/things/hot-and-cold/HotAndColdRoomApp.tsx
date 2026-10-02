@@ -1,3 +1,5 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useActionDialog } from "@/hooks/useActionDialog";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -82,15 +84,15 @@ export function JoinHotAndColdRoom({
   };
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), join);
   return (
-    <div className="hot-and-cold min-h-svh">
-      <header className="mx-auto max-w-lg px-5 pt-3">
+    <GameFrame className="hot-and-cold min-h-svh">
+      <GameFrameHeader className="mx-auto max-w-lg px-5 pt-3">
         <Link
           to="/things/hot-and-cold"
           className="inline-flex min-h-11 items-center font-mono text-xs theme-muted"
         >
           ← hot and cold
         </Link>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto flex min-h-[75svh] max-w-lg flex-col justify-center px-5">
         <p className="font-mono text-micro uppercase tracking-[.18em] theme-muted">room {roomId}</p>
         <h1 className="mt-3 font-serif text-5xl font-semibold">join the hunt</h1>
@@ -142,7 +144,7 @@ export function JoinHotAndColdRoom({
           ) : null}
         </form>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 
@@ -255,14 +257,14 @@ export function HotAndColdRoomApp({
   };
   if (roomUnavailable)
     return (
-      <div className="hot-and-cold min-h-svh">
+      <GameFrame className="hot-and-cold min-h-svh">
         <RoomUnavailableState
           gameName="hot and cold"
           gamePath="/things/hot-and-cold"
           title="This room has cooled down."
           detail="Start a new game or choose another one."
         />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return (
@@ -293,8 +295,8 @@ export function HotAndColdRoomApp({
   const streak = heatStreaks(guesses);
   if (snapshot.phase === "lobby") {
     return (
-      <div className="hot-and-cold min-h-svh">
-        <header className="mx-auto flex max-w-lg items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
+      <GameFrame className="hot-and-cold min-h-svh">
+        <GameFrameHeader className="mx-auto flex max-w-lg items-center justify-between px-5 pt-3 font-mono text-xs theme-muted">
           <Link to="/things/hot-and-cold" className="mh-action mh-action--quiet">
             ← hot and cold
           </Link>
@@ -309,7 +311,7 @@ export function HotAndColdRoomApp({
               leave room
             </button>
           </span>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="mx-auto max-w-lg px-5 pb-20 pt-12">
           <h1 className="mt-3 font-serif text-5xl font-semibold">find the heat together.</h1>
           <p className="mt-4 font-serif text-lg theme-muted">
@@ -334,10 +336,10 @@ export function HotAndColdRoomApp({
                 copy invite link
               </button>
             </div>
-            <details className="border-b theme-border">
-              <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs theme-muted">
-                show QR code
-              </summary>
+            <Disclosure open className="border-b theme-border">
+              <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs theme-muted">
+                invite QR code
+              </DisclosureSummary>
               <div className="pb-4 text-center">
                 {inviteQr ? (
                   <AppImage
@@ -357,7 +359,7 @@ export function HotAndColdRoomApp({
                   </div>
                 )}
               </div>
-            </details>
+            </Disclosure>
             <RoomAdmissionControl
               locked={snapshot.joinLocked}
               canChange={snapshot.canControl && !snapshot.managed}
@@ -408,10 +410,10 @@ export function HotAndColdRoomApp({
               ))}
           </ul>
 
-          <details className="mt-8 border-y theme-border py-3">
-            <summary className="min-h-11 cursor-pointer font-mono text-xs theme-muted">
+          <Disclosure className="mt-8 border-y theme-border py-3">
+            <DisclosureSummary className="min-h-11 cursor-pointer font-mono text-xs theme-muted">
               room settings
-            </summary>
+            </DisclosureSummary>
             <div className="grid grid-cols-3 gap-3 pt-4 font-mono text-xs">
               <label>
                 rounds
@@ -465,7 +467,7 @@ export function HotAndColdRoomApp({
                 />
               </label>
             </div>
-          </details>
+          </Disclosure>
           {snapshot.canControl ? (
             <button
               type="button"
@@ -513,13 +515,13 @@ export function HotAndColdRoomApp({
             />
           ) : null}
         </main>
-      </div>
+      </GameFrame>
     );
   }
   if (snapshot.phase === "finished") {
     const winners = snapshot.players.filter(({ id }) => snapshot.winnerIds.includes(id));
     return (
-      <div className="hot-and-cold min-h-svh">
+      <GameFrame className="hot-and-cold min-h-svh">
         <main
           id="main"
           className="mx-auto flex min-h-svh max-w-lg flex-col justify-center px-5 py-16 text-center"
@@ -565,15 +567,15 @@ export function HotAndColdRoomApp({
             leave room
           </button>
         </main>
-      </div>
+      </GameFrame>
     );
   }
   const seconds = snapshot.round?.turnEndsAt
     ? Math.max(0, Math.ceil((snapshot.round.turnEndsAt - snapshot.serverNow) / 1_000))
     : null;
   return (
-    <div className="hot-and-cold min-h-svh" data-words-hidden={wordsHidden || undefined}>
-      <header className="mx-auto grid max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
+    <GameFrame className="hot-and-cold min-h-svh" data-words-hidden={wordsHidden || undefined}>
+      <GameFrameHeader className="mx-auto grid max-w-2xl grid-cols-[1fr_auto_1fr] items-center px-5 pt-3 font-mono text-xs theme-muted">
         <button type="button" className="min-h-11" onClick={() => void leave()}>
           ← leave
         </button>
@@ -602,7 +604,7 @@ export function HotAndColdRoomApp({
             />
           ) : null}
         </span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="heat-game-main mx-auto max-w-2xl px-5">
         <div className="heat-source">
           <HeatGauge
@@ -700,6 +702,6 @@ export function HotAndColdRoomApp({
           resultId="room-heat-result"
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }

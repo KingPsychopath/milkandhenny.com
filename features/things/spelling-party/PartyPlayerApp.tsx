@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -735,15 +736,15 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
   );
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="spelling party" gamePath="/things/spelling-party" />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return <PlayerMessage title="Rejoining…" detail={live.message ?? "Your place is saved."} />;
   const ownReveal = round?.answers?.find(({ playerId }) => playerId === credentials.playerId);
   return (
-    <div className="things-game things-game--night text-white">
+    <GameFrame tone="night" className="text-white">
       <ThingsRoomHeader
         tone="night"
         back={<Link to="/things/spelling-party">← spelling party</Link>}
@@ -820,9 +821,9 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
                   ? "Type one answer on each phone, then compare the spellings when time is up."
                   : "The host will start when everyone is ready."
               }
-              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
             />
             <MultiplayerLobby
+              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
               actions={
                 isHost ? (
                   <button
@@ -1108,7 +1109,7 @@ function PartyPlayerGame({ credentials }: { credentials: PartyPlayerCredentials 
         />
       ) : null}
       {dialog}
-    </div>
+    </GameFrame>
   );
 }
 

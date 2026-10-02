@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { AppSelect } from "@/components/AppSelect";
 import { Link } from "@tanstack/react-router";
@@ -179,13 +180,13 @@ export function DrawCountryApp({
   };
 
   return (
-    <div className="things-game things-game--cream text-black">
-      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pt-4 font-mono text-xs text-black/50">
+    <GameFrame tone="cream" className="text-black">
+      <GameFrameHeader className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pt-4 font-mono text-xs text-black/50">
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
         <span>draw the country</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-16 pt-3 sm:pt-8">
         <GameLaunch
           tone="cream"
@@ -387,6 +388,6 @@ export function DrawCountryApp({
           </section>
         ) : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

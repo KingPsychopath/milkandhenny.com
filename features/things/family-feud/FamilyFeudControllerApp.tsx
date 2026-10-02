@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { Link } from "@tanstack/react-router";
@@ -308,7 +309,10 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
     return <RoomLoadingState gamePath="/things/family-feud" message="Pairing controller…" />;
   if (!session)
     return (
-      <div className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
+      <GameFrame
+        tone="night"
+        className="flex items-center justify-center px-6 text-center text-white"
+      >
         <main className="max-w-md">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
             Family Feud controller
@@ -317,13 +321,13 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           <p className="mt-4 text-white/55">{pairingError}</p>
           <GameNavigationLinks gamePath="/things/family-feud" />
         </main>
-      </div>
+      </GameFrame>
     );
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return <RoomLoadingState gamePath="/things/family-feud" message={live.message ?? undefined} />;
@@ -443,8 +447,8 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
   };
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[var(--things-night)] px-4 py-2 font-mono text-[11px] text-white/45">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-[var(--things-night)] px-4 py-2 font-mono text-[11px] text-white/45">
         <Link to="/things/family-feud" className="mh-action mh-action--quiet">
           ← setup
         </Link>
@@ -456,7 +460,7 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
         >
           buzzer QR
         </button>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-32 pt-5 sm:px-6">
         {buzzerOpen ? (
           <section
@@ -1023,6 +1027,6 @@ export function FamilyFeudControllerApp({ roomId }: { roomId: string }) {
           </Link>
         </div>
       </main>
-    </div>
+    </GameFrame>
   );
 }

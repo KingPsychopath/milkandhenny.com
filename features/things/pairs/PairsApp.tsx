@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useGameScreenHistory } from "../shared/useGameScreenHistory";
@@ -166,13 +167,13 @@ export function PairsApp({
           : `${currentName}’s turn.`;
 
   return (
-    <div className="pairs-app">
-      <header className="pairs-header">
+    <GameFrame className="pairs-app">
+      <GameFrameHeader className="pairs-header">
         <Link to="/things">← things</Link>
         <span>
           milk & henny <span className="pairs-header-divider">/</span> pairs
         </span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className={`pairs-main ${table ? "pairs-main--playing" : ""}`}>
         <div className="pairs-intro">
           <p className="pairs-eyebrow">
@@ -498,6 +499,6 @@ export function PairsApp({
           </div>
         )}
       </main>
-    </div>
+    </GameFrame>
   );
 }

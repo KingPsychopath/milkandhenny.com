@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -690,10 +691,10 @@ export function MyAccountPage() {
 
       <SecuritySettingsPanel />
 
-      <details className="mt-10 border-t theme-border pt-2">
-        <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
+      <Disclosure className="mt-10 border-t theme-border pt-2">
+        <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
           name and email
-        </summary>
+        </DisclosureSummary>
         <form onSubmit={saveName} className="space-y-3 py-3">
           <label htmlFor="account-name" className="block font-mono text-xs">
             preferred name
@@ -787,7 +788,7 @@ export function MyAccountPage() {
             </>
           )}
         </form>
-      </details>
+      </Disclosure>
       {message ? (
         <p role="status" className="mt-5 font-mono text-xs theme-muted">
           {message}

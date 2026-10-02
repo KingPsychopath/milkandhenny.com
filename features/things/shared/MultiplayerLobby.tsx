@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { AppImage } from "@/components/AppImage";
@@ -11,30 +12,18 @@ import "./PixelWorld.css";
 export function LobbyIntro({
   title,
   description,
-  rules,
   tone = "dark",
 }: {
   title: string;
   description: ReactNode;
-  rules?: ReactNode;
   tone?: "light" | "dark";
 }) {
   const muted = tone === "light" ? "text-black/55" : "text-white/55";
-  const faint = tone === "light" ? "text-black/40" : "text-white/40";
-  const border = tone === "light" ? "border-black/15" : "border-white/15";
 
   return (
     <div>
       <h1 className="font-serif text-4xl font-semibold leading-[1.02] sm:text-5xl">{title}</h1>
       <p className={`mt-4 max-w-md font-serif text-lg leading-relaxed ${muted}`}>{description}</p>
-      {rules ? (
-        <details className={`mt-5 border-y py-3 ${border}`}>
-          <summary className={`min-h-11 cursor-pointer font-mono text-xs ${faint}`}>
-            how it works
-          </summary>
-          <div className={`pt-2 font-serif text-base leading-relaxed ${muted}`}>{rules}</div>
-        </details>
-      ) : null}
     </div>
   );
 }
@@ -117,6 +106,8 @@ export function MultiplayerLobby({
   players,
   roomId,
   settings,
+  rules,
+  tools,
   tone = "dark",
   ready,
 }: {
@@ -136,6 +127,8 @@ export function MultiplayerLobby({
   players: PixelWorldPlayer[];
   roomId: string;
   settings?: ReactNode;
+  rules?: ReactNode;
+  tools?: ReactNode;
   tone?: "light" | "dark";
   ready?: boolean;
 }) {
@@ -175,54 +168,49 @@ export function MultiplayerLobby({
   });
 
   return (
-    <section className="mt-6 w-full text-left" aria-label="Room lobby">
+    <section className="mt-8 w-full text-left" aria-label="Room lobby">
       <div
-        className="flex flex-wrap items-center justify-between gap-3 border-y py-3"
-        style={{ borderColor: "color-mix(in oklab, currentColor 18%, transparent)" }}
+        className={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-5 border-y py-5 ${border}`}
       >
-        <span className="font-mono text-xs">
-          {inviteLabel} <strong className="ml-2 tracking-widest">{roomId}</strong>
-        </span>
         {inviteUrl ? (
-          <button
-            type="button"
-            onClick={() => void shareInvite()}
-            className="min-h-11 px-2 font-mono text-xs underline underline-offset-4"
-          >
-            {nativeShare ? "share invite" : "copy invite link"}
-          </button>
-        ) : null}
-      </div>
-      {shareMessage ? (
-        <p role="status" className={`mt-2 font-mono text-xs ${muted}`}>
-          {shareMessage}
-        </p>
-      ) : null}
-      {inviteUrl ? (
-        <details className={`border-b ${border}`}>
-          <summary
-            className={`flex min-h-11 cursor-pointer items-center font-mono text-xs ${muted}`}
-          >
-            show QR code
-          </summary>
-          <div className={`border-t px-5 pb-5 pt-4 text-center ${border}`}>
+          <div className="multiplayer-lobby-qr">
             {qr ? (
               <AppImage
                 src={qr}
                 alt={`QR code to join room ${roomId}`}
                 width={320}
                 height={320}
-                className="mx-auto w-52 rounded-3xl bg-white p-3"
+                className="multiplayer-lobby-qr-image"
               />
-            ) : qrFailed ? (
-              <p className={`font-mono text-xs ${muted}`}>
-                QR unavailable — share the link or read the room code out.
+            ) : (
+              <p role="status" className={`font-mono text-xs ${muted}`}>
+                {qrFailed ? "Use the invite link or room code." : "making QR…"}
               </p>
-            ) : null}
+            )}
           </div>
-        </details>
+        ) : null}
+        <div className={inviteUrl ? "min-w-0" : "col-span-2"}>
+          <p className={`font-mono text-micro ${muted}`}>{inviteLabel}</p>
+          <p className="mt-2 font-mono text-lg font-semibold tracking-widest sm:text-2xl">
+            {roomId}
+          </p>
+          {inviteUrl ? (
+            <button
+              type="button"
+              onClick={() => void shareInvite()}
+              className="mt-2 inline-flex min-h-11 items-center font-mono text-xs underline underline-offset-4"
+            >
+              {nativeShare ? "share invite" : "copy invite link"}
+            </button>
+          ) : null}
+          {tools ? <div className={`font-mono text-xs ${muted}`}>{tools}</div> : null}
+        </div>
+      </div>
+      {shareMessage ? (
+        <p role="status" className={`mt-2 font-mono text-xs ${muted}`}>
+          {shareMessage}
+        </p>
       ) : null}
-
       {admissionLocked !== undefined ? (
         <RoomAdmissionControl
           locked={admissionLocked}
@@ -232,19 +220,27 @@ export function MultiplayerLobby({
         />
       ) : null}
 
-      {ready !== undefined && onReadyChange ? (
-        <PlayerReadyControl ready={ready} onChange={onReadyChange} tone={tone} />
-      ) : null}
-
       <div className="multiplayer-lobby-panel">
-        <h2 className="multiplayer-lobby-panel-heading">players · {present.length}</h2>
+        <div className="multiplayer-lobby-roster-heading">
+          <h2 className="multiplayer-lobby-panel-heading">players · {present.length}</h2>
+          {onRename ? (
+            <button type="button" className="multiplayer-lobby-rename" onClick={onRename}>
+              change my name
+            </button>
+          ) : null}
+        </div>
         <ul className="multiplayer-lobby-roster" aria-label="Players in the room">
           {ordered.map((player) => (
             <li key={player.id}>
               <span>
                 {player.name ?? "guest"}
-                {player.id === currentPlayerId ? " · you" : ""}
-                {player.lead ? " · host" : ""}
+                {player.id === currentPlayerId || player.lead ? (
+                  <small className="multiplayer-lobby-player-meta">
+                    {[player.id === currentPlayerId ? "you" : null, player.lead ? "host" : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                ) : null}
               </span>
               <span>{player.ready ? "ready" : "not ready"}</span>
               {canPassLead && !player.lead && onPassLead ? (
@@ -255,25 +251,32 @@ export function MultiplayerLobby({
             </li>
           ))}
         </ul>
-        {onRename ? (
-          <button type="button" className="multiplayer-lobby-rename" onClick={onRename}>
-            change my name
-          </button>
-        ) : null}
       </div>
 
+      {ready !== undefined && onReadyChange ? (
+        <PlayerReadyControl ready={ready} onChange={onReadyChange} tone={tone} />
+      ) : null}
+
       {settings ? (
-        <details className={`mt-6 border-y py-2 ${border}`}>
-          <summary
+        <Disclosure className={`border-b ${border}`}>
+          <DisclosureSummary
             className={`flex min-h-11 cursor-pointer items-center font-mono text-xs ${muted}`}
           >
             room options
-          </summary>
+          </DisclosureSummary>
           <div className="pb-3 pt-2">{settings}</div>
-        </details>
+        </Disclosure>
       ) : null}
 
       {actions ? <div className="mt-6">{actions}</div> : null}
+      {rules ? (
+        <Disclosure className={`mt-6 border-y ${border}`}>
+          <DisclosureSummary className={`flex items-center py-3 font-mono text-xs ${muted}`}>
+            how it works
+          </DisclosureSummary>
+          <div className={`pb-5 font-serif text-base leading-relaxed ${muted}`}>{rules}</div>
+        </Disclosure>
+      ) : null}
     </section>
   );
 }

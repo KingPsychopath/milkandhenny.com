@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { exitRoom } from "../shared/room-exit.client";
@@ -5,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { GameActionDialog } from "../shared/GameActionDialog";
-import { GameShell } from "../shared/GameShell";
+
 import {
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
@@ -231,22 +232,22 @@ export function SameBrainRoom({
    */
   if (roomUnavailable)
     return (
-      <GameShell tone="night">
+      <GameFrame tone="night">
         <RoomUnavailableState gameName="same brain" gamePath="/things/same-brain" />
-      </GameShell>
+      </GameFrame>
     );
 
   if (!snapshot)
     return (
-      <GameShell tone="night">
+      <GameFrame tone="night">
         <RoomLoadingState gamePath="/things/same-brain" />
-      </GameShell>
+      </GameFrame>
     );
 
   const isHost = snapshot.hostPlayerId === playerId;
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-svh flex-col text-white">
         <ThingsRoomHeader
           tone="night"
@@ -329,7 +330,7 @@ export function SameBrainRoom({
           ) : null}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 
@@ -368,9 +369,9 @@ function LobbyPhase({
       <LobbyIntro
         title="Find the answer you share."
         description="Answer on your own phone. When the round locks, the room sees every answer together."
-        rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
       />
       <MultiplayerLobby
+        rules="The biggest matching group scores. A unanimous answer is worth one point; a clear majority is worth two."
         admissionLocked={snapshot.joinLocked}
         actions={
           isHost ? (

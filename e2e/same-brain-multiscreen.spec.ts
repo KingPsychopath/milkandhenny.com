@@ -55,9 +55,9 @@ test("keeps three Same Brain roles isolated through join, answer, refresh, and r
     const hostRoster = host.page.getByRole("list", { name: "Players in the room" });
     const mayaRoster = maya.page.getByRole("list", { name: "Players in the room" });
     const danielRoster = daniel.page.getByRole("list", { name: "Players in the room" });
-    await expect(hostRoster).toContainText("Host · you · host");
-    await expect(mayaRoster).toContainText("Maya · you");
-    await expect(danielRoster).toContainText("Daniel · you");
+    await expect(hostRoster).toContainText(/Host\s*you · host/);
+    await expect(mayaRoster).toContainText(/Maya\s*you/);
+    await expect(danielRoster).toContainText(/Daniel\s*you/);
     await expect(maya.page.getByRole("button", { name: "start", exact: true })).toHaveCount(0);
     await expect(daniel.page.getByRole("button", { name: "start", exact: true })).toHaveCount(0);
 
@@ -162,7 +162,8 @@ async function enterFromGamePool(surface: IsolatedGameSurface, entrancePath: str
   await dialog.getByRole("textbox", { name: "Name" }).fill(name);
   await dialog.getByRole("button", { name: "save name" }).click();
   const roster = surface.page.getByRole("list", { name: "Players in the room" });
-  await expect(roster).toContainText(`${name} · you`);
+  await expect(roster).toContainText(name);
+  await expect(roster).toContainText("you");
   await expect(roster).toContainText("not ready");
   await surface.page.getByRole("button", { name: "I’m ready" }).click();
   await expect(surface.page.getByRole("region", { name: "Your ready status" })).toContainText(

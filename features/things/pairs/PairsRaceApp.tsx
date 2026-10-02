@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PairsBoard } from "./PairsBoard";
@@ -45,11 +46,11 @@ export function PairsRaceApp({ roomId }: { roomId: string }) {
   }
   if (session) return <RaceTable key={`${roomId}:${session.playerId}`} session={session} />;
   return (
-    <div className="pairs-app">
-      <header className="pairs-header">
+    <GameFrame className="pairs-app">
+      <GameFrameHeader className="pairs-header">
         <Link to="/things/pairs">← pairs</Link>
         <span>table {roomId}</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="pairs-main">
         <p className="pairs-eyebrow">two devices · first to two rounds</p>
         <h1 className="pairs-title">A table for two.</h1>
@@ -83,7 +84,7 @@ export function PairsRaceApp({ roomId }: { roomId: string }) {
           <p role="status">finding your seat…</p>
         )}
       </main>
-    </div>
+    </GameFrame>
   );
 }
 
@@ -127,13 +128,13 @@ export function RaceTable({ session }: { session: PairsRaceSession }) {
           ? `${winner?.name} takes the match.`
           : `${winner?.name} takes round ${snapshot.round}.`;
   return (
-    <div className="pairs-app">
-      <header className="pairs-header">
+    <GameFrame className="pairs-app">
+      <GameFrameHeader className="pairs-header">
         <Link to="/things/pairs">← pairs</Link>
         <span>
           table <strong>{session.roomId}</strong>
         </span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="pairs-main pairs-main--playing">
         <p className="pairs-eyebrow">
           two-device race · {snapshot?.round ? `round ${snapshot.round} · ` : ""}first to two wins
@@ -320,6 +321,6 @@ export function RaceTable({ session }: { session: PairsRaceSession }) {
           </div>
         ) : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

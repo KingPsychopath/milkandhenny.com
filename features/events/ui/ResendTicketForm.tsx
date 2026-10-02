@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useId, useState } from "react";
 
 import { resendTicketsFn } from "@/features/tickets/tickets.functions";
@@ -39,10 +40,10 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
   }
 
   return (
-    <details className="group">
-      <summary className="min-h-11 content-center cursor-pointer font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors">
+    <Disclosure className="group">
+      <DisclosureSummary className="min-h-11 content-center cursor-pointer font-mono text-micro theme-muted tracking-wide hover:text-foreground transition-colors">
         already have a ticket but lost the email?
-      </summary>
+      </DisclosureSummary>
       <form onSubmit={submit} className="mt-3">
         <div className="flex gap-2">
           <label htmlFor={emailId} className="sr-only">
@@ -78,6 +79,6 @@ export function ResendTicketForm({ eventSlug }: { eventSlug: string }) {
           That didn&apos;t work. Check the address and try again.
         </p>
       )}
-    </details>
+    </Disclosure>
   );
 }

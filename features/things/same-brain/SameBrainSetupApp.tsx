@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
@@ -7,7 +8,7 @@ import {
   GameLaunchChoices,
   GameLaunchMeta,
 } from "../shared/GameLaunch";
-import { GameShell } from "../shared/GameShell";
+
 import { RoomJoinControl } from "../shared/RoomJoinControl";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
 import { useGamePreferences } from "../shared/useGamePreferences";
@@ -96,13 +97,13 @@ export function SameBrainSetupApp({
   };
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-svh flex-col text-white">
-        <header className="mx-auto w-full max-w-lg px-5 pt-4 font-mono text-xs text-white/45">
+        <GameFrameHeader className="mx-auto w-full max-w-lg px-5 pt-4 font-mono text-xs text-white/45">
           <Link to="/things" className="inline-flex min-h-11 items-center">
             ← things
           </Link>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="flex-1 px-5 pb-20">
           <GameLaunch
             tone="night"
@@ -234,7 +235,7 @@ export function SameBrainSetupApp({
           </GameLaunch>
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 

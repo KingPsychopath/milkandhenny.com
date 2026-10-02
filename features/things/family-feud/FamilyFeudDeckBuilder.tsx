@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useMemo, useState } from "react";
 
 import { normaliseFamilyFeudAnswer } from "./family-feud-rules";
@@ -77,13 +78,13 @@ export function FamilyFeudDeckBuilder({
     });
   };
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between px-6 py-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between px-6 py-5 font-mono text-xs text-white/55">
         <button type="button" onClick={onCancel} className="min-h-11">
           ← setup
         </button>
         <span>custom deck</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-2xl px-6 pb-16">
         <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
           Family Feud deck builder
@@ -262,6 +263,6 @@ export function FamilyFeudDeckBuilder({
           ) : null}
         </div>
       </main>
-    </div>
+    </GameFrame>
   );
 }

@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { TextMorph } from "torph/react";
@@ -101,7 +102,7 @@ export function RoomLobby({
           );
   const currentPlayer = snapshot.players.find(({ id }) => id === playerId);
   return (
-    <div className="things-game things-game--cream text-black">
+    <GameFrame tone="cream" className="text-black">
       <RoomHeader roomId={snapshot.roomId} connection={connection} onLeave={onLeave} />
       <main
         id="main"
@@ -110,10 +111,11 @@ export function RoomLobby({
         <LobbyIntro
           title="Draw the country."
           description="Draw a country from memory, then see how close you came to its real border."
-          rules="Everyone draws the same country on their own phone. You have limited time, and the closest outline wins the round."
+
           tone="light"
         />
         <MultiplayerLobby
+          rules="Everyone draws the same country on their own phone. You have limited time, and the closest outline wins the round."
           admissionLocked={snapshot.joinLocked}
           actions={
             snapshot.canControl ? (
@@ -162,7 +164,7 @@ export function RoomLobby({
           {message}
         </p>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 
@@ -187,7 +189,7 @@ export function RoomReveal({
   const me = snapshot.players.find(({ id }) => id === playerId);
   const ranking = snapshot.players.toSorted((a, b) => (b.roundScore ?? 0) - (a.roundScore ?? 0));
   return (
-    <div className="things-game things-game--cream text-black">
+    <GameFrame tone="cream" className="text-black">
       <RoomHeader
         roomId={snapshot.roomId}
         connection={connection}
@@ -270,7 +272,7 @@ export function RoomReveal({
           </section>
         </div>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 
@@ -294,7 +296,7 @@ export function FinalRanking({
   const ranking = snapshot.players.toSorted((a, b) => b.score - a.score);
   const session = snapshot.gameNumber > 1;
   return (
-    <div className="things-game things-game--cream text-black">
+    <GameFrame tone="cream" className="text-black">
       <RoomHeader roomId={snapshot.roomId} connection="finished" onLeave={onLeave} />
       <main
         id="main"
@@ -365,7 +367,7 @@ export function FinalRanking({
           leave the room
         </Link>
       </main>
-    </div>
+    </GameFrame>
   );
 }
 

@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
@@ -291,8 +292,9 @@ export function TwinDuelApp({
   const remainingMs = Math.max(0, DUEL_CAP_MS - elapsedMs);
 
   return (
-    <div
-      className="things-game things-game--night twin twin-duel"
+    <GameFrame
+      tone="night"
+      className="twin twin-duel"
       data-players={players}
       ref={boardRef}
       style={{ "--twin-connection-ms": `${connectionHoldMs}ms` } as React.CSSProperties}
@@ -316,7 +318,7 @@ export function TwinDuelApp({
             onTap={tap}
           />
         ) : (
-          <header className="twin-duel-bar">
+          <GameFrameHeader className="twin-duel-bar">
             <button type="button" className="twin-duel-exit" onClick={onExit}>
               ← twin
             </button>
@@ -331,7 +333,7 @@ export function TwinDuelApp({
                 ? `best ${(preferences.bestMs / 1_000).toFixed(1)}s`
                 : "no best yet"}
             </p>
-          </header>
+          </GameFrameHeader>
         )}
 
         <div className={`twin-duel-middle ${players === 2 ? "twin-duel-middle--controls" : ""}`}>
@@ -480,7 +482,7 @@ export function TwinDuelApp({
           </div>
         </div>
       ) : null}
-    </div>
+    </GameFrame>
   );
 }
 

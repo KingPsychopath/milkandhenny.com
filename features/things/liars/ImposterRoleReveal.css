@@ -1,0 +1,49 @@
+.imposter-role-reveal {
+  text-align: center;
+}
+.imposter-role-label,
+.imposter-role-category-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--things-dark-muted);
+}
+.imposter-role-focus {
+  margin-top: 0.5rem;
+  font-family: var(--font-serif);
+  font-size: clamp(2.5rem, 10vw, 3.75rem);
+  line-height: 1.12;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  color: var(--things-amber);
+}
+.imposter-role-instruction {
+  margin-top: 1rem;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--things-dark-foreground);
+}
+.imposter-role-category-label {
+  margin-top: 1.5rem;
+}
+.imposter-role-category {
+  margin-top: 0.25rem;
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
+  color: var(--things-dark-foreground);
+}
+.imposter-role-shortlist {
+  margin: 1.5rem auto 0;
+  max-width: 20rem;
+}
+.imposter-role-shortlist ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 1rem;
+  margin-top: 0.75rem;
+  font-family: var(--font-serif);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: left;
+  color: var(--things-dark-muted);
+}

@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { exitRoom } from "../shared/room-exit.client";
@@ -229,9 +230,9 @@ export function TwinRoom({
 
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night twin">
+      <GameFrame tone="night" className="twin">
         <RoomUnavailableState gameName="twin" gamePath="/things/twin" />
-      </div>
+      </GameFrame>
     );
 
   if (!snapshot) return <RoomLoadingState gamePath="/things/twin" />;
@@ -347,7 +348,7 @@ export function TwinRoom({
     );
 
   return (
-    <div className="things-game things-game--night twin">
+    <GameFrame tone="night" className="twin">
       <TwinHeader roomId={roomId} connection={live.connectionState} onLeave={leaveRoom} />
       <TwinBoard
         snapshot={snapshot}
@@ -379,6 +380,6 @@ export function TwinRoom({
       <p aria-live="polite" className="twin-message">
         {live.message}
       </p>
-    </div>
+    </GameFrame>
   );
 }

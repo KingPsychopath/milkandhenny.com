@@ -10,8 +10,8 @@ export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerRea
   const surface = theme
     ? "theme-border text-[var(--foreground)]"
     : light
-      ? "border-black/15 bg-white/30 text-black"
-      : "border-white/15 bg-white/[0.05] text-white";
+      ? "border-black/15 text-black"
+      : "border-white/15 text-white";
   const icon = theme
     ? ready
       ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
@@ -38,7 +38,7 @@ export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerRea
   return (
     <section
       aria-label="Your ready status"
-      className={`mt-5 flex w-full items-center justify-between gap-3 border-b py-3 text-left ${surface}`}
+      className={`flex w-full items-center justify-between gap-3 border-b py-3 text-left ${surface}`}
     >
       <div className="flex items-center gap-3" aria-live="polite" aria-atomic="true">
         <span
@@ -54,7 +54,7 @@ export function PlayerReadyControl({ ready, onChange, tone = "dark" }: PlayerRea
           )}
         </span>
         <span className="min-w-0">
-          <strong className="block font-mono text-sm">
+          <strong className="block font-mono text-xs font-medium">
             {ready ? "You’re ready" : "You’re not ready"}
           </strong>
         </span>

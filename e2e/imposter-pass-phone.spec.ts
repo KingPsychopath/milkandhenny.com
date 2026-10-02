@@ -23,8 +23,14 @@ test("one-phone Imposter keeps handoffs private with keyboard controls and block
     await card.focus();
     await page.keyboard.down("Space");
     await expect(card).toContainText("the category is");
+    await expect(page.getByRole("button", { name: "menu", exact: true })).toBeHidden();
+    if (await card.getByText("the word is", { exact: true }).count()) {
+      await expect(card.locator(".imposter-role-shortlist")).toHaveCount(0);
+      await expect(card).toContainText("Give a clue. Keep this word secret.");
+    }
     await page.waitForTimeout(650);
     await page.keyboard.up("Space");
+    await expect(page.getByRole("button", { name: "menu", exact: true })).toBeVisible();
   }
   await expect(
     page.getByRole("heading", { name: "Put the phone down", exact: true }),

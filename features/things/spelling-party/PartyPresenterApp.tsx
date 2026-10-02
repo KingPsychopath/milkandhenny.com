@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { Link } from "@tanstack/react-router";
 import { exitRoom } from "../shared/room-exit.client";
@@ -267,9 +268,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     );
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="spelling party" gamePath="/things/spelling-party" />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return (
@@ -280,7 +281,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     );
   const round = snapshot.round;
   return (
-    <div className="things-game things-game--night text-white">
+    <GameFrame tone="night" className="text-white">
       <ThingsRoomHeader
         tone="night"
         back={<Link to="/things/spelling-party">← spelling party</Link>}
@@ -308,9 +309,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
             <LobbyIntro
               title="Get everyone on a phone."
               description="Type the same word from different phones, then see whose spelling was closest."
-              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
             />
             <MultiplayerLobby
+              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
               actions={
                 <button
                   type="button"
@@ -506,7 +507,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
           onConfirm={() => void confirmStart()}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }
 

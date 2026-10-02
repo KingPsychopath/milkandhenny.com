@@ -1,3 +1,4 @@
+import { GameFrameFooter } from "@/features/things/shared/GameFrame";
 import { TextMorph } from "torph/react";
 import type { MotionPauseReason } from "../shared/useTiltControl";
 
@@ -102,7 +103,7 @@ export function RoundPlayArea({
         )}
       </main>
 
-      <footer className="grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <GameFrameFooter className="grid grid-cols-2 gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <button
           type="button"
           onClick={() => onDecision("pass")}
@@ -119,7 +120,7 @@ export function RoundPlayArea({
         >
           correct ↓
         </button>
-      </footer>
+      </GameFrameFooter>
     </>
   );
 }

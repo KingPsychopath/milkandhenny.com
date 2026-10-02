@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
@@ -105,13 +106,13 @@ export function SoloDrawCountry({
   if (phase === "drawing") {
     const roundNumber = results.length + 1;
     return (
-      <div className="things-game things-game--cream text-black">
-        <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
+      <GameFrame tone="cream" className="text-black">
+        <GameFrameHeader className="mx-auto flex w-full max-w-4xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
           <button type="button" onClick={onExit} className="inline-flex min-h-11 items-center">
             ← game
           </button>
           <span>{mode === "quick" ? "quick draw" : `solo · round ${roundNumber}/${total}`}</span>
-        </header>
+        </GameFrameHeader>
         <CountryRoundBoard
           countryName={country.name}
           roundLabel={mode === "rounds" ? `${roundNumber}/${total}` : undefined}
@@ -120,7 +121,7 @@ export function SoloDrawCountry({
           onChange={setDrawing}
           onDone={finish}
         />
-      </div>
+      </GameFrame>
     );
   }
 
@@ -128,15 +129,15 @@ export function SoloDrawCountry({
     const points = results.reduce((sum, result) => sum + result.score, 0);
     const average = Math.round(points / Math.max(1, results.length));
     return (
-      <div className="things-game things-game--cream text-black">
-        <header className="mx-auto flex w-full max-w-2xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
+      <GameFrame tone="cream" className="text-black">
+        <GameFrameHeader className="mx-auto flex w-full max-w-2xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
           <button type="button" onClick={onExit} className="inline-flex min-h-11 items-center">
             ← game
           </button>
           <Link to="/things" className="inline-flex min-h-11 items-center">
             things
           </Link>
-        </header>
+        </GameFrameHeader>
         <main
           id="main"
           className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-5 pb-16"
@@ -183,7 +184,7 @@ export function SoloDrawCountry({
             back to game modes
           </button>
         </main>
-      </div>
+      </GameFrame>
     );
   }
 
@@ -191,13 +192,13 @@ export function SoloDrawCountry({
   const roundComplete = mode === "rounds" && results.length >= total;
 
   return (
-    <div className="things-game things-game--cream text-black">
-      <header className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
+    <GameFrame tone="cream" className="text-black">
+      <GameFrameHeader className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pt-3 font-mono text-xs text-black/50">
         <button type="button" onClick={onExit} className="inline-flex min-h-11 items-center">
           ← game
         </button>
         <span>{mode === "quick" ? "quick draw" : `round ${results.length}/${total}`}</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto w-full max-w-3xl px-5 pb-12 pt-5">
         <div className="flex items-end justify-between gap-5">
           <div className="min-w-0">
@@ -235,6 +236,6 @@ export function SoloDrawCountry({
           </p>
         ) : null}
       </main>
-    </div>
+    </GameFrame>
   );
 }

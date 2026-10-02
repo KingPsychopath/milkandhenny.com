@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { resetAuthenticatedData } from "@/lib/client/reset-authenticated-data";
@@ -89,10 +90,10 @@ export function MfaChallengePage({ returnTo }: { returnTo: string }) {
           </button>
         </form>
 
-        <details className="mt-7 border-t theme-border pt-1">
-          <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 hover:opacity-60">
+        <Disclosure className="mt-7 border-t theme-border pt-1">
+          <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 hover:opacity-60">
             use a recovery code
-          </summary>
+          </DisclosureSummary>
           <form onSubmit={verifyRecovery} className="pb-4 pt-2">
             <label htmlFor="recovery-code" className="block font-mono text-xs">
               recovery code
@@ -116,7 +117,7 @@ export function MfaChallengePage({ returnTo }: { returnTo: string }) {
               use recovery code
             </button>
           </form>
-        </details>
+        </Disclosure>
 
         <div className="mt-7 border-t theme-border pt-7">
           <p className="font-mono text-micro theme-muted">

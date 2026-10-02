@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { removeStorageKeys } from "../shared/game-storage.client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
@@ -23,7 +24,7 @@ import type {
   RemotePlayerSession,
 } from "../remote/types";
 import type { GameOrientation } from "../shared/orientation";
-import { GameShell } from "../shared/GameShell";
+
 import { EndGameDialog } from "../shared/EndGameDialog";
 import { shareOrCopy } from "@/lib/client/share";
 import { useUpdateReloadSafety } from "@/features/offline/update-safety.client";
@@ -451,8 +452,8 @@ function HeadsUpExperience({
 
   if (phase === "countdown") {
     return (
-      <GameShell tone="amber">
-        <header className="p-5">
+      <GameFrame tone="amber">
+        <GameFrameHeader className="p-5">
           <button
             type="button"
             onClick={() => setEndConfirmationOpen(true)}
@@ -460,7 +461,7 @@ function HeadsUpExperience({
           >
             ← cancel round
           </button>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-black/55">get ready</p>
           <TextMorph
@@ -497,14 +498,14 @@ function HeadsUpExperience({
             onConfirm={endRound}
           />
         ) : null}
-      </GameShell>
+      </GameFrame>
     );
   }
 
   if (phase === "playing") {
     return (
-      <GameShell tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
-        <header className="grid grid-cols-3 items-center px-5 py-4 text-black">
+      <GameFrame tone={feedback === "correct" ? "green" : feedback === "pass" ? "stone" : "amber"}>
+        <GameFrameHeader className="grid grid-cols-3 items-center px-5 py-4 text-black">
           <button
             type="button"
             onClick={() => setEndConfirmationOpen(true)}
@@ -522,7 +523,7 @@ function HeadsUpExperience({
             <RemoteConnectionBadge connected={remote.judgeConnected} />
             {score} correct
           </span>
-        </header>
+        </GameFrameHeader>
 
         <RoundPlayArea
           card={card}
@@ -551,7 +552,7 @@ function HeadsUpExperience({
             onConfirm={endRound}
           />
         ) : null}
-      </GameShell>
+      </GameFrame>
     );
   }
 

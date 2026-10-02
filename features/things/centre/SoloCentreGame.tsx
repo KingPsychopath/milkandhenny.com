@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import { gameBrowserKey } from "../shared/multiplayer-keys";
@@ -117,13 +118,13 @@ export function SoloCentreGame({
 
   if (phase === "finished" && saved)
     return (
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <button type="button" onClick={onExit}>
             ← leave
           </button>
           <span>solo finish</span>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-finished">
           <p className="centre-eyebrow">centre reached</p>
           <h1 className="centre-finish-time">{(saved.elapsedMs / 1_000).toFixed(2)}s</h1>
@@ -163,7 +164,7 @@ export function SoloCentreGame({
           />
           <CentreReportButton phase="finished" />
         </main>
-      </div>
+      </GameFrame>
     );
 
   const ghostLayers: MazeRouteLayer[] =
@@ -173,15 +174,15 @@ export function SoloCentreGame({
 
   return (
     <>
-      <div className="things-game things-game--night centre">
-        <header className="centre-header">
+      <GameFrame tone="theme" className="centre">
+        <GameFrameHeader className="centre-header">
           <button type="button" onClick={onExit}>
             ← leave
           </button>
           <span>
             {phase === "racing" ? `${(elapsed / 1_000).toFixed(1)}s` : `difficulty ${difficulty}`}
           </span>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="centre-race">
           <div className="centre-race-copy">
             <p className="centre-eyebrow">outside to centre</p>
@@ -252,7 +253,7 @@ export function SoloCentreGame({
           </div>
           <CentreReportButton phase={phase} />
         </main>
-      </div>
+      </GameFrame>
     </>
   );
 }

@@ -583,6 +583,58 @@
 }
 
 @layer components {
+  .mh-disclosure > .mh-disclosure-trigger {
+    position: relative;
+    min-height: 2.75rem;
+    padding-right: 2rem;
+    list-style: none;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    text-decoration: none;
+    transition: opacity 160ms ease;
+  }
+
+  .mh-disclosure > .mh-disclosure-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .mh-disclosure > .mh-disclosure-trigger::before,
+  .mh-disclosure > .mh-disclosure-trigger::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0.25rem;
+    width: 0.75rem;
+    height: 1px;
+    background: currentColor;
+    pointer-events: none;
+  }
+
+  .mh-disclosure > .mh-disclosure-trigger::after {
+    transform: rotate(90deg);
+    transition: transform 160ms ease;
+  }
+
+  .mh-disclosure[open] > .mh-disclosure-trigger::after {
+    transform: rotate(0deg);
+  }
+
+  .mh-disclosure > .mh-disclosure-trigger:hover {
+    opacity: 0.75;
+  }
+
+  .mh-disclosure > .mh-disclosure-trigger:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mh-disclosure > .mh-disclosure-trigger,
+    .mh-disclosure > .mh-disclosure-trigger::after {
+      transition: none;
+    }
+  }
+
   .score-celebration {
     animation: score-celebration-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }

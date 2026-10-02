@@ -1,7 +1,8 @@
+import { GameFrame, GameFrameHeader, GameFrameFooter } from "@/features/things/shared/GameFrame";
 import { useEffect, useMemo, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
-import { GameShell } from "../shared/GameShell";
+
 import { readExpiringLocalValue } from "../shared/game-storage.client";
 import { liarsBrowserKeys } from "./liars-keys";
 import { LIARS_MODE_COPY, LIARS_ROLES } from "./liars-rules";
@@ -67,9 +68,9 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
   const ending = snapshot.ending;
 
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-0 flex-1 flex-col px-[4vw] py-[3vh] text-white">
-        <header className="flex items-baseline justify-between font-mono text-[1.6vh] uppercase tracking-[0.2em] text-white/40">
+        <GameFrameHeader className="flex items-baseline justify-between font-mono text-[1.6vh] uppercase tracking-[0.2em] text-white/40">
           <Link to="/things" className="mh-action mh-action--quiet">
             ← all games
           </Link>
@@ -83,7 +84,7 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
           <span>
             {alive.length} alive · {gone.length} gone
           </span>
-        </header>
+        </GameFrameHeader>
 
         <main id="main" className="flex flex-1 flex-col justify-center">
           {ending ? (
@@ -190,7 +191,7 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
         </main>
 
         {!ending ? (
-          <footer className="border-t border-white/10 pt-[2vh]">
+          <GameFrameFooter className="border-t border-white/10 pt-[2vh]">
             <ul className="flex flex-wrap gap-x-[3vw] gap-y-[1vh] font-serif text-[2.6vh]">
               {snapshot.players.map((player) => (
                 <li
@@ -212,9 +213,9 @@ export function LiarsPresenterApp({ roomId }: { roomId: string }) {
                 </li>
               ))}
             </ul>
-          </footer>
+          </GameFrameFooter>
         ) : null}
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }

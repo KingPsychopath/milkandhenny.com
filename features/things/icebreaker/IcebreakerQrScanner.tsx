@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useEffect, useId, useRef, useState } from "react";
 import { parsePairingCode, type IcebreakerPlayer } from "./icebreaker-pairing";
 
@@ -31,10 +32,10 @@ function ManualCodeEntry({
   };
 
   return (
-    <details className="mt-5 border-t border-white/15 pt-4 text-left">
-      <summary className="min-h-11 cursor-pointer content-center font-mono text-xs opacity-70 focus-visible:ring-2 focus-visible:ring-white/75">
+    <Disclosure className="mt-5 border-t border-white/15 pt-4 text-left">
+      <DisclosureSummary className="min-h-11 cursor-pointer content-center font-mono text-xs opacity-70 focus-visible:ring-2 focus-visible:ring-white/75">
         camera not working?
-      </summary>
+      </DisclosureSummary>
       <form onSubmit={handleSubmit} className="mt-3">
         <label htmlFor={inputId} className="font-mono text-xs opacity-70">
           enter their code
@@ -70,7 +71,7 @@ function ManualCodeEntry({
           </p>
         ) : null}
       </form>
-    </details>
+    </Disclosure>
   );
 }
 

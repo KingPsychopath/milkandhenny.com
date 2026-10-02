@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "../shared/GameFrame";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRememberedPlayerName } from "../shared/useRememberedPlayerName";
 import { assignGamePoolRoomFn, getGamePoolPublicViewFn } from "./pool.functions";
@@ -141,117 +142,124 @@ export function GamePoolEntranceApp({
   );
 
   return (
-    <main id="main" className="mx-auto min-h-svh w-full max-w-xl px-6 pb-16 pt-6">
-      <Link to="/things" className="mh-action mh-action--quiet mb-10">
-        ← all games
-      </Link>
-      <h1 className="font-serif text-4xl font-semibold sm:text-5xl">
-        {view.found ? (view.entrance?.label ?? "Game night") : "This invite has ended."}
-      </h1>
-      {view.found ? (
-        <>
-          <p className="mt-4 font-serif text-lg theme-muted">
-            {accepting
-              ? "Join a room, then start when everyone is ready."
-              : (view.message ?? "New joins are paused.")}
-          </p>
-          {activeMembership && game ? (
-            <section className="mt-8 border-y theme-border py-5">
-              <Link
-                to={gamePoolPlayerPath(game, activeMembership.roomId)}
-                className="mh-action mh-action--primary w-full"
-              >
-                return to my room
-              </Link>
-            </section>
-          ) : null}
-          {accepting ? (
-            <section className="mt-8" aria-label="Join a game">
-              <p className="mb-4 font-mono text-xs theme-muted">
-                joining as {playerName || "guest"}
-              </p>
-              <button
-                type="button"
-                disabled={busy || !nameLoaded}
-                onClick={() =>
-                  void assign(requestedGamePoolChoice(requestedRoomId, targetRejected))
-                }
-                className="mh-action mh-action--primary w-full"
-                aria-describedby={message ? messageId : undefined}
-              >
-                {busy
-                  ? "joining…"
-                  : requestedRoomId && !targetRejected
-                    ? "join invited room"
-                    : activeMembership
-                      ? "find another room"
-                      : "join a room"}
-              </button>
-              {view.run?.allowNewRooms ? (
+    <GameFrame>
+      <GameFrameHeader className="flex items-center">
+        <Link to="/things" className="mh-action mh-action--quiet">
+          ← all games
+        </Link>
+      </GameFrameHeader>
+      <main id="main" className="mx-auto w-full max-w-xl flex-1 px-6 pb-16 pt-6">
+        <h1 className="font-serif text-4xl font-semibold sm:text-5xl">
+          {view.found ? (view.entrance?.label ?? "Game night") : "This invite has ended."}
+        </h1>
+        {view.found ? (
+          <>
+            <p className="mt-4 font-serif text-lg theme-muted">
+              {accepting
+                ? "Join a room, then start when everyone is ready."
+                : (view.message ?? "New joins are paused.")}
+            </p>
+            {activeMembership && game ? (
+              <section className="mt-8 border-y theme-border py-5">
+                <Link
+                  to={gamePoolPlayerPath(game, activeMembership.roomId)}
+                  className="mh-action mh-action--primary w-full"
+                >
+                  return to my room
+                </Link>
+              </section>
+            ) : null}
+            {accepting ? (
+              <section className="mt-8" aria-label="Join a game">
+                <p className="mb-4 font-mono text-xs theme-muted">
+                  joining as {playerName || "guest"}
+                </p>
                 <button
                   type="button"
                   disabled={busy || !nameLoaded}
-                  onClick={() => void assign("new")}
-                  className="mh-action mh-action--secondary mt-3 w-full"
+                  onClick={() =>
+                    void assign(requestedGamePoolChoice(requestedRoomId, targetRejected))
+                  }
+                  className="mh-action mh-action--primary w-full"
+                  aria-describedby={message ? messageId : undefined}
                 >
-                  new room
+                  {busy
+                    ? "joining…"
+                    : requestedRoomId && !targetRejected
+                      ? "join invited room"
+                      : activeMembership
+                        ? "find another room"
+                        : "join a room"}
                 </button>
-              ) : null}
-              {message ? (
-                <p id={messageId} role="status" className="mt-4 font-mono text-xs theme-muted">
-                  {message}
-                </p>
-              ) : null}
-            </section>
-          ) : null}
-          {accepting && view.run?.allowRoomChoice && rooms.length ? (
-            <section className="mt-10" aria-labelledby="rooms-heading">
-              <h2 id="rooms-heading" className="font-mono text-xs theme-muted">
-                rooms
-              </h2>
-              <ul className="mt-3 divide-y theme-border border-y theme-border">
-                {rooms
-                  .filter(({ status }) => status !== "closed")
-                  .map((room) => (
-                    <li key={room.roomId} className="flex items-center justify-between gap-4 py-4">
-                      <div className="min-w-0">
-                        <p className="font-serif text-xl">{room.label}</p>
-                        <p className="mt-1 font-mono text-xs theme-muted">
-                          {room.playerCount}/{room.capacity} players ·{" "}
-                          {room.status === "open" ? "waiting" : "playing"}
-                        </p>
-                      </div>
-                      {room.roomId === activeRoomId && game ? (
-                        <Link
-                          to={gamePoolPlayerPath(game, room.roomId)}
-                          className="mh-action mh-action--quiet"
-                        >
-                          return
-                        </Link>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={
-                            busy ||
-                            !nameLoaded ||
-                            room.status !== "open" ||
-                            room.playerCount >= room.capacity
-                          }
-                          onClick={() => void assign({ roomId: room.roomId })}
-                          className="mh-action mh-action--quiet"
-                        >
-                          join
-                        </button>
-                      )}
-                    </li>
-                  ))}
-              </ul>
-            </section>
-          ) : null}
-        </>
-      ) : (
-        <p className="mt-4 font-serif text-lg theme-muted">Ask the organiser for a new invite.</p>
-      )}
-    </main>
+                {view.run?.allowNewRooms ? (
+                  <button
+                    type="button"
+                    disabled={busy || !nameLoaded}
+                    onClick={() => void assign("new")}
+                    className="mh-action mh-action--secondary mt-3 w-full"
+                  >
+                    new room
+                  </button>
+                ) : null}
+                {message ? (
+                  <p id={messageId} role="status" className="mt-4 font-mono text-xs theme-muted">
+                    {message}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+            {accepting && view.run?.allowRoomChoice && rooms.length ? (
+              <section className="mt-10" aria-labelledby="rooms-heading">
+                <h2 id="rooms-heading" className="font-mono text-xs theme-muted">
+                  rooms
+                </h2>
+                <ul className="mt-3 divide-y theme-border border-y theme-border">
+                  {rooms
+                    .filter(({ status }) => status !== "closed")
+                    .map((room) => (
+                      <li
+                        key={room.roomId}
+                        className="flex items-center justify-between gap-4 py-4"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-serif text-xl">{room.label}</p>
+                          <p className="mt-1 font-mono text-xs theme-muted">
+                            {room.playerCount}/{room.capacity} players ·{" "}
+                            {room.status === "open" ? "waiting" : "playing"}
+                          </p>
+                        </div>
+                        {room.roomId === activeRoomId && game ? (
+                          <Link
+                            to={gamePoolPlayerPath(game, room.roomId)}
+                            className="mh-action mh-action--quiet"
+                          >
+                            return
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={
+                              busy ||
+                              !nameLoaded ||
+                              room.status !== "open" ||
+                              room.playerCount >= room.capacity
+                            }
+                            onClick={() => void assign({ roomId: room.roomId })}
+                            className="mh-action mh-action--quiet"
+                          >
+                            join
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-4 font-serif text-lg theme-muted">Ask the organiser for a new invite.</p>
+        )}
+      </main>
+    </GameFrame>
   );
 }

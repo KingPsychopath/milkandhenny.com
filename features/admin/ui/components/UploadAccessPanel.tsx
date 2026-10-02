@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -222,10 +223,10 @@ export function UploadAccessPanel({
       )}
 
       {status && status.audit.length > 0 ? (
-        <details className="mt-5 border-t theme-border pt-4">
-          <summary className="cursor-pointer font-mono text-xs theme-muted">
+        <Disclosure className="mt-5 border-t theme-border pt-4">
+          <DisclosureSummary className="cursor-pointer font-mono text-xs theme-muted">
             access history ({status.audit.length})
-          </summary>
+          </DisclosureSummary>
           <ul className="mt-3 space-y-2">
             {status.audit.slice(0, 8).map((event) => (
               <li key={`${event.id}-${event.action}`} className="font-mono text-xs theme-muted">
@@ -234,7 +235,7 @@ export function UploadAccessPanel({
               </li>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       ) : null}
       {dialog}
     </section>

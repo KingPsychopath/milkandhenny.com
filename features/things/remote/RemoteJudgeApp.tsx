@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
@@ -423,8 +424,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     );
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
         <button
           type="button"
           onClick={() => setEndConfirmationOpen(true)}
@@ -442,7 +443,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         >
           {connectionLabel}
         </span>
-      </header>
+      </GameFrameHeader>
 
       <main id="main" className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 pb-8">
         <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
@@ -734,7 +735,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
           onConfirm={() => void handleEndRoom()}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }
 

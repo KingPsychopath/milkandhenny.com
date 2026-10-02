@@ -1,3 +1,4 @@
+import { GameFrame } from "@/features/things/shared/GameFrame";
 import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { RoomLoadingState } from "../shared/RoomLoadingState";
 import { exitRoom } from "../shared/room-exit.client";
@@ -358,9 +359,9 @@ function DrawCountryRoom({
 
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--cream text-black">
+      <GameFrame tone="cream" className="text-black">
         <RoomUnavailableState gameName="draw the country" gamePath="/things/draw-country" />
-      </div>
+      </GameFrame>
     );
 
   if (!snapshot) return <RoomLoadingState gamePath="/things/draw-country" />;
@@ -440,7 +441,7 @@ function DrawCountryRoom({
   if (snapshot.phase === "drawing" && snapshot.round) {
     const me = snapshot.players.find(({ id }) => id === credentials.playerId);
     return (
-      <div className="things-game things-game--cream text-black">
+      <GameFrame tone="cream" className="text-black">
         <RoomHeader roomId={roomId} connection={live.connectionState} onLeave={leaveRoom} />
         <CountryRoundBoard
           countryName={snapshot.round.countryName}
@@ -458,7 +459,7 @@ function DrawCountryRoom({
             locked in · waiting for everyone
           </p>
         ) : null}
-      </div>
+      </GameFrame>
     );
   }
 

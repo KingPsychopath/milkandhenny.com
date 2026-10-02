@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "../shared/GameFrame";
 import { useEffect, useState } from "react";
 import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { prepareThingOffline } from "@/features/offline/client";
@@ -115,52 +116,62 @@ export function RemotePlayerJoinApp({ roomId }: { roomId: string }) {
     );
 
   return (
-    <main
-      id="main"
-      className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
-    >
-      <div className="max-w-sm">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
-          player phone
-        </p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">
-          {token ? "Loading your game…" : "Invite missing"}
-        </h1>
-        <p className="mt-4 font-serif text-lg text-white/60">
-          {error ??
-            (token
-              ? "Keep this screen open for a moment."
-              : "Ask the judge to share the player link again.")}
-        </p>
-        {error ? (
-          <button
-            type="button"
-            onClick={() => setAttempt((value) => value + 1)}
-            className="mt-6 min-h-12 rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black"
-          >
-            try again
-          </button>
-        ) : null}
-        <GameNavigationLinks />
-      </div>
-    </main>
+    <GameFrame tone="night">
+      <GameFrameHeader>
+        <span>player phone</span>
+      </GameFrameHeader>
+      <main
+        id="main"
+        className="flex flex-1 items-center justify-center px-6 text-center text-white"
+      >
+        <div className="max-w-sm">
+          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+            player phone
+          </p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold">
+            {token ? "Loading your game…" : "Invite missing"}
+          </h1>
+          <p className="mt-4 font-serif text-lg text-white/60">
+            {error ??
+              (token
+                ? "Keep this screen open for a moment."
+                : "Ask the judge to share the player link again.")}
+          </p>
+          {error ? (
+            <button
+              type="button"
+              onClick={() => setAttempt((value) => value + 1)}
+              className="mt-6 min-h-12 rounded-full bg-[var(--things-amber)] px-6 font-mono text-sm font-semibold text-black"
+            >
+              try again
+            </button>
+          ) : null}
+          <GameNavigationLinks />
+        </div>
+      </main>
+    </GameFrame>
   );
 }
 
 function PlayerInviteMessage({ title, detail }: { title: string; detail: string }) {
   return (
-    <main
-      id="main"
-      className="things-game things-game--night flex items-center justify-center px-6 text-center text-white"
-    >
-      <div className="max-w-sm">
-        <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
-          player phone
-        </p>
-        <h1 className="mt-3 font-serif text-5xl font-semibold">{title}</h1>
-        <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
-        <GameNavigationLinks />
-      </div>
-    </main>
+    <GameFrame tone="night">
+      <GameFrameHeader>
+        <span>player phone</span>
+      </GameFrameHeader>
+      <main
+        id="main"
+        className="flex flex-1 items-center justify-center px-6 text-center text-white"
+      >
+        <div className="max-w-sm">
+          <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/45">
+            player phone
+          </p>
+          <h1 className="mt-3 font-serif text-5xl font-semibold">{title}</h1>
+          <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+          <GameNavigationLinks />
+        </div>
+      </main>
+    </GameFrame>
   );
 }
