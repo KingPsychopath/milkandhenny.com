@@ -50,6 +50,8 @@ test("Hot & Cold completes a shared hunt with submitted-guess recovery and repla
       await waitForAppHydration(surface.page);
     }
     await host.page.getByRole("button", { name: "start the hunt", exact: true }).click();
+    // Starting is a server command; wait for the playing screen before reading its round.
+    await expect(host.page.getByPlaceholder("guess any word", { exact: true })).toBeVisible();
     const finish = host.page.getByRole("button", { name: "finish game", exact: true });
     let roundId: string | undefined;
     for (const [index, word] of [
