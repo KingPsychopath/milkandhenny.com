@@ -36,6 +36,10 @@ test("admin access policies and administrator grants hydrate on the first render
     await page.goto(url);
     await waitForAppHydration(page);
     await expect(page.getByRole("heading", { name: "Named administrators" })).toBeVisible();
+    // The initial event selection fills this panel after hydration and changes page height.
+    await expect(
+      page.getByRole("group", { name: "Hydrated access policy", exact: true }),
+    ).toBeVisible();
     await page.getByLabel("event activation", { exact: true }).click();
     await expect(
       page.getByRole("option", { name: "Hydrated access policy · draft", exact: true }),
