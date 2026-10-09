@@ -1,3 +1,5 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { useEffect, useRef, useState } from "react";
 
 import { consumeLocationFragment } from "@/lib/client/url-fragment";
@@ -119,14 +121,15 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
   };
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="Family Feud" gamePath="/things/family-feud" />
-      </div>
+      </GameFrame>
     );
   if (!ready || (session && !snapshot))
     return (
-      <div
-        className="things-game things-game--night flex items-center justify-center px-6 text-white"
+      <GameFrame
+        tone="night"
+        className="flex items-center justify-center px-6 text-white"
         aria-busy="true"
       >
         <main className="text-center">
@@ -145,17 +148,22 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
               retry connection
             </button>
           ) : null}
+          <GameNavigationLinks gamePath="/things/family-feud" />
         </main>
-      </div>
+      </GameFrame>
     );
   if (!session)
     return (
-      <div className="things-game things-game--night flex items-center justify-center px-6 text-center text-white">
+      <GameFrame
+        tone="night"
+        className="flex items-center justify-center px-6 text-center text-white"
+      >
         <main className="max-w-md">
           <h1 className="font-serif text-4xl">Buzzer link missing.</h1>
           <p className="mt-4 text-white/55">Ask the MC to show the optional buzzer QR again.</p>
+          <GameNavigationLinks gamePath="/things/family-feud" />
         </main>
-      </div>
+      </GameFrame>
     );
   if (!snapshot) return null;
   const open = snapshot.phase === "faceoff" && snapshot.round?.faceoffTeamId === null;
@@ -166,8 +174,9 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
     ? snapshot.teams.filter((team) => team.id === session.teamId)
     : snapshot.teams;
   return (
-    <div className="things-game things-game--night flex min-h-[100dvh] flex-col text-white">
-      <header className="px-5 py-4 text-center">
+    <GameFrame tone="night" className="flex min-h-[100dvh] flex-col text-white">
+      <GameFrameHeader className="px-5 py-4 text-center">
+        <GameNavigationLinks gamePath="/things/family-feud" />
         <RoomConnectionIndicator state={live.connectionState} />
         <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
           Family Feud · {session.teamId ? "team buzzer" : "shared buzzer"} · {roomId}
@@ -184,7 +193,7 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
                 ? `${buzzed.name} buzzed first`
                 : "MC will open the buzzers")}
         </p>
-      </header>
+      </GameFrameHeader>
       <main
         id="main"
         className={`grid flex-1 gap-1 p-2 sm:gap-3 sm:p-4 ${session.teamId ? "grid-cols-1" : "grid-cols-2"}`}
@@ -206,6 +215,6 @@ export function FamilyFeudBuzzerApp({ roomId }: { roomId: string }) {
           </button>
         ))}
       </main>
-    </div>
+    </GameFrame>
   );
 }

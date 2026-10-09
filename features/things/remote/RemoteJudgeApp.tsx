@@ -1,8 +1,10 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { AppSelect } from "@/components/AppSelect";
 import { AppImage } from "@/components/AppImage";
 import { MULTIPLAYER_ROOM_TTL_SECONDS } from "../shared/multiplayer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
 import {
@@ -26,6 +28,8 @@ import {
   writeExpiringLocalValue,
 } from "../shared/game-storage.client";
 import { EndGameDialog } from "../shared/EndGameDialog";
+import { exitRoom } from "../shared/room-exit.client";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { shareOrCopy } from "@/lib/client/share";
 import { useNativeShareAvailability } from "@/hooks/useNativeShareAvailability";
 import { useQrCode } from "@/hooks/useQrCode";
@@ -95,7 +99,7 @@ function tokensForRoom(roomId: string): StoredRoomTokens {
 }
 
 export function RemoteJudgeApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [tokens, setTokens] = useState<StoredRoomTokens>({
     judgeToken: "",
     playerToken: "",
@@ -346,14 +350,19 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
   const handleEndRoom = async () => {
     if (endingRoom) return;
     setEndingRoom(true);
-    await closePairedGameRoomFn({
-      data: tokens.playerToken
-        ? { roomId, role: "player", token: tokens.playerToken }
-        : { roomId, role: "judge", token: tokens.judgeToken },
-    }).catch(() => null);
-    sessionStorage.removeItem(remoteBrowserKeys.judgeSession(roomId));
-    localStorage.removeItem(remoteBrowserKeys.pendingCommands(roomId));
-    await navigate({ to: "/things" });
+    await exitRoom(
+      () =>
+        closePairedGameRoomFn({
+          data: tokens.playerToken
+            ? { roomId, role: "player", token: tokens.playerToken }
+            : { roomId, role: "judge", token: tokens.judgeToken },
+        }),
+      () => {
+        removeStorageKeys(sessionStorage, [remoteBrowserKeys.judgeSession(roomId)]);
+        removeStorageKeys(localStorage, [remoteBrowserKeys.pendingCommands(roomId)]);
+        void navigate({ to: "/things", replace: true });
+      },
+    );
   };
 
   const gameKind = snapshot?.game ?? tokens.game;
@@ -415,8 +424,8 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
     );
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between gap-4 p-5 font-mono text-xs text-white/55">
         <button
           type="button"
           onClick={() => setEndConfirmationOpen(true)}
@@ -434,7 +443,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
         >
           {connectionLabel}
         </span>
-      </header>
+      </GameFrameHeader>
 
       <main id="main" className="mx-auto flex w-full max-w-xl flex-1 flex-col px-5 pb-8">
         <p className="mt-4 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
@@ -726,7 +735,7 @@ export function RemoteJudgeApp({ roomId }: { roomId: string }) {
           onConfirm={() => void handleEndRoom()}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }
 
@@ -739,6 +748,7 @@ function JudgeMessage({ title, detail }: { title: string; detail: string }) {
       <div>
         <h1 className="font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+        <GameNavigationLinks />
       </div>
     </main>
   );

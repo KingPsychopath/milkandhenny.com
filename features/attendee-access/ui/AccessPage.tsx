@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { type FormEvent, type RefObject, useCallback, useRef, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { EmailAddressNotice } from "@/components/EmailAddressNotice";
@@ -185,10 +186,10 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
               </button>
             </form>
 
-            <details className="mt-6 border-t theme-border pt-1">
-              <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-60">
+            <Disclosure className="mt-6 border-t theme-border pt-1">
+              <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline decoration-dotted underline-offset-4 transition-opacity hover:opacity-60">
                 already have a sign-in code?
-              </summary>
+              </DisclosureSummary>
               <EmailCodeForm
                 email={email}
                 code={code}
@@ -197,7 +198,7 @@ export function AccessPage({ returnTo, initialMessage = "" }: AccessPageProps) {
                 onCodeChange={setCode}
                 onSubmit={verify}
               />
-            </details>
+            </Disclosure>
           </>
         )}
 

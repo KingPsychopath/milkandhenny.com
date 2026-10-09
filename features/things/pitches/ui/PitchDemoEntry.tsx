@@ -1,11 +1,11 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useEffect, useRef, useState } from "react";
 
 const CONFIRMATION_MS = 3_500;
 const TICK_MS = 100;
 
 export function PitchDemoEntry({ className = "" }: { className?: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [startedAt, setStartedAt] = useState<number>();
   const [elapsed, setElapsed] = useState(0);
   const navigating = useRef(false);

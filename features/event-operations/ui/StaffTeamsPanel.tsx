@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useEffect, useMemo, useState } from "react";
 
 import { StatusNotice } from "@/components/StatusNotice";
@@ -237,10 +238,10 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
       ) : null}
 
       {activeTeams.length > 0 && state.teamRoster.length > 0 ? (
-        <details className="mt-8 border-t theme-border pt-5">
-          <summary className="min-h-11 cursor-pointer font-mono text-xs leading-[2.75rem] hover:opacity-70">
+        <Disclosure className="mt-8 border-t theme-border pt-5">
+          <DisclosureSummary className="min-h-11 cursor-pointer font-mono text-xs leading-[2.75rem] hover:opacity-70">
             move one person
-          </summary>
+          </DisclosureSummary>
           <div className="mt-3 space-y-4">
             <label className="block font-mono text-xs">
               <span className="mb-2 block theme-muted">Find a guest</span>
@@ -308,7 +309,7 @@ export function StaffTeamsPanel({ data, token }: { data: StaffOperationsData; to
               move guest
             </button>
           </div>
-        </details>
+        </Disclosure>
       ) : null}
     </section>
   );

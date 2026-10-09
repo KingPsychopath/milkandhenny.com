@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import { useBrowserGameNameForm } from "@/lib/client/browser-profile";
+import { guestNameFromSeed } from "./guest-name";
 
 const SHARED_MAX_NAME_LENGTH = 32;
 
@@ -20,10 +21,11 @@ export function useRememberedPlayerName(maxLength = SHARED_MAX_NAME_LENGTH) {
     maxNameLength: maxLength,
   });
   const edited = useRef(false);
-  const guestName = useRef(`guest ${crypto.randomUUID().slice(0, 4)}`);
+  const guestName = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!loaded || name || edited.current) return;
+    if (!loaded || edited.current || (name && !/^guest [a-f0-9]{4}$/i.test(name))) return;
+    guestName.current ??= guestNameFromSeed(crypto.randomUUID());
     setName(guestName.current.slice(0, maxLength));
   }, [loaded, maxLength, name, setName]);
 

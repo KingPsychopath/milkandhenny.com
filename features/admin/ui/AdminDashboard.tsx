@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import {
   lazy,
   Suspense,
@@ -616,16 +617,16 @@ export function AdminDashboard({
               onError={setErrorMessage}
               onStatus={setStatusMessage}
             />
-            <details
+            <Disclosure
               className="border-t theme-border pt-4"
               open={qualityReviewOpen}
               onToggle={(event) => setQualityReviewOpen(event.currentTarget.open)}
             >
-              <summary className="min-h-11 cursor-pointer font-mono text-xs">
+              <DisclosureSummary className="min-h-11 cursor-pointer font-mono text-xs">
                 puzzle quality · review upcoming approvals
-              </summary>
+              </DisclosureSummary>
               {qualityReviewOpen ? <HotAndColdReviewPanel onError={setErrorMessage} /> : null}
-            </details>
+            </Disclosure>
           </PanelBoundary>
         </section>
       ) : null}

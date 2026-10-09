@@ -1,7 +1,12 @@
-import { useNavigate } from "@tanstack/react-router";
+import { GameFrame } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { RoomLoadingState } from "../shared/RoomLoadingState";
+import { exitRoom } from "../shared/room-exit.client";
+
 import { useEffect, useRef, useState } from "react";
 import { useWebHaptics } from "web-haptics/react";
 import {
+  removeStorageKeys,
   clearExpiredGameLocalStorage,
   readExpiringLocalValue,
   writeExpiringLocalValue,
@@ -29,16 +34,12 @@ import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 import { useReliableMultiplayerAction } from "../shared/useReliableMultiplayerAction";
 import type { MultiplayerActionInput } from "../shared/multiplayer";
 import { useActionDialog } from "@/hooks/useActionDialog";
-import {
-  clearUnavailableGamePoolMembership,
-  leaveGamePoolRoom,
-  useGamePoolRoomBackNavigation,
-} from "../pool/pool-session.client";
+import { clearUnavailableGamePoolMembership, leaveGamePoolRoom } from "../pool/pool-session.client";
 import { RoomUnavailableState } from "../shared/RoomUnavailableState";
 import { useRoomUnavailableRecovery } from "../shared/useRoomUnavailableRecovery";
 
 export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [credentials, setCredentials] = useState<DrawCountryPlayerCredentials | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -53,21 +54,25 @@ export function DrawCountryRoomApp({ roomId }: { roomId: string }) {
     setLoaded(true);
   }, [roomId]);
 
-  if (!loaded) return <div className="things-game things-game--cream" aria-busy="true" />;
+  if (!loaded) return <RoomLoadingState gamePath="/things/draw-country" />;
   if (!credentials) return <JoinDrawCountryRoom roomId={roomId} onJoined={setCredentials} />;
   return (
     <DrawCountryRoom
       roomId={roomId}
       credentials={credentials}
       onUnavailable={() => {
-        localStorage.removeItem(drawCountryBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [drawCountryBrowserKeys.playerSession(roomId)]);
         void clearUnavailableGamePoolMembership("draw-country", roomId);
       }}
       onLeft={() => {
-        localStorage.removeItem(drawCountryBrowserKeys.playerSession(roomId));
+        removeStorageKeys(localStorage, [drawCountryBrowserKeys.playerSession(roomId)]);
         void leaveGamePoolRoom("draw-country", roomId).then((entrance) => {
-          if (entrance) window.location.assign(entrance);
-          else void navigate({ to: "/things/draw-country" });
+          if (entrance && navigator.onLine) void navigate({ to: entrance, replace: true });
+          else
+            void navigate({
+              to: navigator.onLine ? "/things/draw-country" : "/things",
+              replace: true,
+            });
         });
       }}
     />
@@ -138,11 +143,6 @@ function DrawCountryRoom({
     onUnavailable,
   });
   useSafeGameNavigation(snapshot?.phase === "lobby" || snapshot?.phase === "finished");
-  useGamePoolRoomBackNavigation({
-    enabled: Boolean(snapshot?.managed),
-    game: "draw-country",
-    roomId,
-  });
   const haptics = useWebHaptics();
   const [drawing, setDrawingState] = useState<CountryDrawing>([]);
   const [seconds, setSeconds] = useState(0);
@@ -335,16 +335,7 @@ function DrawCountryRoom({
   };
 
   const leaveRoom = async () => {
-    const result = await control({ type: "player.leave" });
-    if (result?.ok && result.accepted) {
-      onLeft();
-      return true;
-    }
-    if (result && !result.ok && result.errorCode === "room_unavailable") {
-      onLeft();
-      return true;
-    }
-    return false;
+    return exitRoom(() => control({ type: "player.leave" }), onLeft);
   };
 
   const confirmStart = async () => {
@@ -368,12 +359,12 @@ function DrawCountryRoom({
 
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--cream text-black">
+      <GameFrame tone="cream" className="text-black">
         <RoomUnavailableState gameName="draw the country" gamePath="/things/draw-country" />
-      </div>
+      </GameFrame>
     );
 
-  if (!snapshot) return <div className="things-game things-game--cream" aria-busy="true" />;
+  if (!snapshot) return <RoomLoadingState gamePath="/things/draw-country" />;
 
   if (snapshot.phase === "lobby")
     return (
@@ -450,7 +441,7 @@ function DrawCountryRoom({
   if (snapshot.phase === "drawing" && snapshot.round) {
     const me = snapshot.players.find(({ id }) => id === credentials.playerId);
     return (
-      <div className="things-game things-game--cream text-black">
+      <GameFrame tone="cream" className="text-black">
         <RoomHeader roomId={roomId} connection={live.connectionState} onLeave={leaveRoom} />
         <CountryRoundBoard
           countryName={snapshot.round.countryName}
@@ -468,7 +459,7 @@ function DrawCountryRoom({
             locked in · waiting for everyone
           </p>
         ) : null}
-      </div>
+      </GameFrame>
     );
   }
 

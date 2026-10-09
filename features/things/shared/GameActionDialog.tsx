@@ -35,6 +35,7 @@ export function GameActionDialog({
       confirmLabel={confirmLabel}
       cancelLabel={cancelLabel}
       pending={pending}
+      dismissWhilePending
       pendingLabel={pendingLabel}
       tone={tone}
       onCancel={onCancel}

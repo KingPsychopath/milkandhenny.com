@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader, GameFrameFooter } from "@/features/things/shared/GameFrame";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { getStored, setStored } from "@/lib/client/storage";
@@ -116,7 +117,8 @@ export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExpe
   };
 
   return (
-    <div
+    <GameFrame
+      tone="night"
       className="min-h-[100svh] flex flex-col transition-colors duration-700"
       style={{
         background:
@@ -127,7 +129,7 @@ export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExpe
               : "var(--things-night)",
       }}
     >
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/60">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-white/60">
         {experience ? (
           <a
             href={experience.backHref}
@@ -140,8 +142,8 @@ export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExpe
             ← things
           </Link>
         )}
-        <span>{experience?.eventLabel ?? "icebreaker"}</span>
-      </header>
+        {experience?.eventLabel ? <span>{experience.eventLabel}</span> : null}
+      </GameFrameHeader>
 
       <main id="main" className="flex-1 flex items-center justify-center px-6 py-10">
         {showingColourBook ? (
@@ -238,9 +240,9 @@ export function IcebreakerApp({ experience }: { experience?: IcebreakerEventExpe
         )}
       </main>
 
-      <footer className="p-6 text-center font-mono text-micro text-white/55">
+      <GameFrameFooter className="p-6 text-center font-mono text-micro text-white/55">
         Be kind. A no is always enough.
-      </footer>
-    </div>
+      </GameFrameFooter>
+    </GameFrame>
   );
 }

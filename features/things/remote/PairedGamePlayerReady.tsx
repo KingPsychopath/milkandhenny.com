@@ -1,4 +1,5 @@
-import { useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
 import { useState } from "react";
 import { EndGameDialog } from "../shared/EndGameDialog";
 
@@ -19,7 +20,7 @@ export function PairedGamePlayerReady({
   onFullscreen?: () => void;
   onLeave: () => Promise<void>;
 }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [leaveConfirmationOpen, setLeaveConfirmationOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const handleLeave = async () => {
@@ -37,8 +38,8 @@ export function PairedGamePlayerReady({
   };
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
         <button
           type="button"
           onClick={() => setLeaveConfirmationOpen(true)}
@@ -49,7 +50,7 @@ export function PairedGamePlayerReady({
         <span aria-live="polite" className={judgeConnected ? "text-emerald-200" : "text-amber-200"}>
           {judgeConnected ? "● judge connected" : "judge reconnecting"}
         </span>
-      </header>
+      </GameFrameHeader>
       <main
         id="main"
         className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 pb-12 text-center"
@@ -90,6 +91,6 @@ export function PairedGamePlayerReady({
           onConfirm={() => void handleLeave()}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }

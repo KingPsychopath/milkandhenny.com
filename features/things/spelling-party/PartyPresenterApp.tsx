@@ -1,4 +1,8 @@
-import { useNavigate } from "@tanstack/react-router";
+import { GameFrame } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
+import { exitRoom } from "../shared/room-exit.client";
+import { GameNavigationLinks } from "../shared/GameNavigationLinks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TextMorph } from "torph/react";
 import { useWebHaptics } from "web-haptics/react";
@@ -68,7 +72,7 @@ function roomTokens(roomId: string) {
 }
 
 export function PartyPresenterApp({ roomId }: { roomId: string }) {
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const [tokens, setTokens] = useState({ presenterToken: "", joinToken: "" });
   const [tokensReadyForRoom, setTokensReadyForRoom] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
@@ -235,12 +239,14 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     }
     setEndConfirmationOpen(false);
     setClosing(true);
-    await closePartyRoomFn({ data: { roomId, presenterToken: tokens.presenterToken } }).catch(
-      () => null,
+    await exitRoom(
+      () => closePartyRoomFn({ data: { roomId, presenterToken: tokens.presenterToken } }),
+      () => {
+        removeStorageKeys(sessionStorage, [partyBrowserKeys.presenterSession(roomId)]);
+        removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
+        void navigate({ to: "/things/spelling-party", replace: true });
+      },
     );
-    sessionStorage.removeItem(partyBrowserKeys.presenterSession(roomId));
-    removeStorageKeys(localStorage, [partyBrowserKeys.presenterRecovery(roomId)]);
-    await navigate({ to: "/things/spelling-party" });
   };
   const players = snapshot?.players ?? [];
   const leaderboard = useMemo(
@@ -262,9 +268,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     );
   if (roomUnavailable)
     return (
-      <div className="things-game things-game--night text-white">
+      <GameFrame tone="night" className="text-white">
         <RoomUnavailableState gameName="spelling party" gamePath="/things/spelling-party" />
-      </div>
+      </GameFrame>
     );
   if (!snapshot)
     return (
@@ -275,10 +281,10 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
     );
   const round = snapshot.round;
   return (
-    <div className="things-game things-game--night text-white">
+    <GameFrame tone="night" className="text-white">
       <ThingsRoomHeader
         tone="night"
-        back={<span className="things-room-header-utility">spelling party</span>}
+        back={<Link to="/things/spelling-party">← spelling party</Link>}
         roomId={roomId}
         connection={live.connectionState}
         right={
@@ -303,9 +309,9 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
             <LobbyIntro
               title="Get everyone on a phone."
               description="Type the same word from different phones, then see whose spelling was closest."
-              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
             />
             <MultiplayerLobby
+              rules="The host reads the clue aloud. Everyone types one answer on their own phone, and the room compares the spellings when time is up."
               actions={
                 <button
                   type="button"
@@ -501,7 +507,7 @@ export function PartyPresenterApp({ roomId }: { roomId: string }) {
           onConfirm={() => void confirmStart()}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }
 
@@ -530,6 +536,7 @@ function PartyScreenMessage({ title, detail }: { title: string; detail: string }
       <div>
         <h1 className="font-serif text-5xl font-semibold">{title}</h1>
         <p className="mt-4 font-serif text-lg text-white/60">{detail}</p>
+        <GameNavigationLinks gamePath="/things/spelling-party" />
       </div>
     </main>
   );

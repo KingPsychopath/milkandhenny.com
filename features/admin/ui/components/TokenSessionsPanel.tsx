@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useEffect, useState } from "react";
 import { TOKEN_SESSION_STATUS, type TokenSessionStatusKey } from "./tokenSessionsStatus";
 import { useTokenSessions } from "../hooks/useTokenSessions";
@@ -164,8 +165,8 @@ export function TokenSessionsPanel(props: {
             const status = TOKEN_SESSION_STATUS[statusKey];
 
             return (
-              <details key={s.jti} className="border theme-border rounded-md p-3">
-                <summary
+              <Disclosure key={s.jti} className="border theme-border rounded-md p-3">
+                <DisclosureSummary
                   className="flex min-h-11 cursor-pointer select-none list-none items-center"
                   title="Tap to expand for full details (jti, full user-agent)."
                 >
@@ -188,7 +189,7 @@ export function TokenSessionsPanel(props: {
                     </div>
                     <span className="font-mono text-xs theme-muted shrink-0">details</span>
                   </div>
-                </summary>
+                </DisclosureSummary>
 
                 <div className="mt-3 pt-3 border-t theme-border space-y-2">
                   <p className="font-mono text-xs theme-muted">
@@ -223,7 +224,7 @@ export function TokenSessionsPanel(props: {
                     </button>
                   </div>
                 </div>
-              </details>
+              </Disclosure>
             );
           })}
 

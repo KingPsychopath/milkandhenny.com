@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { type FormEvent, useState } from "react";
 import { startRegistration } from "@simplewebauthn/browser";
 import { useNavigate, useRouter } from "@tanstack/react-router";
@@ -273,10 +274,10 @@ export function SecuritySettingsPanel() {
   }
 
   return (
-    <details className="mt-10 border-t theme-border pt-2">
-      <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
+    <Disclosure className="mt-10 border-t theme-border pt-2">
+      <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
         sign-in security
-      </summary>
+      </DisclosureSummary>
       <div className="py-3">
         <section aria-labelledby="passkeys-heading">
           <h2 id="passkeys-heading" className="font-serif text-2xl">
@@ -461,7 +462,7 @@ export function SecuritySettingsPanel() {
         ) : null}
         {dialog}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 

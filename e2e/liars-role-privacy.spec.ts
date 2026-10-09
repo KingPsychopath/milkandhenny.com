@@ -108,9 +108,13 @@ for (const mode of ["mafia", "imposter"] as const) {
         await expect(card).not.toContainText("hold to reveal");
         await surface.page.keyboard.up("Space");
         await expect(card).toContainText("hold to reveal");
-        await card.dispatchEvent("pointerdown");
+        const cardBounds = await card.boundingBox();
+        if (!cardBounds) throw new Error("Missing role card");
+        await surface.page.mouse.move(cardBounds.x + cardBounds.width / 2, cardBounds.y + 20);
+        await surface.page.mouse.down();
         await expect(card).not.toContainText("hold to reveal");
         await card.dispatchEvent("pointercancel");
+        await surface.page.mouse.up();
         await expect(card).toContainText("hold to reveal");
       }
       const handover = await host.page.evaluate(

@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { EventOperations } from "./EventOperationsPanel";
 export { TicketSalesBreakdown } from "./EventOperationsPanel";
 import { AdminTextField as Field } from "./AdminTextField";
@@ -125,7 +126,7 @@ export function EventsPanel({
   useEffect(() => {
     if (editorError) editorErrorRef.current?.focus();
   }, [editorError]);
-  const [editor, setEditor] = useAdminDraftState<{
+  const [editor, setEditor, , editorHydrated] = useAdminDraftState<{
     selection: EventsWorkspaceSelection;
     draft: Draft | null;
   }>(
@@ -270,8 +271,10 @@ export function EventsPanel({
     }
   };
 
+  // Restore the tab's draft before a URL/default selection can replace it.
   useEffect(() => {
     if (
+      !editorHydrated ||
       draft !== null ||
       !initialEventSlug ||
       openedTarget.current === initialEventSlug ||
@@ -282,10 +285,11 @@ export function EventsPanel({
     openedTarget.current = initialEventSlug;
     setSelection({ kind: "operations", slug: initialEventSlug });
     setDraft(null);
-  }, [draft, events, initialEventSlug, setDraft, setSelection]);
+  }, [draft, editorHydrated, events, initialEventSlug, setDraft, setSelection]);
 
   useEffect(() => {
     if (
+      !editorHydrated ||
       draft !== null ||
       initialEventSlug ||
       appliedDefaultSelection.current ||
@@ -300,7 +304,7 @@ export function EventsPanel({
     if (!preferred) return;
     setSelection({ kind: "operations", slug: preferred.slug });
     setDraft(null);
-  }, [draft, events, initialEventSlug, loadError, loading, setDraft, setSelection]);
+  }, [draft, editorHydrated, events, initialEventSlug, loadError, loading, setDraft, setSelection]);
 
   const save = async () => {
     if (!draft) return;
@@ -456,12 +460,13 @@ export function EventsPanel({
           {permissions.manageEvents ? (
             <button
               type="button"
+              disabled={!editorHydrated}
               onClick={async () => {
                 if (!(await canReplaceDraft())) return;
                 setSelection({ kind: "create" });
                 setDraft(EMPTY_DRAFT);
               }}
-              className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors"
+              className="inline-flex min-h-11 items-center rounded border theme-border px-3 font-mono text-xs theme-muted hover:text-foreground transition-colors disabled:opacity-50"
             >
               + new event
             </button>
@@ -606,14 +611,13 @@ export function EventsPanel({
           </ul>
 
           {permissions.manageGlobalSettings ? (
-            <details className="group mt-6">
-              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 border-y theme-border py-3 font-mono text-xs text-foreground marker:content-none hover:opacity-70">
+            <Disclosure className="group mt-6">
+              <DisclosureSummary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 border-y theme-border py-3 font-mono text-xs text-foreground marker:content-none hover:opacity-70">
                 <span>public footer destination</span>
                 <span className="theme-muted group-open:hidden">site-wide setting · open</span>
-                <span className="hidden theme-muted group-open:inline">close</span>
-              </summary>
+              </DisclosureSummary>
               <FooterPartyLinkSettings events={events} onError={onError} onStatus={onStatus} />
-            </details>
+            </Disclosure>
           ) : null}
         </div>
 
@@ -847,10 +851,10 @@ export function EventsPanel({
                     onChange={(value) => setDraft({ ...draft, dressCode: value })}
                   />
                 </div>
-                <details className="border-t theme-border pt-2">
-                  <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs font-bold">
+                <Disclosure className="border-t theme-border pt-2">
+                  <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs font-bold">
                     publishing and images
-                  </summary>
+                  </DisclosureSummary>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field
                       label="hero image URL"
@@ -943,11 +947,11 @@ export function EventsPanel({
                     onChange={(value) => setDraft({ ...draft, description: value })}
                     rows={5}
                   />
-                </details>
-                <details className="border-t theme-border pt-2">
-                  <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs font-bold">
+                </Disclosure>
+                <Disclosure className="border-t theme-border pt-2">
+                  <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs font-bold">
                     policies and terms
-                  </summary>
+                  </DisclosureSummary>
                   <div className="space-y-4">
                     <Field
                       label="house rules"
@@ -971,7 +975,7 @@ export function EventsPanel({
                       hint="Shown beside checkout; use clear entry, transfer, cancellation, and conduct terms."
                     />
                   </div>
-                </details>
+                </Disclosure>
                 <h4 className="font-mono text-xs font-bold">tickets and availability</h4>
                 <label className="flex min-h-11 items-center gap-2">
                   <input

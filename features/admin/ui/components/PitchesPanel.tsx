@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useMemo, useState } from "react";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 import { Link } from "@tanstack/react-router";
@@ -902,13 +903,11 @@ export function PitchesPanel({
               ))}
           </ol>
 
-          <details className="group mt-7 border-t theme-border pt-4">
-            <summary className="cursor-pointer list-none font-mono text-xs text-foreground">
+          <Disclosure className="group mt-7 border-t theme-border pt-4">
+            <DisclosureSummary className="cursor-pointer list-none font-mono text-xs text-foreground">
               media &amp; storage · {detail.assets.length} files ·{" "}
               {bytes(detail.assets.reduce((total, asset) => total + asset.bytes, 0))}
-              <span className="float-right theme-muted group-open:hidden">open</span>
-              <span className="float-right hidden theme-muted group-open:inline">close</span>
-            </summary>
+            </DisclosureSummary>
             <ul className="mt-4 divide-y theme-border border-y">
               {detail.assets.map((asset) => (
                 <li
@@ -930,14 +929,12 @@ export function PitchesPanel({
                 <li className="py-4 font-mono text-micro theme-muted">No stored media.</li>
               ) : null}
             </ul>
-          </details>
+          </Disclosure>
 
-          <details className="group mt-4 border-t theme-border pt-4">
-            <summary className="cursor-pointer list-none font-mono text-xs text-foreground">
+          <Disclosure className="group mt-4 border-t theme-border pt-4">
+            <DisclosureSummary className="cursor-pointer list-none font-mono text-xs text-foreground">
               backups &amp; activity · {detail.backups.length} restore points
-              <span className="float-right theme-muted group-open:hidden">open</span>
-              <span className="float-right hidden theme-muted group-open:inline">close</span>
-            </summary>
+            </DisclosureSummary>
             <div className="mt-4 grid gap-6 md:grid-cols-2">
               <div>
                 <p className="font-mono text-micro uppercase tracking-[0.12em] theme-muted">
@@ -1004,14 +1001,12 @@ export function PitchesPanel({
                 </ul>
               </div>
             </div>
-          </details>
+          </Disclosure>
 
-          <details className="group mt-4 border-t theme-border pt-4">
-            <summary className="cursor-pointer list-none font-mono text-xs text-foreground">
+          <Disclosure className="group mt-4 border-t theme-border pt-4">
+            <DisclosureSummary className="cursor-pointer list-none font-mono text-xs text-foreground">
               move this pitch to Trash
-              <span className="float-right theme-muted group-open:hidden">open</span>
-              <span className="float-right hidden theme-muted group-open:inline">close</span>
-            </summary>
+            </DisclosureSummary>
             <div className="mt-4 max-w-xl">
               <p className="font-serif text-base theme-muted">
                 This hides the pitch and blocks editing now. The working copy, sealed editions,
@@ -1033,7 +1028,7 @@ export function PitchesPanel({
                 move pitch to Trash
               </button>
             </div>
-          </details>
+          </Disclosure>
         </div>
       ) : null}
       {dialog}

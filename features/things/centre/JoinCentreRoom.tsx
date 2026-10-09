@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 import { writeExpiringLocalValue } from "../shared/game-storage.client";
@@ -72,11 +73,11 @@ export function JoinCentreRoom({
   useAutomaticRoomJoin(loaded && Boolean(name.trim()), join);
 
   return (
-    <div className="things-game things-game--night centre">
-      <header className="centre-header">
+    <GameFrame tone="theme" className="centre">
+      <GameFrameHeader className="centre-header">
         <Link to="/things/centre">← game</Link>
         <span>{roomId}</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="centre-join">
         <p className="centre-eyebrow">shared race</p>
         <h1 className="centre-title">Ready to find the centre?</h1>
@@ -140,6 +141,6 @@ export function JoinCentreRoom({
           </form>
         )}
       </main>
-    </div>
+    </GameFrame>
   );
 }

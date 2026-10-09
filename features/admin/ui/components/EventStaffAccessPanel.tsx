@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useMemo, useState } from "react";
 
 import { AppImage } from "@/components/AppImage";
@@ -224,10 +225,10 @@ export function EventStaffAccessPanel({
         tied to email; a shared-device link is the quick, supervised fallback.
       </p>
 
-      <details className="mt-6 border-y theme-border py-4" open={roles.length === 0}>
-        <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs">
+      <Disclosure className="mt-6 border-y theme-border py-4" open={roles.length === 0}>
+        <DisclosureSummary className="flex min-h-11 cursor-pointer items-center font-mono text-xs">
           create a role
-        </summary>
+        </DisclosureSummary>
         <form
           onSubmit={(event) => void createRole(event)}
           className="mt-4 grid gap-4 sm:grid-cols-2"
@@ -336,7 +337,7 @@ export function EventStaffAccessPanel({
             save role
           </button>
         </form>
-      </details>
+      </Disclosure>
 
       <div className="mt-6 border-y theme-border">
         <div className="hidden grid-cols-[minmax(0,1fr)_auto_auto] gap-4 border-b theme-border px-3 py-2 font-mono text-micro uppercase tracking-widest theme-faint sm:grid">
@@ -511,10 +512,10 @@ export function EventStaffAccessPanel({
       </div>
 
       {archivedRoles.length > 0 ? (
-        <details className="mt-4 border-b theme-border pb-4">
-          <summary className="flex min-h-11 cursor-pointer items-center font-mono text-xs theme-muted">
+        <Disclosure className="mt-4 border-b theme-border pb-4">
+          <DisclosureSummary className="flex min-h-11 cursor-pointer items-center font-mono text-xs theme-muted">
             archived roles ({archivedRoles.length})
-          </summary>
+          </DisclosureSummary>
           <ul className="mt-2 divide-y theme-border border-y theme-border">
             {archivedRoles.map((role) => (
               <li key={role.id} className="flex min-h-11 items-center justify-between gap-4 py-2">
@@ -523,7 +524,7 @@ export function EventStaffAccessPanel({
               </li>
             ))}
           </ul>
-        </details>
+        </Disclosure>
       ) : null}
 
       {issuedLabel && (

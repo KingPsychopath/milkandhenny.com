@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 export interface RoundResult {
   id: string;
   card: string;
@@ -13,13 +14,13 @@ interface RoundResultsProps {
 
 export function RoundResults({ results, score, onBack, onPlayAgain }: RoundResultsProps) {
   return (
-    <div className="things-game things-game--cream">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-black/55">
+    <GameFrame tone="cream">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-black/55">
         <button type="button" onClick={onBack} className="min-h-11">
           ← setup
         </button>
         <span>round complete</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="flex-1 px-6 pb-10 text-black">
         <section className="mx-auto max-w-lg pt-8 text-center">
           <p className="font-mono text-micro uppercase tracking-[0.2em] text-black/50">
@@ -66,6 +67,6 @@ export function RoundResults({ results, score, onBack, onPlayAgain }: RoundResul
           </ul>
         </section>
       </main>
-    </div>
+    </GameFrame>
   );
 }

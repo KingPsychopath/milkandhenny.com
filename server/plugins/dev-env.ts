@@ -38,7 +38,7 @@ function parse(contents: string) {
 }
 
 export default definePlugin(() => {
-  if (process.env.NODE_ENV === "production") return;
+  if (process.env.NODE_ENV === "production" || process.env.MAH_LOCAL_DEV === "1") return;
 
   let filled = 0;
   for (const file of FILES) {

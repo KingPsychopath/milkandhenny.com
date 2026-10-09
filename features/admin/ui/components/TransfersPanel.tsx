@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -537,10 +538,10 @@ export function TransfersPanel({
             </button>
           </div>
         </div>
-        <details className="border-y theme-border py-2">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center font-mono text-xs theme-muted marker:content-none">
+        <Disclosure className="border-y theme-border py-2">
+          <DisclosureSummary className="flex min-h-11 cursor-pointer list-none items-center font-mono text-xs theme-muted marker:content-none">
             maintenance and destructive actions
-          </summary>
+          </DisclosureSummary>
           <div className="border-t theme-border pt-4">
             <p className="max-w-2xl font-mono text-micro leading-relaxed theme-muted">
               Cleanup is rarely needed during normal operation. Deep cleanup scans storage; delete
@@ -573,7 +574,7 @@ export function TransfersPanel({
               </button>
             </div>
           </div>
-        </details>
+        </Disclosure>
         <input
           type="text"
           value={transferQuery}

@@ -97,7 +97,7 @@ them and substitution, lifecycle, or typed failure handling provides real value;
 query or SDK call.
 
 The complete contract is [docs/effect-lifecycle.md](./docs/effect-lifecycle.md). Effect is pinned to
-an exact prerelease in `package.json`; treat an upgrade as a coordinated change.
+an exact version in `package.json`; treat an upgrade as a coordinated change.
 
 ## 5. Persistence and durable work
 

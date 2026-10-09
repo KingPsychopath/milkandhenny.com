@@ -16,11 +16,13 @@ import {
 const buildId = getRuntimeCommitSha() ?? `local-${new Date().toISOString()}`;
 
 export default defineConfig({
+  envDir: process.env.MAH_LOCAL_DEV === "1" ? false : undefined,
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
   },
   server: {
     port: 3000,
+    watch: { ignored: ["**/coverage/**", "**/test-results/**", "**/playwright-report/**"] },
   },
   worker: {
     format: "es",

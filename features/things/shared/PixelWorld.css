@@ -40,18 +40,46 @@
 }
 
 .multiplayer-lobby-panel-heading {
-  margin: 1.25rem 0 0;
+  margin: 0;
   font-size: 0.625rem;
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  opacity: 0.58;
+  opacity: 0.72;
+}
+
+.multiplayer-lobby-roster-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  min-height: 2.75rem;
+}
+
+.multiplayer-lobby-qr {
+  display: grid;
+  place-items: center;
+  width: clamp(8.5rem, 28vw, 11rem);
+  aspect-ratio: 1;
+}
+
+.multiplayer-lobby-qr-image {
+  width: 100%;
+  border-radius: 0.75rem;
+}
+
+.multiplayer-lobby-player-meta {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.625rem;
+  opacity: 0.65;
 }
 
 .multiplayer-lobby-roster {
   display: grid;
   gap: 0;
-  margin: 0.65rem 0 0;
+  margin: 0.25rem 0 0;
   padding: 0;
   border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
   list-style: none;
@@ -60,7 +88,7 @@
 .multiplayer-lobby-roster li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
-  min-height: 2.75rem;
+  min-height: 3.5rem;
   align-items: center;
   gap: 0.65rem;
   border-bottom: 1px solid color-mix(in oklab, currentColor 14%, transparent);
@@ -74,7 +102,7 @@
 }
 
 .multiplayer-lobby-roster li > span:nth-child(2) {
-  opacity: 0.52;
+  opacity: 0.7;
 }
 
 .multiplayer-lobby-roster button,
@@ -91,9 +119,9 @@
 }
 
 .multiplayer-lobby-rename {
-  margin-top: 0.4rem;
+  margin-top: 0;
   font-size: 0.6875rem;
-  opacity: 0.62;
+  opacity: 0.72;
 }
 
 .pixel-room-lobby-heading {

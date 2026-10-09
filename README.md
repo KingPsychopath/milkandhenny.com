@@ -39,16 +39,29 @@ external adapters.
 
 ## Local development
 
+Install Docker and start its engine, then run:
+
 ```bash
-cp .env.example .env.local
 pnpm install --frozen-lockfile
+pnpm dev:setup
 pnpm dev
 ```
 
-Open `http://localhost:3000`.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup downloads the service images and semantic
+model once; later starts work offline. Vite updates the browser as you edit.
 
-Fill in the database, object-storage, and authentication values in `.env.local`. Select the
-Postgres stores listed in the template for a Redis-free local run.
+The default mode uses local Postgres, S3-compatible storage, and Mailpit. It ignores remote
+credentials and dotenv files. Database and uploaded files persist in Docker volumes; the local
+authentication secret persists in the ignored `.local-dev` directory. No Redis or hosted account is
+needed. Admin password: `local-admin-password`. Upload PIN: `local-upload-pin`.
+
+Run `pnpm dev:stop` to stop services while keeping data. Run `pnpm dev:cli <command>` to use the
+CLI against the same local environment. The email inbox is at
+[http://127.0.0.1:18025](http://127.0.0.1:18025).
+
+For an intentionally configured environment, copy `.env.example` to `.env.local` and use
+`pnpm dev:server`. Browser tests use that lower-level command with their own isolated fixtures.
+Real payment processing and deployment still require their provider configuration.
 
 Useful commands:
 

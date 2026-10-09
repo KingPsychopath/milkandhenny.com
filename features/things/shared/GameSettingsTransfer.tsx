@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useId, useRef, useState } from "react";
 import {
   parseEmbeddedGameSettingsDocument,
@@ -83,8 +84,8 @@ export function GameSettingsTransfer({
   };
 
   return (
-    <details className="mt-5 border-t border-current/15 pt-4" open={open}>
-      <summary
+    <Disclosure className="mt-5 border-t border-current/15 pt-4" open={open}>
+      <DisclosureSummary
         onClick={(event) => {
           event.preventDefault();
           setOpen((current) => !current);
@@ -92,7 +93,7 @@ export function GameSettingsTransfer({
         className="min-h-11 cursor-pointer font-mono text-xs opacity-60"
       >
         import or export game settings
-      </summary>
+      </DisclosureSummary>
       <div className="space-y-3 pb-2">
         <div className="flex flex-wrap gap-x-5 gap-y-1">
           <button
@@ -158,6 +159,6 @@ export function GameSettingsTransfer({
           </button>
         ) : null}
       </div>
-    </details>
+    </Disclosure>
   );
 }

@@ -146,7 +146,7 @@ provides a real boundary. Provider context is scoped to the active Effect operat
 plain ticket, refund, media, and realtime engines use the Layer-selected implementation without
 turning individual SDK and query calls into pipelines.
 
-Effect is pinned exactly in `package.json`; a prerelease version bump is coordinated rather than
+Effect is pinned exactly in `package.json`; a version bump is coordinated rather than
 routine. The complete adoption, resource, cancellation, failure, retry, testing, and shutdown
 contract is [effect-lifecycle.md](./effect-lifecycle.md).
 

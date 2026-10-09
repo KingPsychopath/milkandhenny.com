@@ -1,15 +1,23 @@
-import { Link, Outlet, createFileRoute, useMatchRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useMatchRoute,
+  useRouterState,
+} from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AppSelect } from "@/components/AppSelect";
+import {
+  readThingUsage,
+  recordThingVisit,
+  selectThings,
+} from "@/features/things/catalog-preferences";
+import type { ThingFilter, ThingSort, ThingUsage } from "@/features/things/catalog-preferences";
 import { SITE_BRAND, SITE_NAME } from "@/lib/shared/config";
 import { THINGS } from "@/features/things/catalog";
 import { isOfflineThingSlug } from "@/features/things/offline";
 import type { OfflineThingSlug } from "@/features/things/offline";
-import {
-  activateSiteUpdate,
-  updateThingOffline,
-  useSiteUpdateState,
-  useThingOfflineState,
-} from "@/features/offline/client";
+import { updateThingOffline, useThingOfflineState } from "@/features/offline/client";
 import type { Thing } from "@/features/things/catalog";
 import { OG_IMAGES, buildSeoHead } from "@/lib/shared/seo";
 import { ThingsConcierge } from "@/features/things/shared/ThingsConcierge";
@@ -100,16 +108,22 @@ export const Route = createFileRoute("/things")({
 function ThingsRoute() {
   const matchRoute = useMatchRoute();
   const isIndex = matchRoute({ to: "/things", fuzzy: false });
-  const siteUpdateState = useSiteUpdateState();
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ThingFilter>("all");
+  const [sort, setSort] = useState<ThingSort>("used");
+  const [usage, setUsage] = useState<ThingUsage>({});
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const lastVisit = useRef<string | null>(null);
+  useEffect(() => {
+    const thing = THINGS.find(({ href }) => pathname === href || pathname.startsWith(`${href}/`));
+    if (lastVisit.current === (thing?.slug ?? null)) return;
+    lastVisit.current = thing?.slug ?? null;
+    setUsage(thing ? recordThingVisit(thing.slug) : readThingUsage());
+  }, [pathname]);
+  useEffect(() => setUsage(readThingUsage()), []);
   const filteredThings = useMemo(() => {
-    const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return THINGS;
-    return THINGS.filter((thing) => {
-      const searchText = `${thing.name} ${thing.description} ${thing.eyebrow}`.toLowerCase();
-      return tokens.every((token) => searchText.includes(token));
-    });
-  }, [query]);
+    return selectThings(query, filter, sort, usage);
+  }, [query, filter, sort, usage]);
 
   if (!isIndex)
     return (
@@ -133,7 +147,7 @@ function ThingsRoute() {
           <span aria-current="page">things</span>
         </nav>
         <p className="mt-14 font-mono text-micro uppercase tracking-[0.22em] theme-muted">
-          the useful drawer
+          games & tools
         </p>
         <h1 className="mt-3 font-serif text-5xl sm:text-6xl font-medium tracking-tight text-foreground">
           things<span className="theme-faint">+</span>
@@ -152,7 +166,7 @@ function ThingsRoute() {
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="what do you feel like playing?"
+                placeholder="search games & tools"
                 autoComplete="off"
                 className="w-full bg-transparent py-3 pr-12 font-mono text-base sm:text-sm theme-muted outline-none border-b theme-border placeholder:theme-faint focus:border-[var(--foreground)]"
               />
@@ -177,81 +191,106 @@ function ThingsRoute() {
           </div>
           <ThingsConcierge />
         </div>
-        {siteUpdateState === "ready" ||
-        siteUpdateState === "activating" ||
-        siteUpdateState === "failed" ? (
-          <div
-            className="mt-6 flex min-h-11 items-center justify-between gap-4 border-y theme-border py-2 font-mono text-micro uppercase tracking-[0.12em] theme-muted"
-            aria-live="polite"
-          >
-            <span>
-              {siteUpdateState === "ready"
-                ? "new version available"
-                : siteUpdateState === "activating"
-                  ? "refreshing…"
-                  : "could not refresh"}
-            </span>
-            {siteUpdateState === "ready" || siteUpdateState === "failed" ? (
-              <button
-                type="button"
-                onClick={() => void activateSiteUpdate()}
-                className="min-h-11 shrink-0 px-2 underline decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
-              >
-                {siteUpdateState === "failed" ? "try again" : "refresh"}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <AppSelect
+            ariaLabel="Filter things"
+            value={filter}
+            onValueChange={(value) => {
+              const selected = (
+                ["all", "games", "tools", "solo", "together", "offline"] as const
+              ).find((option) => option === value);
+              if (selected) setFilter(selected);
+            }}
+            options={[
+              { value: "all", label: "everything" },
+              { value: "games", label: "games" },
+              { value: "tools", label: "tools" },
+              { value: "solo", label: "solo" },
+              { value: "together", label: "with friends" },
+              { value: "offline", label: "works offline" },
+            ]}
+          />
+          <AppSelect
+            ariaLabel="Sort things"
+            value={sort}
+            onValueChange={(value) => {
+              if (value === "used" || value === "name") setSort(value);
+            }}
+            options={[
+              { value: "used", label: "most used" },
+              { value: "name", label: "a–z" },
+            ]}
+          />
+        </div>
       </header>
 
       <main id="main" className="max-w-2xl mx-auto px-6 pb-24">
         {filteredThings.length === 0 ? (
           <div className="border-t theme-border-strong py-16 text-center">
-            <p className="font-serif text-foreground/80 italic">nothing here feels right yet.</p>
+            <p className="font-serif text-foreground/80">No matches.</p>
             <button
               type="button"
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                setFilter("all");
+              }}
               className="mt-4 inline-flex min-h-11 items-center px-2 font-mono text-xs theme-muted hover:text-foreground"
             >
               show everything
             </button>
           </div>
         ) : (
-          <ul className="border-t theme-border-strong">
-            {filteredThings.map((thing, index) => (
-              <li key={thing.slug} className="border-b theme-border">
-                <Link
-                  to={thing.href}
-                  className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 min-h-44 focus-visible:outline-offset-4"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="font-mono text-2xl theme-faint group-hover:text-foreground transition-colors"
+          <div className="space-y-12">
+            {(["games", "tools"] as const).map((category) => {
+              const items = filteredThings.filter((thing) => thing.category === category);
+              if (!items.length) return null;
+              return (
+                <section key={category} aria-labelledby={`things-${category}`}>
+                  <h2
+                    id={`things-${category}`}
+                    className="mb-4 font-mono text-xs uppercase tracking-widest theme-muted"
                   >
-                    <ThingMark mark={thing.mark} />
-                  </span>
-                  <span>
-                    <span className="block font-mono text-micro uppercase tracking-[0.16em] theme-muted">
-                      {String(index + 1).padStart(2, "0")} · {thing.eyebrow}
-                    </span>
-                    <span className="block mt-3 font-serif text-3xl text-foreground">
-                      {thing.name}
-                    </span>
-                    <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
-                      {thing.description}
-                    </span>
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="font-mono text-lg theme-muted transition-transform duration-300 group-hover:translate-x-1"
-                  >
-                    →
-                  </span>
-                </Link>
-                <ThingOfflineStatus thing={thing} />
-              </li>
-            ))}
-          </ul>
+                    {category}
+                  </h2>
+                  <ul className="border-t theme-border-strong">
+                    {items.map((thing) => (
+                      <li key={thing.slug} className="border-b theme-border">
+                        <Link
+                          to={thing.href}
+                          className="group grid grid-cols-[3rem_1fr_auto] gap-4 items-start py-7 min-h-44 focus-visible:outline-offset-4"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="font-mono text-2xl theme-faint group-hover:text-foreground transition-colors"
+                          >
+                            <ThingMark mark={thing.mark} />
+                          </span>
+                          <span>
+                            <span className="block font-mono text-micro uppercase tracking-[0.16em] theme-muted">
+                              {thing.eyebrow}
+                            </span>
+                            <span className="block mt-3 font-serif text-3xl text-foreground">
+                              {thing.name}
+                            </span>
+                            <span className="block mt-2 max-w-md text-sm leading-relaxed theme-muted">
+                              {thing.description}
+                            </span>
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className="font-mono text-lg theme-muted transition-transform duration-300 group-hover:translate-x-1"
+                          >
+                            →
+                          </span>
+                        </Link>
+                        <ThingOfflineStatus thing={thing} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
         )}
       </main>
     </div>

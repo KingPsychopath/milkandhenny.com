@@ -1,4 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
+import { useGameNavigate } from "@/features/things/shared/useGameNavigate";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { AppSelect } from "@/components/AppSelect";
@@ -19,7 +21,7 @@ import { useSafeGameNavigation } from "../shared/useSafeGameNavigation";
 
 export function FamilyFeudSetupApp() {
   useSafeGameNavigation(true);
-  const navigate = useNavigate();
+  const navigate = useGameNavigate();
   const custom = useFamilyFeudCustomDecks();
   const [vibeId, setVibeId] = useState<FamilyFeudVibeId>("london-link-up");
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([
@@ -124,13 +126,12 @@ export function FamilyFeudSetupApp() {
     }
   };
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between px-6 py-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between px-6 py-5 font-mono text-xs text-white/55">
         <Link to="/things" className="inline-flex min-h-11 items-center">
           ← things
         </Link>
-        <span>Family Feud</span>
-      </header>
+      </GameFrameHeader>
       <main id="main" className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 pb-14">
         <div className="my-auto py-10">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--things-amber)]">
@@ -376,6 +377,6 @@ export function FamilyFeudSetupApp() {
           </p>
         </div>
       </main>
-    </div>
+    </GameFrame>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -316,10 +317,10 @@ export function ReportsPanel({
                 ) : null}
               </div>
 
-              <details className="mt-3 border-t theme-border pt-3">
-                <summary className="min-h-11 cursor-pointer select-none font-mono text-xs theme-muted">
+              <Disclosure className="mt-3 border-t theme-border pt-3">
+                <DisclosureSummary className="min-h-11 cursor-pointer select-none font-mono text-xs theme-muted">
                   diagnostic context · {context.diagnostics.trail.length} recent actions
-                </summary>
+                </DisclosureSummary>
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
@@ -342,7 +343,7 @@ export function ReportsPanel({
                     2,
                   )}
                 </pre>
-              </details>
+              </Disclosure>
             </article>
           );
         })}

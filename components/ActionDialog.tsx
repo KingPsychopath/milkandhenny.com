@@ -17,6 +17,7 @@ export interface ActionDialogProps {
   cancelLabel?: string;
   confirmDisabled?: boolean;
   pending?: boolean;
+  dismissWhilePending?: boolean;
   pendingLabel?: string;
   intent?: "default" | "danger";
   tone?: "site" | "light" | "dark";
@@ -33,6 +34,7 @@ export function ActionDialog({
   cancelLabel = "cancel",
   confirmDisabled = false,
   pending = false,
+  dismissWhilePending = false,
   pendingLabel = "working…",
   intent = "default",
   tone = "site",
@@ -43,7 +45,7 @@ export function ActionDialog({
   const titleId = useId();
   const descriptionId = useId();
   const mounted = useHasMounted();
-  useEscapeKey(onCancel, !pending);
+  useEscapeKey(onCancel, !pending || dismissWhilePending);
 
   const surface =
     tone === "light"
@@ -97,11 +99,11 @@ export function ActionDialog({
         <div className="mt-7 grid grid-cols-2 gap-3">
           <button
             type="button"
-            disabled={pending}
+            disabled={pending && !dismissWhilePending}
             onClick={onCancel}
             className={`min-h-14 rounded-full border px-4 font-mono text-sm font-semibold disabled:opacity-40 ${cancel}`}
           >
-            {cancelLabel}
+            {pending && dismissWhilePending ? "close" : cancelLabel}
           </button>
           <button
             type="submit"

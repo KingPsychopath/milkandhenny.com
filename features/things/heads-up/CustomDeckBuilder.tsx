@@ -1,3 +1,4 @@
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GameActionDialog } from "../shared/GameActionDialog";
 import { createCustomDeck, deckNameFromText, parseDeckText, type CustomDeck } from "./customDecks";
@@ -53,13 +54,13 @@ export function CustomDeckBuilder({ deck, onCancel, onDelete, onSave }: CustomDe
   };
 
   return (
-    <div className="things-game things-game--night text-white">
-      <header className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
+    <GameFrame tone="night" className="text-white">
+      <GameFrameHeader className="flex items-center justify-between p-5 font-mono text-xs text-white/55">
         <button type="button" onClick={onCancel} className="min-h-11 px-1 hover:text-white">
           ← decks
         </button>
         <span>{deck ? "edit deck" : "new deck"}</span>
-      </header>
+      </GameFrameHeader>
 
       <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-10">
         <p className="mt-7 font-mono text-micro uppercase tracking-[0.2em] text-white/45">
@@ -166,6 +167,6 @@ export function CustomDeckBuilder({ deck, onCancel, onDelete, onSave }: CustomDe
           onConfirm={() => onDelete(deck)}
         />
       ) : null}
-    </div>
+    </GameFrame>
   );
 }

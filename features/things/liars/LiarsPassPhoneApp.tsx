@@ -1,6 +1,9 @@
+import { ImposterRoleReveal } from "./ImposterRoleReveal";
+import { GameFrame, GameFrameHeader } from "@/features/things/shared/GameFrame";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useId, useState } from "react";
-import { GameShell } from "../shared/GameShell";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useGameScreenHistory } from "../shared/useGameScreenHistory";
+
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { liarsImposterBlurb, liarsImposterRange } from "./liars-rules";
 import { liarsPassPhoneDeal, type LiarsPassPhoneSeat } from "./pass-phone.client";
@@ -27,6 +30,11 @@ export function LiarsPassPhoneApp() {
   const [seats, setSeats] = useState<LiarsPassPhoneSeat[]>([]);
   const [index, setIndex] = useState(0);
   const [stage, setStage] = useState<Stage>("setup");
+  useGameScreenHistory({
+    active: stage !== "setup",
+    screen: "imposter-pass-phone",
+    onBack: () => setStage("setup"),
+  });
 
   useWakeLock(stage !== "setup");
   const range = liarsImposterRange(players);
@@ -47,8 +55,8 @@ export function LiarsPassPhoneApp() {
         <Eyebrow>imposter · one phone</Eyebrow>
         <Headline>Pass it round</Headline>
         <p className="mt-4 font-serif text-lg text-white/65">{liarsImposterBlurb(imposterCount)}</p>
-        <p className="mt-2 font-mono text-xs text-white/40">
-          nobody needs an app, a code or a signal — just this phone and a circle
+        <p className="mt-2 font-mono text-xs text-white/55">
+          Hold to read your role. Let go to hide it and pass to the next person.
         </p>
 
         <div className="mt-8">
@@ -118,7 +126,7 @@ export function LiarsPassPhoneApp() {
           </div>
           <p className="mt-2 font-mono text-xs text-white/35">
             {board
-              ? "everyone sees twelve words from the category — the imposter has something to work from"
+              ? "the imposter gets twelve possible words to help them blend in"
               : "the imposter gets the category and nothing else"}
           </p>
         </div>
@@ -210,19 +218,19 @@ export function LiarsPassPhoneApp() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <GameShell tone="night">
+    <GameFrame tone="night">
       <div className="flex min-h-0 flex-1 flex-col text-white">
-        <header className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
+        <GameFrameHeader className="mx-auto flex w-full max-w-lg items-center justify-between px-5 pt-4 font-mono text-xs text-white/45">
           <Link to="/things/imposter" className="inline-flex min-h-11 items-center">
             ← imposter
           </Link>
           <span>one phone</span>
-        </header>
+        </GameFrameHeader>
         <main id="main" className="mx-auto w-full max-w-lg flex-1 px-5 pb-24 pt-6">
           {children}
         </main>
       </div>
-    </GameShell>
+    </GameFrame>
   );
 }
 
@@ -239,7 +247,40 @@ function HoldToSee({
 }) {
   const [held, setHeld] = useState(false);
   const cardDetailsId = useId();
-  const [seen, setSeen] = useState(false);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roleVisible = useRef(false);
+  const cancel = useCallback(() => {
+    if (revealTimer.current !== null) clearTimeout(revealTimer.current);
+    revealTimer.current = null;
+    roleVisible.current = false;
+    setHeld(false);
+  }, []);
+  useEffect(() => {
+    const hideWhenAway = () => {
+      if (document.visibilityState !== "visible") cancel();
+    };
+    document.addEventListener("visibilitychange", hideWhenAway);
+    window.addEventListener("blur", cancel);
+    return () => {
+      document.removeEventListener("visibilitychange", hideWhenAway);
+      window.removeEventListener("blur", cancel);
+      if (revealTimer.current !== null) clearTimeout(revealTimer.current);
+    };
+  }, [cancel]);
+  const reveal = () => {
+    if (revealTimer.current !== null || roleVisible.current) return;
+    // A quick tap must not flash a role that could then be passed to the wrong person.
+    revealTimer.current = setTimeout(() => {
+      revealTimer.current = null;
+      roleVisible.current = true;
+      setHeld(true);
+    }, 600);
+  };
+  const release = () => {
+    const hasRead = roleVisible.current;
+    cancel();
+    if (hasRead) onDone();
+  };
 
   return (
     <>
@@ -248,70 +289,36 @@ function HoldToSee({
         tabIndex={0}
         aria-label="Hold to reveal your role"
         aria-pressed={held}
+        data-private-reveal={held ? "true" : undefined}
         aria-describedby={held ? cardDetailsId : undefined}
         onKeyDown={(event) => {
           if (event.key !== " " && event.key !== "Enter") return;
           event.preventDefault();
-          setHeld(true);
-          setSeen(true);
+          if (!event.repeat) reveal();
         }}
         onKeyUp={(event) => {
           if (event.key === " " || event.key === "Enter") {
             event.preventDefault();
-            setHeld(false);
+            release();
           }
         }}
-        onBlur={() => setHeld(false)}
-        onPointerCancel={() => setHeld(false)}
-        onPointerDown={() => {
-          setHeld(true);
-          setSeen(true);
+        onBlur={cancel}
+        onPointerCancel={cancel}
+        onLostPointerCapture={cancel}
+        onPointerDown={(event) => {
+          if (!event.isPrimary || event.button !== 0) return;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          reveal();
         }}
-        onPointerUp={() => setHeld(false)}
-        onPointerLeave={() => setHeld(false)}
-        className="mt-8 min-h-56 select-none border-y border-white/15 py-12 text-center"
+        onPointerUp={(event) => {
+          if (event.isPrimary && event.button === 0) release();
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+        className="mt-8 min-h-56 touch-none select-none border-y border-white/15 py-12 text-center"
       >
         <div id={cardDetailsId} aria-live="polite">
           {held ? (
-            <>
-              <p className="font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                the category is
-              </p>
-              <p className="mt-1 font-serif text-2xl text-white/85">{category}</p>
-              {word === null ? (
-                <>
-                  <p className="mt-6 font-serif text-4xl font-semibold text-[var(--liars-dead)]">
-                    you have no word
-                  </p>
-                  <p className="mx-auto mt-3 max-w-sm font-serif text-base text-white/70">
-                    {board.length > 0
-                      ? "It is one of these. Work out which."
-                      : "Listen hard and bluff inside the category."}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-6 font-mono text-micro uppercase tracking-[0.2em] text-white/40">
-                    the word is
-                  </p>
-                  <p className="mt-2 font-serif text-6xl font-semibold leading-tight text-[var(--things-amber)]">
-                    {word}
-                  </p>
-                </>
-              )}
-              {board.length > 0 ? (
-                <ul className="mx-auto mt-6 grid max-w-xs grid-cols-2 gap-x-4 text-left">
-                  {board.map((candidate) => (
-                    <li
-                      key={candidate}
-                      className="border-b border-white/10 py-1.5 font-serif text-sm text-white/60"
-                    >
-                      {candidate}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
+            <ImposterRoleReveal word={word} category={category} board={board} />
           ) : (
             <p className="pt-10 font-mono text-xs uppercase tracking-[0.2em] text-white/40">
               hold to reveal
@@ -319,11 +326,9 @@ function HoldToSee({
           )}
         </div>
       </div>
-      <div className="mt-6">
-        <ActionButton disabled={!seen} onClick={onDone}>
-          {seen ? "got it — pass it on" : "hold the card first"}
-        </ActionButton>
-      </div>
+      <p className="mt-6 font-mono text-xs text-white/55">
+        Hold to read. Let go to hide your role and pass the phone.
+      </p>
     </>
   );
 }

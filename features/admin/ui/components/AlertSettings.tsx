@@ -1,3 +1,4 @@
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { FormEvent, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminAlertSettingsQuery } from "@/features/attendee-operations/admin-alerts.queries";
@@ -185,10 +186,10 @@ export function AlertSettings({
         Recipients must already own the verified mailbox. Alert emails contain minimal detail and
         link back to the authorised inbox. Times are UTC.
       </p>
-      <details className="mt-4 border-y theme-border py-2">
-        <summary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
+      <Disclosure className="mt-4 border-y theme-border py-2">
+        <DisclosureSummary className="min-h-11 cursor-pointer py-3 font-mono text-xs underline">
           what can trigger an alert?
-        </summary>
+        </DisclosureSummary>
         <dl className="divide-y theme-border">
           {ADMIN_ALERT_CATEGORIES.map((category) => (
             <div key={category.id} className="py-3">
@@ -203,7 +204,7 @@ export function AlertSettings({
           The in-admin inbox records every notification. Email alerts are sent only for warning and
           critical events, using each recipient’s category, event, cadence, and quiet-hour rules.
         </p>
-      </details>
+      </Disclosure>
       <form onSubmit={(event) => void save(event)} className="mt-5 grid gap-4 sm:grid-cols-2">
         <div>
           <label className="font-mono text-xs">
@@ -381,10 +382,10 @@ export function AlertSettings({
           </button>
         </div>
       ) : null}
-      <details className="mt-6 border-y theme-border py-4">
-        <summary className="cursor-pointer font-mono text-xs">
+      <Disclosure className="mt-6 border-y theme-border py-4">
+        <DisclosureSummary className="cursor-pointer font-mono text-xs">
           delivery history and failures
-        </summary>
+        </DisclosureSummary>
         <ul className="mt-3 divide-y theme-border">
           {deliveries.map((delivery) => (
             <li key={delivery.id} className="py-3 font-mono text-micro">
@@ -409,7 +410,7 @@ export function AlertSettings({
             </li>
           ))}
         </ul>
-      </details>
+      </Disclosure>
       {dialog}
     </section>
   );

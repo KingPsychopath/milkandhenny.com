@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -652,12 +653,10 @@ export function ContentPanel({
                   </AdminStatus>
                 </p>
               ) : null}
-              <details className="group mt-5 border-y theme-border py-4">
-                <summary className="min-h-11 cursor-pointer list-none py-3 font-mono text-xs text-foreground">
+              <Disclosure className="group mt-5 border-y theme-border py-4">
+                <DisclosureSummary className="min-h-11 cursor-pointer list-none py-3 font-mono text-xs text-foreground">
                   cleanup controls
-                  <span className="float-right theme-muted group-open:hidden">open</span>
-                  <span className="float-right hidden theme-muted group-open:inline">close</span>
-                </summary>
+                </DisclosureSummary>
                 <p className="max-w-2xl font-mono text-micro leading-relaxed theme-muted">
                   These actions delete stale records or stored files. Each action still asks for
                   confirmation and elevated verification.
@@ -688,7 +687,7 @@ export function ContentPanel({
                     {sharedWordPurgeLoading ? "removing…" : "remove all share links"}
                   </button>
                 </div>
-              </details>
+              </Disclosure>
             </section>
 
             <div
