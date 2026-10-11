@@ -1,0 +1,5 @@
+# This Worker is deployed separately from the app image, so it keeps its own workspace and
+# lockfile. The root Dockerfile installs only the root manifest.
+allowBuilds:
+  esbuild: true
+  workerd: true

@@ -1,5 +1,3 @@
-import "./worker-configuration.d.ts";
-
 type CloudflareEmailEvent = {
   metadata?: { eventTimestamp?: unknown };
 };

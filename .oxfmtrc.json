@@ -8,6 +8,6 @@
     "AGENTS.md",
     "public/**",
     "src/routeTree.gen.ts",
-    "ops/**/worker-configuration.d.ts"
+    "**/.cloudflare/**"
   ]
 }

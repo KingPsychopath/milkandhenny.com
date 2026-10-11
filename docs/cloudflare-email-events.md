@@ -17,8 +17,20 @@ Store it as `EMAIL_EVENT_SECRET`. Do not reuse `CRON_SECRET`, an API token, or a
 1. Create one Queue for Email Sending events.
 2. Add Email Sending event subscriptions for `tickets.milkandhenny.com` and `notify.milkandhenny.com`.
 3. Subscribe to `message.delivered`, `message.deferred`, `message.failed`, `message.rejected`, `message.bounced`, and `message.complained`.
-4. Deploy the Worker in `ops/cloudflare-email-events`.
-5. Set `EMAIL_EVENT_SECRET` on that Worker and the Railway web service.
+4. Deploy the Worker in `ops/cloudflare-email-events`. It is a separate package with its own
+   lockfile, so the app image is unaffected:
+
+   ```bash
+   cd ops/cloudflare-email-events
+   pnpm install --frozen-lockfile
+   pnpm check    # generated types, typecheck and a cf deploy dry run
+   pnpm run deploy
+   ```
+
+5. Set `EMAIL_EVENT_SECRET` on that Worker and the Railway web service. For the Worker, pipe a
+   JSON object with `name`, `type: "secret_text"` and `text` to
+   `cf workers secrets update EMAIL_EVENT_SECRET --worker milkandhenny-email-event-relay --body @/dev/stdin`,
+   so the value never appears in command arguments or shell history.
 
 The Worker forwards each Queue message separately. It acknowledges successful and malformed events, retries temporary failures with backoff, and moves events to a dead-letter queue after ten failed attempts. The app stores the message ID for replay protection and stores only a SHA-256 hash of the recipient. Cloudflare is only the relay adapter: the admin panel reads the normalized app state, so a later provider can map into the same model.
 

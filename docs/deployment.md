@@ -29,13 +29,15 @@ Disable the private bucket's `r2.dev` URL as well as custom domains. Enable cach
 
 Use separate R2 API tokens scoped to the public and private buckets. Never connect the private bucket to a public hostname.
 
-Apply the checked-in policies with an authenticated Wrangler profile:
+Apply the checked-in policies with the [`cf` CLI](https://developers.cloudflare.com/cf/), after
+`cf auth login` and checking the account with `cf auth whoami`. Add `--dry-run` first to validate
+the request without applying it:
 
 ```bash
-pnpm exec wrangler r2 bucket cors set milkandhenny-pics --file ops/r2/cors-public.json --force
-pnpm exec wrangler r2 bucket cors set milkandhenny-private --file ops/r2/cors-private.json --force
-pnpm exec wrangler r2 bucket lifecycle set milkandhenny-pics --file ops/r2/lifecycle-public.json --force
-pnpm exec wrangler r2 bucket lifecycle set milkandhenny-private --file ops/r2/lifecycle-private.json --force
+cf r2 buckets cors update milkandhenny-pics --body @ops/r2/cors-public.json --force
+cf r2 buckets cors update milkandhenny-private --body @ops/r2/cors-private.json --force
+cf r2 buckets lifecycle update milkandhenny-pics --body @ops/r2/lifecycle-public.json --force
+cf r2 buckets lifecycle update milkandhenny-private --body @ops/r2/lifecycle-private.json --force
 ```
 
 The public policy is browser read-only and supports published media plus ranged reads. Every browser upload stages in the private bucket, whose policy supports presigned PUTs, ranged reads, and authorised downloads. The private bucket expires abandoned word and album staging objects after one day. Transfer expiry also belongs there because transfer objects are never published. When adding another browser origin or signed request header, update the relevant policy and apply it explicitly.

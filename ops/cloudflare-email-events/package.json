@@ -1,0 +1,17 @@
+{
+  "name": "milkandhenny-email-event-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "types": "cf workers types",
+    "check": "cf workers types && tsgo --noEmit && cf deploy --dry-run",
+    "deploy": "cf deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.sha-91c870c02",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "cf": "1.0.0-beta.14",
+    "vite": "8.2.2"
+  },
+  "packageManager": "pnpm@11.17.0"
+}
