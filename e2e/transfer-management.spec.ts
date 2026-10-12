@@ -43,6 +43,8 @@ test("admin can drill into a transfer and remove one file", async ({ context, pa
     await page.goto("/admin");
     await page.getByPlaceholder("admin password").fill("playwright-admin-password");
     await page.getByRole("button", { name: "unlock" }).click();
+    await expect(page.getByPlaceholder("admin password")).toHaveCount(0);
+    await waitForAppHydration(page);
     await page.goto("/admin?view=transfers", { waitUntil: "domcontentloaded" });
     await waitForAppHydration(page);
 

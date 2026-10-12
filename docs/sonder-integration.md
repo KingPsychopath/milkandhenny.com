@@ -115,8 +115,10 @@ this integration does not promise to erase a message already delivered to a prov
 - A production migration/deployment, real provider credentials and the live purchase/check-in/email
   proof remain unperformed. Keep guest sending disabled until those checks succeed.
 
-The final local full suite ran 2,256 tests: 2,222 passed and 34 failed. All 34 failure names
-match an unchanged HEAD baseline run of the four transfer suites; their expired fixtures are
-outside this integration. The focused integration/native-ticketing/permissions/scheduler run
-passed 72 tests, and the three selected Playwright journeys passed. CI and the live provider
-proof remain separate from these local results.
+The initial implementation suite exposed 34 expired-fixture failures in four transfer suites,
+reproduced on unchanged HEAD. Release preparation changed those live fixtures to use future-relative
+expiry; all 2,256 tests then passed with coverage. The focused integration/native-ticketing/
+permissions/scheduler run passed 72 tests. The full local browser run passed 86 of 87 journeys;
+the remaining transfer-management journey raced the sign-in redirect. Its wait was corrected,
+and both transfer-management journeys passed in a focused rerun. Remote CI is the final check
+before merge. The live provider proof remains separate from these local results.
