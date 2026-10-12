@@ -280,6 +280,16 @@ async function requiredNamedAdminPermission(
     }
     return request.method === "GET" ? "viewOperations" : "manageTickets";
   }
+  if (pathname.endsWith("/sonder") && pathname.includes("/events/")) {
+    if (request.method === "GET") return "viewOperations";
+    const body = (await request
+      .clone()
+      .json()
+      .catch(() => null)) as { action?: unknown } | null;
+    return body?.action === "preview" || body?.action === "send"
+      ? "manageCommunications"
+      : "manageEvents";
+  }
   if (pathname.includes("/events"))
     return request.method === "GET" ? "viewOperations" : "manageEvents";
   if (

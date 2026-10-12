@@ -57,6 +57,12 @@ export function StaffOperationsPage({ data, token }: { data: StaffOperationsData
         </p>
       </header>
 
+      {data.externalTicketing ? (
+        <StatusNotice tone="neutral" label="Sonder entry" className="mt-6">
+          Use Sonder’s scanner for entry. Booking groups and team colour emails are managed in the
+          Sonder admin panel.
+        </StatusNotice>
+      ) : null}
       <StaffOperationNav data={data} value={operation} onChange={setOperation} />
 
       {!hasVisibleTools ? (

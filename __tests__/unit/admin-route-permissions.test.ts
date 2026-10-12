@@ -93,6 +93,7 @@ const EXPECTED: Record<string, { GET: string | null; POST: string | null }> = {
     POST: "manageEvents",
   },
   "/api/admin/events/sample-slug/scoring": { GET: "manageScoring", POST: "manageScoring" },
+  "/api/admin/events/sample-slug/sonder": { GET: "viewOperations", POST: "manageEvents" },
   "/api/admin/events/sample-slug/staff-access": { GET: "viewOperations", POST: "manageEvents" },
   "/api/admin/events/sample-slug/tickets": { GET: "viewOperations", POST: "manageTickets" },
   "/api/admin/events/sample-slug/waitlist": { GET: "viewOperations", POST: "manageEvents" },
@@ -169,6 +170,19 @@ describe("named-admin route permissions", () => {
     expect(await __authorizationTesting.requiredNamedAdminPermission(request, "admin")).toBe(
       "executeRefunds",
     );
+  });
+
+  it("allows communications admins to preview/send Sonder team emails without event-management access", async () => {
+    for (const action of ["preview", "send"]) {
+      const request = new Request("https://milkandhenny.com/api/admin/events/sample-slug/sonder", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+        headers: { "content-type": "application/json" },
+      });
+      expect(await __authorizationTesting.requiredNamedAdminPermission(request, "admin")).toBe(
+        "manageCommunications",
+      );
+    }
   });
 
   it("routes upload-role requests to content management", async () => {

@@ -1,3 +1,4 @@
+import type { SonderMapping } from "@/features/sonder/types";
 /**
  * Event domain types and pure helpers.
  *
@@ -117,6 +118,7 @@ export type EventRecord = {
   marketingPath?: string;
 
   ticketTypes: TicketType[];
+  externalTicketing?: SonderMapping;
   capacity?: number;
   waitlistEnabled: boolean;
 

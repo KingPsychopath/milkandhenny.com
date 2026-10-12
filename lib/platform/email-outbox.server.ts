@@ -395,6 +395,36 @@ export async function finishEmailOutboxAttempt(
     return;
   }
 
+  if (row.idempotency_key.startsWith("sonder-team:")) {
+    const eligible = await query(
+      `select guard.outbox_id from sonder_email_guards guard
+      join sonder_orders o on o.event_slug=guard.event_slug and o.id=guard.order_id
+      join sonder_event_links link on link.event_slug=o.event_slug
+      join events e on e.slug=o.event_slug
+      join score_teams team on team.id=o.team_id
+      where guard.outbox_id=$1 and o.revision=guard.revision and not o.missing and not o.conflict
+        and not (o.snapshot->>'review_required')::boolean and o.snapshot->>'status'<>'needs_review'
+        and lower(o.snapshot->'purchaser'->>'email')=lower($2) and o.team_id=guard.team_id
+        and team.status='active' and team.name=guard.team_name and team.colour_key=guard.team_colour
+        and date_trunc('milliseconds',e.updated_at)=guard.event_updated_at and e.status<>'cancelled'
+        and coalesce(e.ends_at,e.starts_at)>=now()-interval '30 days'
+        and link.mode='live' and link.cancelled_at is null and not link.paused and link.last_error is null
+        and link.last_sync_at>now()-interval '10 minutes' and link.dirty_revision=link.synced_revision
+        and exists(select 1 from sonder_tickets t where t.event_slug=o.event_slug and t.order_id=o.id and t.status in ('valid','checked_in'))`,
+      [row.id, message.to],
+    );
+    if (
+      process.env.SONDER_TEAM_EMAILS_ENABLED !== "true" ||
+      process.env.SONDER_MODE !== "live" ||
+      !eligible.length
+    ) {
+      await query(
+        `update email_outbox set status='cancelled',cancelled_at=now(),message=null,locked_until=null,last_error='Sonder booking, team or sync state changed; preview again' where id=$1 and status='processing' and attempts=$2`,
+        [row.id, row.attempts],
+      );
+      return;
+    }
+  }
   const result = await deliver(message, row.idempotency_key);
   if (result.ok) {
     const updated = await query<{ id: string }>(

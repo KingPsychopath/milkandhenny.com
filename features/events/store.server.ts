@@ -172,7 +172,29 @@ async function withTicketTypes(rows: EventRow[]): Promise<EventRecord[]> {
     bySlug.set(typeRow.event_slug, list);
   }
 
-  return rows.map((row) => toEvent(row, bySlug.get(row.slug) ?? []));
+  const links = await query<{
+    event_slug: string;
+    hangout_id: string;
+    mode: "live" | "test";
+    booking_url: string;
+    cancelled_at: Date | null;
+  }>(
+    `select event_slug,hangout_id,mode,booking_url,cancelled_at from sonder_event_links where event_slug=any($1::text[])`,
+    [slugs],
+  );
+  return rows.map((row) => {
+    const event = toEvent(row, bySlug.get(row.slug) ?? []),
+      link = links.find((l) => l.event_slug === row.slug);
+    if (link)
+      event.externalTicketing = {
+        hangoutId: link.hangout_id,
+        mode: link.mode,
+        bookingUrl: link.booking_url,
+        cancelledAt: link.cancelled_at?.toISOString() ?? null,
+      };
+    if (link?.cancelled_at) event.status = "cancelled";
+    return event;
+  });
 }
 
 export async function getEvent(slug: string): Promise<EventRecord | null> {

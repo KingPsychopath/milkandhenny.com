@@ -209,6 +209,11 @@ export async function applySchema(): Promise<void> {
     drop table if exists tickets cascade;
     drop table if exists ticket_types cascade;
     drop table if exists events cascade;
+    drop table if exists sonder_email_guards cascade;
+    drop table if exists sonder_tickets cascade;
+    drop table if exists sonder_orders cascade;
+    drop table if exists sonder_webhook_events cascade;
+    drop table if exists sonder_event_links cascade;
     drop table if exists schema_migrations cascade;
   `);
   await runMigrations();
@@ -218,7 +223,7 @@ export async function applySchema(): Promise<void> {
 export async function truncateAll(): Promise<void> {
   const { query } = await import("@/lib/platform/postgres.server");
   await query(
-    `truncate application_scheduled_jobs, email_delivery_events, email_suppressions, email_outbox, communication_links, survey_responses, survey_invitations, surveys, poll_votes, polls, pitch_decks,
+    `truncate sonder_webhook_events, application_scheduled_jobs, email_delivery_events, email_suppressions, email_outbox, communication_links, survey_responses, survey_invitations, surveys, poll_votes, polls, pitch_decks,
               attendee_credit_claim_links, attendee_credit_grants, attendee_credit_campaigns,
               event_waitlist_inventory, event_waitlist_entries, checkout_sessions, tickets,
               ticket_types, events restart identity cascade`,

@@ -3106,6 +3106,8 @@ function showHelp() {
     ${dim("Mutations ask for confirmation unless --yes or --dry-run is supplied.")}
 
   ${bold("Events and tickets")}
+    events sonder show <slug>                    Inspect Sonder counts and sync health
+    events sonder sync <slug>                    Reconcile all Sonder order pages
     events list                                  List events from the deployed app
     events create --json ${dim("<object>")}                  Create an event
     events show ${dim("<slug>")}                           Show event and ticket operations
@@ -4576,6 +4578,21 @@ async function direct() {
               return cmdEventsList();
             case "create":
               return cmdEventsCreate();
+            case "sonder": {
+              const action = args[2],
+                slug = args[3];
+              if (!slug || (action !== "show" && action !== "sync"))
+                throw new Error("Usage: pnpm cli events sonder <show|sync> <slug>");
+              const path = `${adminEventPath(slug)}/sonder`;
+              printAdminJson(
+                await resolvedAdminRequest(
+                  action === "show"
+                    ? { method: "GET", path }
+                    : { method: "POST", path, body: { action: "sync" } },
+                ),
+              );
+              return;
+            }
             case "show": {
               const slug = args[2];
               if (!slug) throw new Error("Usage: pnpm cli events show <slug>");

@@ -263,8 +263,29 @@ export function EventDetailPage({
           )}
         </dl>
 
+        {event.externalTicketing && (
+          <section id="tickets" className="mt-10 border-t theme-border pt-4">
+            <h2 className="font-mono text-sm">Tickets through Sonder</h2>
+            {event.status === "cancelled" || event.externalTicketing.cancelledAt ? (
+              <p>This event has been cancelled. Contact Sonder about your booking.</p>
+            ) : event.externalTicketing.mode === "live" ? (
+              <a
+                className="mh-action mh-action--primary mt-4"
+                href={event.externalTicketing.bookingUrl}
+              >
+                book with Sonder
+              </a>
+            ) : (
+              <p>Ticket sales are being set up.</p>
+            )}
+            <p className="mt-3 font-mono text-xs theme-muted">
+              Sonder handles booking changes, refunds and door scanning. Bring the ticket they email
+              you.
+            </p>
+          </section>
+        )}
         {/* Tickets — the point of the page, kept high. */}
-        {ticketsExist && (
+        {ticketsExist && !event.externalTicketing && (
           <section id="tickets" className="mt-10 scroll-mt-6">
             <h2 className="font-mono text-micro theme-muted tracking-widest uppercase py-2">
               Tickets
@@ -359,7 +380,12 @@ export function EventDetailPage({
             Refund terms
           </h2>
           <div className="mt-3 space-y-4 font-mono text-micro theme-muted leading-relaxed">
-            {event.refundPolicy ? (
+            {event.externalTicketing ? (
+              <p>
+                Manage ticket changes and refunds through Sonder. Our team-colour emails do not
+                replace your Sonder admission ticket.
+              </p>
+            ) : event.refundPolicy ? (
               <PolicyMarkdown>{event.refundPolicy}</PolicyMarkdown>
             ) : (
               <p>

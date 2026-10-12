@@ -53,6 +53,7 @@ describe("application scheduler service", () => {
     );
 
     expect(scheduler.registered).toEqual([
+      "sonder-sync",
       "communications-delivery",
       "event-drops",
       "media-worker-health",

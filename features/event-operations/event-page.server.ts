@@ -118,7 +118,7 @@ export async function getEventPage(
     resolvePitchShowcase(event.description),
     resolveAlbumImageUrls(imageSources),
   ]);
-  const availability = buildAvailability(event, capacity);
+  const availability = event.externalTicketing ? [] : buildAvailability(event, capacity);
   return {
     event: options.revealLocation ? toTicketHolderEvent(event) : toPublicEvent(event),
     availability,

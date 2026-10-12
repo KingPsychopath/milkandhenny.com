@@ -116,6 +116,7 @@ import { Route as ApiDownloadPresignRouteRouteImport } from './routes/api/downlo
 import { Route as ApiDropFinalizeRouteRouteImport } from './routes/api/drop/finalize/route'
 import { Route as ApiDropPresignRouteRouteImport } from './routes/api/drop/presign/route'
 import { Route as ApiMarketingSubscribeRouteRouteImport } from './routes/api/marketing/subscribe/route'
+import { Route as ApiSonderWebhookRouteRouteImport } from './routes/api/sonder/webhook/route'
 import { Route as ApiStripeWebhookRouteRouteImport } from './routes/api/stripe/webhook/route'
 import { Route as ApiTransfersIdRouteRouteImport } from './routes/api/transfers/$id/route'
 import { Route as ApiUploadVerifyPinRouteRouteImport } from './routes/api/upload/verify-pin/route'
@@ -216,6 +217,7 @@ import { Route as ApiAdminEventsSlugEmailRouteRouteImport } from './routes/api/a
 import { Route as ApiAdminEventsSlugGuestRequestsRouteRouteImport } from './routes/api/admin/events/$slug/guest-requests/route'
 import { Route as ApiAdminEventsSlugScannerLinksRouteRouteImport } from './routes/api/admin/events/$slug/scanner-links/route'
 import { Route as ApiAdminEventsSlugScoringRouteRouteImport } from './routes/api/admin/events/$slug/scoring/route'
+import { Route as ApiAdminEventsSlugSonderRouteRouteImport } from './routes/api/admin/events/$slug/sonder/route'
 import { Route as ApiAdminEventsSlugStaffAccessRouteRouteImport } from './routes/api/admin/events/$slug/staff-access/route'
 import { Route as ApiAdminEventsSlugTicketsRouteRouteImport } from './routes/api/admin/events/$slug/tickets/route'
 import { Route as ApiAdminEventsSlugWaitlistRouteRouteImport } from './routes/api/admin/events/$slug/waitlist/route'
@@ -805,6 +807,11 @@ const ApiMarketingSubscribeRouteRoute =
     path: '/api/marketing/subscribe',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiSonderWebhookRouteRoute = ApiSonderWebhookRouteRouteImport.update({
+  id: '/api/sonder/webhook',
+  path: '/api/sonder/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiStripeWebhookRouteRoute = ApiStripeWebhookRouteRouteImport.update({
   id: '/api/stripe/webhook',
   path: '/api/stripe/webhook',
@@ -1358,6 +1365,12 @@ const ApiAdminEventsSlugScoringRouteRoute =
     path: '/scoring',
     getParentRoute: () => ApiAdminEventsSlugRouteRoute,
   } as any)
+const ApiAdminEventsSlugSonderRouteRoute =
+  ApiAdminEventsSlugSonderRouteRouteImport.update({
+    id: '/sonder',
+    path: '/sonder',
+    getParentRoute: () => ApiAdminEventsSlugRouteRoute,
+  } as any)
 const ApiAdminEventsSlugStaffAccessRouteRoute =
   ApiAdminEventsSlugStaffAccessRouteRouteImport.update({
     id: '/staff-access',
@@ -1623,6 +1636,7 @@ export interface FileRoutesByFullPath {
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/marketing/subscribe': typeof ApiMarketingSubscribeRouteRoute
+  '/api/sonder/webhook': typeof ApiSonderWebhookRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -1723,6 +1737,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
+  '/api/admin/events/$slug/sonder': typeof ApiAdminEventsSlugSonderRouteRoute
   '/api/admin/events/$slug/staff-access': typeof ApiAdminEventsSlugStaffAccessRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
@@ -1858,6 +1873,7 @@ export interface FileRoutesByTo {
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/marketing/subscribe': typeof ApiMarketingSubscribeRouteRoute
+  '/api/sonder/webhook': typeof ApiSonderWebhookRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -1958,6 +1974,7 @@ export interface FileRoutesByTo {
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
+  '/api/admin/events/$slug/sonder': typeof ApiAdminEventsSlugSonderRouteRoute
   '/api/admin/events/$slug/staff-access': typeof ApiAdminEventsSlugStaffAccessRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
@@ -2094,6 +2111,7 @@ export interface FileRoutesById {
   '/api/drop/finalize': typeof ApiDropFinalizeRouteRoute
   '/api/drop/presign': typeof ApiDropPresignRouteRoute
   '/api/marketing/subscribe': typeof ApiMarketingSubscribeRouteRoute
+  '/api/sonder/webhook': typeof ApiSonderWebhookRouteRoute
   '/api/stripe/webhook': typeof ApiStripeWebhookRouteRoute
   '/api/transfers/$id': typeof ApiTransfersIdRouteRouteWithChildren
   '/api/upload/verify-pin': typeof ApiUploadVerifyPinRouteRoute
@@ -2194,6 +2212,7 @@ export interface FileRoutesById {
   '/api/admin/events/$slug/guest-requests': typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   '/api/admin/events/$slug/scanner-links': typeof ApiAdminEventsSlugScannerLinksRouteRoute
   '/api/admin/events/$slug/scoring': typeof ApiAdminEventsSlugScoringRouteRoute
+  '/api/admin/events/$slug/sonder': typeof ApiAdminEventsSlugSonderRouteRoute
   '/api/admin/events/$slug/staff-access': typeof ApiAdminEventsSlugStaffAccessRouteRoute
   '/api/admin/events/$slug/tickets': typeof ApiAdminEventsSlugTicketsRouteRoute
   '/api/admin/events/$slug/waitlist': typeof ApiAdminEventsSlugWaitlistRouteRoute
@@ -2331,6 +2350,7 @@ export interface FileRouteTypes {
     | '/api/drop/finalize'
     | '/api/drop/presign'
     | '/api/marketing/subscribe'
+    | '/api/sonder/webhook'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -2431,6 +2451,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
+    | '/api/admin/events/$slug/sonder'
     | '/api/admin/events/$slug/staff-access'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/events/$slug/waitlist'
@@ -2566,6 +2587,7 @@ export interface FileRouteTypes {
     | '/api/drop/finalize'
     | '/api/drop/presign'
     | '/api/marketing/subscribe'
+    | '/api/sonder/webhook'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -2666,6 +2688,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
+    | '/api/admin/events/$slug/sonder'
     | '/api/admin/events/$slug/staff-access'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/events/$slug/waitlist'
@@ -2801,6 +2824,7 @@ export interface FileRouteTypes {
     | '/api/drop/finalize'
     | '/api/drop/presign'
     | '/api/marketing/subscribe'
+    | '/api/sonder/webhook'
     | '/api/stripe/webhook'
     | '/api/transfers/$id'
     | '/api/upload/verify-pin'
@@ -2901,6 +2925,7 @@ export interface FileRouteTypes {
     | '/api/admin/events/$slug/guest-requests'
     | '/api/admin/events/$slug/scanner-links'
     | '/api/admin/events/$slug/scoring'
+    | '/api/admin/events/$slug/sonder'
     | '/api/admin/events/$slug/staff-access'
     | '/api/admin/events/$slug/tickets'
     | '/api/admin/events/$slug/waitlist'
@@ -3022,6 +3047,7 @@ export interface RootRouteChildren {
   ApiDropFinalizeRouteRoute: typeof ApiDropFinalizeRouteRoute
   ApiDropPresignRouteRoute: typeof ApiDropPresignRouteRoute
   ApiMarketingSubscribeRouteRoute: typeof ApiMarketingSubscribeRouteRoute
+  ApiSonderWebhookRouteRoute: typeof ApiSonderWebhookRouteRoute
   ApiStripeWebhookRouteRoute: typeof ApiStripeWebhookRouteRoute
   ApiTransfersIdRouteRoute: typeof ApiTransfersIdRouteRouteWithChildren
   ApiUploadVerifyPinRouteRoute: typeof ApiUploadVerifyPinRouteRoute
@@ -3820,6 +3846,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMarketingSubscribeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/sonder/webhook': {
+      id: '/api/sonder/webhook'
+      path: '/api/sonder/webhook'
+      fullPath: '/api/sonder/webhook'
+      preLoaderRoute: typeof ApiSonderWebhookRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/stripe/webhook': {
       id: '/api/stripe/webhook'
       path: '/api/stripe/webhook'
@@ -4520,6 +4553,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEventsSlugScoringRouteRouteImport
       parentRoute: typeof ApiAdminEventsSlugRouteRoute
     }
+    '/api/admin/events/$slug/sonder': {
+      id: '/api/admin/events/$slug/sonder'
+      path: '/sonder'
+      fullPath: '/api/admin/events/$slug/sonder'
+      preLoaderRoute: typeof ApiAdminEventsSlugSonderRouteRouteImport
+      parentRoute: typeof ApiAdminEventsSlugRouteRoute
+    }
     '/api/admin/events/$slug/staff-access': {
       id: '/api/admin/events/$slug/staff-access'
       path: '/staff-access'
@@ -4961,6 +5001,7 @@ interface ApiAdminEventsSlugRouteRouteChildren {
   ApiAdminEventsSlugGuestRequestsRouteRoute: typeof ApiAdminEventsSlugGuestRequestsRouteRoute
   ApiAdminEventsSlugScannerLinksRouteRoute: typeof ApiAdminEventsSlugScannerLinksRouteRoute
   ApiAdminEventsSlugScoringRouteRoute: typeof ApiAdminEventsSlugScoringRouteRoute
+  ApiAdminEventsSlugSonderRouteRoute: typeof ApiAdminEventsSlugSonderRouteRoute
   ApiAdminEventsSlugStaffAccessRouteRoute: typeof ApiAdminEventsSlugStaffAccessRouteRoute
   ApiAdminEventsSlugTicketsRouteRoute: typeof ApiAdminEventsSlugTicketsRouteRoute
   ApiAdminEventsSlugWaitlistRouteRoute: typeof ApiAdminEventsSlugWaitlistRouteRoute
@@ -4977,6 +5018,7 @@ const ApiAdminEventsSlugRouteRouteChildren: ApiAdminEventsSlugRouteRouteChildren
     ApiAdminEventsSlugScannerLinksRouteRoute:
       ApiAdminEventsSlugScannerLinksRouteRoute,
     ApiAdminEventsSlugScoringRouteRoute: ApiAdminEventsSlugScoringRouteRoute,
+    ApiAdminEventsSlugSonderRouteRoute: ApiAdminEventsSlugSonderRouteRoute,
     ApiAdminEventsSlugStaffAccessRouteRoute:
       ApiAdminEventsSlugStaffAccessRouteRoute,
     ApiAdminEventsSlugTicketsRouteRoute: ApiAdminEventsSlugTicketsRouteRoute,
@@ -5263,6 +5305,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDropFinalizeRouteRoute: ApiDropFinalizeRouteRoute,
   ApiDropPresignRouteRoute: ApiDropPresignRouteRoute,
   ApiMarketingSubscribeRouteRoute: ApiMarketingSubscribeRouteRoute,
+  ApiSonderWebhookRouteRoute: ApiSonderWebhookRouteRoute,
   ApiStripeWebhookRouteRoute: ApiStripeWebhookRouteRoute,
   ApiTransfersIdRouteRoute: ApiTransfersIdRouteRouteWithChildren,
   ApiUploadVerifyPinRouteRoute: ApiUploadVerifyPinRouteRoute,

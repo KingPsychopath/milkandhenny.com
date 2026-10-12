@@ -107,11 +107,14 @@ export async function listCheckedInTeamParticipants(
     checked_in_at: Date | null;
   }>(
     `select participants.id, participants.generated_alias, participants.chosen_alias,
-            participants.display_name, tickets.holder_name, participants.ticket_id,
+            participants.display_name, coalesce(tickets.holder_name, case when sonder.id is not null then 'Booking ticket '||sonder.ordinal::text end) as holder_name, participants.ticket_id,
             team.team_id, team.team_name, team.team_colour_key,
             participants.checked_in_at
        from event_participants participants
        left join tickets on tickets.id = participants.ticket_id
+       left join sonder_tickets sonder on sonder.participant_id=participants.id
+       left join sonder_orders sonder_order on sonder_order.event_slug=sonder.event_slug and sonder_order.id=sonder.order_id
+       left join sonder_event_links sonder_link on sonder_link.event_slug=sonder.event_slug
        left join lateral (
          select memberships.team_id, teams.name as team_name,
                 teams.colour_key as team_colour_key
@@ -124,7 +127,7 @@ export async function listCheckedInTeamParticipants(
        ) team on true
       where participants.event_slug = $1
         and participants.status = 'active'
-        and tickets.status = 'valid'
+        and (tickets.status='valid' or (sonder.status in ('valid','checked_in') and sonder_link.cancelled_at is null and not sonder_order.missing and not sonder_order.conflict and not (sonder_order.snapshot->>'review_required')::boolean and sonder_order.snapshot->>'status'<>'needs_review'))
       order by team.team_name nulls last,
                coalesce(participants.display_name, tickets.holder_name,
                         participants.chosen_alias, participants.generated_alias), participants.id`,
@@ -162,6 +165,16 @@ export async function shuffleCheckedInTeams(input: {
     if (!event.rows[0]) return { ok: false as const, status: 404, error: "Event not found" };
     await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [input.eventSlug]);
 
+    const external = await client.query(
+      `select event_slug from sonder_event_links where event_slug=$1`,
+      [input.eventSlug],
+    );
+    if (external.rowCount)
+      return {
+        ok: false as const,
+        status: 409,
+        error: "Allocate Sonder bookings together in the Sonder panel",
+      };
     const stored = await client.query<{
       id: string;
       name: string;
