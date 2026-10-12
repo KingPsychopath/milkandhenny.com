@@ -44,6 +44,31 @@ The public policy is browser read-only and supports published media plus ranged 
 
 The checked-in CORS policies are production policies and intentionally contain only the canonical apex and redirecting `www` origin. Do not add preview hosts or localhost origins to the production buckets. Use separate development buckets and policies when local browser-to-storage access is required.
 
+## Credentials
+
+Every external credential, the variable it fills and where it lives. Values never appear in the
+repository; keep each one in Bitwarden under its target name, in the project's production
+collection. Names follow `<project>-<env>-<holder>-<purpose>-<access>`; rename a provider credential only
+together with this table.
+
+| Provider credential (current name)                             | Variables                                        | Stored in                                                        | Scope                                                                | Target name                                       |
+| -------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------- |
+| Cloudflare user API token `milkandhenny-railway-email-send`    | `EMAIL_API_KEY`                                  | Railway `web`                                                    | Email Sending edit, one account                                      | `milkandhenny-prod-railway-email-send`            |
+| Cloudflare account API token `prod-milkandhenny-public-r2-rw`  | `R2_PUBLIC_ACCESS_KEY`, `R2_PUBLIC_SECRET_KEY`   | Railway runtime variables                                        | Object read and write, `milkandhenny-pics`                           | `milkandhenny-prod-railway-public-r2-write`       |
+| Cloudflare account API token `prod-milkandhenny-private-r2-rw` | `R2_PRIVATE_ACCESS_KEY`, `R2_PRIVATE_SECRET_KEY` | Railway runtime variables                                        | Object read and write, `milkandhenny-private`                        | `milkandhenny-prod-railway-private-r2-write`      |
+| Stripe restricted key                                          | `STRIPE_SECRET_KEY`                              | Railway `web`                                                    | Checkout Sessions and Refunds write; PaymentIntents and Refunds read | `milkandhenny-prod-railway-stripe-checkout-write` |
+| Stripe webhook signing secret                                  | `STRIPE_WEBHOOK_SECRET`                          | Railway `web`                                                    | The `/api/stripe/webhook` endpoint                                   | `milkandhenny-prod-railway-stripe-webhook`        |
+| Generated shared secret                                        | `EMAIL_EVENT_SECRET`                             | Railway `web`; Worker secret on `milkandhenny-email-event-relay` | Email delivery-event relay                                           | `milkandhenny-prod-worker-email-events-write`     |
+
+App-generated secrets (`AUTH_SECRET`, `CRON_SECRET`, `TRANSFER_MEDIA_WAKE_TOKEN`, `STAFF_PIN`,
+`ADMIN_PASSWORD`, `UPLOAD_PIN`) and `DATABASE_URL` are not provider credentials. They live as
+Railway runtime variables and in the same Bitwarden collection under their variable names.
+
+Cloudflare does not record a last-used date for Email Sending or for R2's S3 endpoint, so an empty
+date on these tokens is not evidence that they are unused. Confirm with the application logs before
+revoking one. An older combined account token, `prod-milkandhenny-r2-rw`, predates the per-bucket
+tokens above and is not referenced by the current configuration.
+
 ## Railway
 
 `railway.toml` selects the Dockerfile, `/api/health`, and an on-failure restart policy. Start with one replica, 512 MB–1 GB memory, 0.5–1 vCPU, and no persistent volume.
