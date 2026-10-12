@@ -118,6 +118,11 @@ values for that one command and are not runtime credentials.
 When a provider credential or Bitwarden item does not match this table, rename it and this table
 together. Rotation replaces the value and keeps the name.
 
+Cloudflare records no last-used date for Email Sending or for R2's S3 endpoint, so an empty date on
+those tokens is not evidence that they are unused; confirm with application logs before revoking.
+The older combined account token `prod-milkandhenny-r2-rw` predates the per-bucket tokens and is
+not referenced by this table.
+
 ## VPS
 
 Use Docker with a reverse proxy such as Caddy or nginx. Terminate TLS at the proxy, forward the original host/protocol headers, and keep the Node process private.
