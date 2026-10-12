@@ -82,6 +82,47 @@ to tests, browser configuration, CI, or documentation do not trigger a web
 service deployment. The previous successful deployment remains available for
 rollback; do not delete it as part of a normal release.
 
+## Credentials
+
+Every secret the production web service, media worker and email-event relay Worker read is listed
+here. Values live in Bitwarden, in the project's production collection, and in the runtime
+that reads them; this table records names only. Each credential has one name, used for the
+provider credential and its Bitwarden item, following
+`<project>-<env>-<holder>-<purpose>-<access>`. A credential maps to one variable, or to the key pair
+its provider issues together.
+
+| Credential and Bitwarden item                     | Variable                                          | Stored in                                                                   | Scope                                                                                                           |
+| ------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `milkandhenny-prod-railway-email-send`            | `EMAIL_API_KEY`                                   | Railway `web`                                                               | Cloudflare API token, Email Sending send permission, one account                                                |
+| `milkandhenny-prod-railway-r2-public-write`       | `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY`   | Railway `web` and `media-worker`                                            | Cloudflare R2 token, Object Read & Write, bucket `milkandhenny-pics` only                                       |
+| `milkandhenny-prod-railway-r2-private-write`      | `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY` | Railway `web` and `media-worker`                                            | Cloudflare R2 token, Object Read & Write, bucket `milkandhenny-private` only                                    |
+| `milkandhenny-prod-railway-database-write`        | `DATABASE_URL`                                    | Railway `web`                                                               | One database; target is the [`mah_app_runtime` role](./postgres-runtime-roles.md), currently the owner          |
+| `milkandhenny-prod-railway-media-database-write`  | `DATABASE_URL`                                    | Railway `media-worker`                                                      | One database; a login granted only the [`mah_media_worker` role](./media-worker.md#postgres-worker-credentials) |
+| `milkandhenny-prod-railway-stripe-checkout-write` | `STRIPE_SECRET_KEY`                               | Railway `web`, only while selling paid tickets                              | Stripe restricted key: write Checkout Sessions and Refunds, read PaymentIntents and Refunds                     |
+| `milkandhenny-prod-railway-stripe-webhook-write`  | `STRIPE_WEBHOOK_SECRET`                           | Railway `web`, only while selling paid tickets                              | Signing secret of the one `/api/stripe/webhook` endpoint                                                        |
+| `milkandhenny-prod-worker-email-events-write`     | `EMAIL_EVENT_SECRET`                              | Railway `web` and Cloudflare Worker `milkandhenny-email-event-relay` secret | Generated; authenticates the relay to `/api/email/events/cloudflare` only                                       |
+| `milkandhenny-prod-railway-auth-signing-admin`    | `AUTH_SECRET`                                     | Railway `web`                                                               | Generated; signs every session and derives token-encryption keys                                                |
+| `milkandhenny-prod-railway-admin-login-admin`     | `ADMIN_PASSWORD`                                  | Railway `web`                                                               | Generated; admin sign-in                                                                                        |
+| `milkandhenny-prod-railway-upload-pin-write`      | `UPLOAD_PIN`                                      | Railway `web`                                                               | Generated; guest upload gate                                                                                    |
+| `milkandhenny-prod-railway-cron-write`            | `CRON_SECRET`                                     | Railway `web`                                                               | Generated; manual maintenance routes only                                                                       |
+
+`EMAIL_EVENT_SECRET` is one value held by two runtimes. It is named for the relay Worker, which
+presents it; the web service only verifies it. Rotate it in both places together, following
+[cloudflare-email-events.md](./cloudflare-email-events.md).
+
+Production has no Redis connection variables. Once the web service uses its runtime role,
+the Postgres owner URL stays only in the Railway `Postgres` service for migrations. Operator-run commands such as
+the [guest archive importer](./legacy-guest-archive.md) and `pnpm event-scoring` receive their
+values for that one command and are not runtime credentials.
+
+When a provider credential or Bitwarden item does not match this table, rename it and this table
+together. Rotation replaces the value and keeps the name.
+
+Cloudflare records no last-used date for Email Sending or for R2's S3 endpoint, so an empty date on
+those tokens is not evidence that they are unused; confirm with application logs before revoking.
+The older combined account token `prod-milkandhenny-r2-rw` predates the per-bucket tokens and is
+not referenced by this table.
+
 ## VPS
 
 Use Docker with a reverse proxy such as Caddy or nginx. Terminate TLS at the proxy, forward the original host/protocol headers, and keep the Node process private.

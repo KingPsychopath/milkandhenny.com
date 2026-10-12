@@ -262,16 +262,9 @@ Transfer, authentication, rate-limit, and room operations can fail during rotati
 
 ### Quick-reference: where each secret lives
 
-| Secret/config                                                      | Local development | Production host | Source of truth         |
-| ------------------------------------------------------------------ | :---------------: | :-------------: | ----------------------- |
-| `AUTH_SECRET`, `ADMIN_PASSWORD`, `UPLOAD_PIN`, `CRON_SECRET`       |        Yes        |       Yes       | Secret manager          |
-| `DATABASE_URL`                                                     |        Yes        |       Yes       | PostgreSQL provider     |
-| `REDIS_REST_URL` / `REDIS_REST_TOKEN`; optional direct `REDIS_URL` |        Yes        |       Yes       | Redis provider          |
-| `R2_PUBLIC_ACCESS_KEY` / `R2_PUBLIC_SECRET_KEY`                    |        Yes        |       Yes       | Public-bucket R2 token  |
-| `R2_PRIVATE_ACCESS_KEY` / `R2_PRIVATE_SECRET_KEY`                  |        Yes        |       Yes       | Private-bucket R2 token |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`                      |     Optional      |  When selling   | Stripe                  |
-| `EMAIL_API_KEY` / `EMAIL_EVENT_SECRET`                             |     Optional      | When delivering | Email provider/relay    |
-| `VITE_MEDIA_PUBLIC_URL` / `VITE_BASE_URL`                          |        Yes        |   Build-time    | Deployment config       |
+[deployment.md](./deployment.md#credentials) lists every production credential, its variable,
+where it is stored and its scope. Development values come from `pnpm dev:setup` or `.env.local` and
+are never production values; `VITE_*` values are public build-time configuration.
 
 ### General incident checklist
 
