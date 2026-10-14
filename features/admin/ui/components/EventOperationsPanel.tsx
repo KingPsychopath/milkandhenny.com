@@ -1,4 +1,5 @@
 "use client";
+import { SonderEventPanel } from "./SonderEventPanel";
 
 import { Disclosure, DisclosureSummary } from "@/components/Disclosure";
 import { AdminTextField as Field } from "./AdminTextField";
@@ -2095,6 +2096,19 @@ export function EventOperations({
       return ticketSort === "oldest" ? issuedOrder : -issuedOrder;
     });
   }, [summary.tickets, term, ticketFilter, ticketSort]);
+  const sonderPanel = (
+    <SonderEventPanel
+      key={event.slug}
+      slug={event.slug}
+      authFetch={authFetch}
+      canManage={permissions.manageEvents}
+      canEmail={permissions.manageCommunications}
+      onError={onError}
+      onStatus={onStatus}
+      reload={reload}
+    />
+  );
+  if (event.externalTicketing) return sonderPanel;
   const operationTools: Array<{ value: EventOperationsTool; label: string }> = [
     { value: "overview", label: "overview" },
     { value: "tickets", label: "tickets" },
@@ -2108,6 +2122,12 @@ export function EventOperations({
 
   return (
     <div className="mt-4 min-h-[75vh] border-t theme-border pt-4 [overflow-anchor:none]">
+      {permissions.manageEvents && (
+        <Disclosure>
+          <DisclosureSummary>set up Sonder for this occurrence</DisclosureSummary>
+          {sonderPanel}
+        </Disclosure>
+      )}
       <nav
         ref={toolsNavRef}
         aria-label={`${event.title} tools`}

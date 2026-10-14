@@ -162,6 +162,12 @@ export async function issueTickets(
 
   const event = await getEvent(input.eventSlug);
   if (!event) return { ok: false, status: 404, error: "Event not found" };
+  if (event.externalTicketing)
+    return {
+      ok: false,
+      status: 409,
+      error: "Book and manage tickets through Sonder for this event",
+    };
 
   const ticketType = findTicketType(event, input.ticketTypeId);
   if (!ticketType) return { ok: false, status: 404, error: "Ticket type not found" };

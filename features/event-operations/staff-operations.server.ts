@@ -92,7 +92,8 @@ export async function getStaffOperationsPage(input: {
       (typeof assignment.scope.rolePreset === "string" ? assignment.scope.rolePreset : undefined),
     expiresAt: assignment.expiresAt,
     assignmentType: assignment.assignmentType,
-    canAdmit,
+    canAdmit: canAdmit && !event.externalTicketing,
+    externalTicketing: event.externalTicketing,
     doorTickets: doorTickets.map((ticket) => ({
       id: ticketPublicId(ticket),
       orderId: ticket.orderId,
@@ -103,7 +104,7 @@ export async function getStaffOperationsPage(input: {
       status: ticket.status,
       redeemedAt: ticket.redeemedAt,
     })),
-    canScanCheckpoints,
+    canScanCheckpoints: canScanCheckpoints && !event.externalTicketing,
     canManageTeams,
     canManageGuestPhotos,
     guestPhotosAvailable,

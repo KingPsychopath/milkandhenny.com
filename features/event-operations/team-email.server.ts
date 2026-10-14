@@ -47,6 +47,12 @@ export async function sendEventTeamEmails(input: {
     ),
   ]);
   if (!event) return { ok: false as const, status: 404, error: "Event not found" };
+  if (event.externalTicketing)
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Preview and send booking-group colours in the Sonder panel",
+    };
 
   const assignmentByTicket = new Map(assignments.map((row) => [row.ticket_id, row]));
   const orders = Map.groupBy(

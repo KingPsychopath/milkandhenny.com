@@ -18,7 +18,9 @@ export async function getEventsIndex(now = Date.now()): Promise<EventsIndexData>
   const past: EventsIndexItem[] = [];
 
   events.forEach((event) => {
-    const availability = buildAvailability(event, snapshots[event.slug], now);
+    const availability = event.externalTicketing
+      ? []
+      : buildAvailability(event, snapshots[event.slug], now);
     const item = { ...toPublicEvent(event), soldOut: isEventSoldOut(event, availability) };
     (isUpcoming(event, now) ? upcoming : past).push(item);
   });

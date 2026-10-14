@@ -1,3 +1,4 @@
+import { SONDER_SCHEMA } from "./sonder-schema.server";
 import { createHash } from "node:crypto";
 import type { QueryResultRow } from "pg";
 
@@ -5116,6 +5117,7 @@ const MIGRATIONS: Migration[] = [
         where media_scope_dirty;
     `,
   },
+  { id: "0123_sonder_event_integration", sql: SONDER_SCHEMA },
 ];
 
 interface PitchDocumentSchemaRow extends QueryResultRow {

@@ -1,3 +1,4 @@
+import { syncDueSonderEvents } from "@/features/sonder/sonder.server";
 import { Context, Deferred, Effect, Fiber, Layer, Schedule } from "effect";
 
 import { sendOperationsDigests } from "@/features/attendee-operations/notifications.server";
@@ -215,6 +216,20 @@ export class ApplicationSchedulerService extends Context.Service<
       const fibers = yield* Effect.all([
         forkJob(
           {
+            jobKey: "sonder-sync",
+            intervalMs: 60_000,
+            run: () =>
+              leased({
+                jobKey: "sonder-sync",
+                intervalMs: 60_000,
+                run: schedulerOperation("sonder_sync", (signal) => syncDueSonderEvents(signal)),
+              }),
+            report: () => {},
+          },
+          6,
+        ),
+        forkJob(
+          {
             jobKey: "communications-delivery",
             intervalMs: EMAIL_INTERVAL_MS,
             run: runCommunications,
@@ -329,6 +344,7 @@ export class ApplicationSchedulerService extends Context.Service<
       ]);
 
       const jobSummaries = [
+        { jobKey: "sonder-sync", intervalMs: 60_000 },
         { jobKey: "communications-delivery", intervalMs: EMAIL_INTERVAL_MS },
         { jobKey: "event-drops", intervalMs: EVENT_DROP_INTERVAL_MS },
         { jobKey: "media-worker-health", intervalMs: MEDIA_WORKER_HEALTH_INTERVAL_MS },

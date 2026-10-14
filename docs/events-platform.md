@@ -55,6 +55,12 @@ See [effect-lifecycle.md](./effect-lifecycle.md), [durable-work.md](./durable-wo
 
 ## Tickets and payments
 
+An explicitly mapped Sonder occurrence delegates sales, refunds and door scanning to Sonder.
+`features/sonder` owns the read-only order mirror and whole-booking team allocation, using the
+shared Events runtime, scheduler and email outbox. Native ticketing remains available for other
+events. See [sonder-integration.md](./sonder-integration.md) for activation, consistency and
+retention contracts.
+
 - Ticket types and event capacity are enforced in the final database transaction.
 - Paid issuance follows a signature-verified Stripe webhook, not the success redirect. Provider and
   domain idempotency prevent duplicate issuance.
