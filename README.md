@@ -25,6 +25,14 @@ Try [Pairs](https://milkandhenny.com/things/pairs) for a small, immediate game,
 [Family Feud](https://milkandhenny.com/things/family-feud) for a host-led room.
 [Words](https://milkandhenny.com/words) and [Pics](https://milkandhenny.com/pics) are the slower side.
 
+## Play, refresh, pick up where you left off
+
+![Pairs: Alex and Jo share a table, match a pair, refresh the page, and resume with the score and cleared cards intact.](docs/assets/pairs-recovery.gif)
+
+A recording of the local application: two players on one device, a matching pair, a real page
+reload, and the same table restored. [Watch the video](docs/assets/pairs-recovery.mp4) ·
+[Capture notes and source](docs/assets/README.md#pairs-recovery-demo).
+
 <details>
 <summary>A little motion study</summary>
 

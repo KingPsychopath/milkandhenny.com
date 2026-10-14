@@ -36,14 +36,14 @@ Use `pnpm dev:cli <command>` for CLI operations against the same environment. Ma
 
 ## Verification
 
-| Command                           | Use                                               |
-| --------------------------------- | ------------------------------------------------- |
-| `pnpm check`                      | Formatting, architectural checks, types, and lint |
-| `pnpm test -- <test-path>`        | Focused behavior checks                           |
-| `pnpm test`                       | Full unit and integration suite                   |
-| `pnpm build`                      | Production bundling                               |
-| `pnpm test:e2e -- <journey-path>` | Focused browser journeys                          |
-| `pnpm verify:release`             | Full release gate                                 |
+| Command                                    | Use                                               |
+| ------------------------------------------ | ------------------------------------------------- |
+| `pnpm check`                               | Formatting, architectural checks, types, and lint |
+| `pnpm exec vitest run <test-path>`         | Focused behavior checks                           |
+| `pnpm test`                                | Full unit and integration suite                   |
+| `pnpm build`                               | Production bundling                               |
+| `pnpm exec playwright test <journey-path>` | Focused browser journeys                          |
+| `pnpm verify:release`                      | Full release gate                                 |
 
 Choose verification by the changed behavior; see [testing](testing.md). The toolchain uses tsgo,
 Oxlint, and Oxfmt. Package scripts and dependency versions remain in `package.json`.

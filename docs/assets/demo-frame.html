@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pairs — play, refresh, resume</title>
+    <style>
+      /* site-tokens */
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("/fonts/geist-mono-latin-v6.woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Lora";
+        src: url("/fonts/lora-latin-v37.woff2");
+        font-weight: 400 700;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: transparent;
+        color: var(--foreground);
+      }
+      header {
+        background: var(--background);
+        height: 65px;
+        padding: 20px 28px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--stone-300);
+      }
+      header strong {
+        font:
+          500 13px "Geist Mono",
+          monospace;
+      }
+      header span {
+        font:
+          400 22px "Lora",
+          serif;
+      }
+      #capture {
+        display: block;
+        width: 1000px;
+        height: 780px;
+        border: 0;
+      }
+      footer {
+        background: var(--background);
+        height: 55px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        border-top: 1px solid var(--stone-300);
+        font:
+          12px "Geist Mono",
+          monospace;
+      }
+      nav {
+        display: flex;
+        gap: 30px;
+      }
+      nav span {
+        color: var(--stone-500);
+      }
+      nav span[aria-current="step"] {
+        color: var(--foreground);
+        text-decoration: underline;
+        text-decoration-color: var(--prose-hashtag);
+        text-underline-offset: 6px;
+      }
+      #detail {
+        color: var(--stone-500);
+      }
+    </style>
+  </head>
+  <body>
+    <header><strong>milk &amp; henny / pairs</strong><span>Your table, still here.</span></header>
+    <div id="capture" aria-label="Application recording is composited here"></div>
+    <footer>
+      <nav aria-label="Demo steps">
+        <span id="play" aria-current="step">01 / play</span>
+        <span id="refresh">02 / refresh</span>
+        <span id="resume">03 / resume</span>
+      </nav>
+      <span id="detail">one device · two players</span>
+    </footer>
+  </body>
+</html>

@@ -24,3 +24,30 @@ runtime's Playwright module instead of the project's installation.
 Keep the GIF visually quiet and preserve its closed loop. Review the poster at README width and
 sample the card flip, ticket mark, and reset when revising it. Fonts retain their licenses in
 [`public/fonts`](../../public/fonts/README.md).
+
+## Pairs recovery demo
+
+`pairs-recovery.gif` and `pairs-recovery.mp4` show the real Pairs application in an editorial recording
+frame. Alex and Jo play on one shared device, match a pair, reload the page, and resume with the
+same score and cleared cards. `pairs-recovery.png` is the final still. The capture checks the score,
+remaining cards, and exact recovered command journal before exporting.
+
+[`capture-pairs.mjs`](capture-pairs.mjs) drives ordinary UI controls and captures live frames.
+[`demo-frame.html`](demo-frame.html) supplies only the surrounding title and step captions. It does
+not change the application, seed storage, or mock server responses. Setup occurs before recording;
+the two matching card clicks are chosen from the actual randomly generated shuffle. This is a
+shared-device recovery demo, not a multiplayer network or production-health claim.
+
+Run the local app, then capture it in a separate terminal:
+
+```bash
+README_BROWSER_CHANNEL=chrome README_DEMO_URL=http://127.0.0.1:3000 \
+  README_DEMO_COMMIT=$(git rev-parse HEAD) node --import tsx docs/assets/capture-pairs.mjs
+```
+
+The capture refuses non-local hosts. It needs the repository dependencies, an available Playwright
+browser, and FFmpeg. Omit `README_BROWSER_CHANNEL` to use Playwright's installed Chromium.
+`pairs-recovery.json` records the source commit, scenario, checks, and presentation choices.
+
+The committed capture uses an isolated local app with no hosted credentials. Pairs runs in the
+browser and does not need a database for this scenario.

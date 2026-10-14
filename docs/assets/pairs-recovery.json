@@ -1,0 +1,18 @@
+{
+  "sourceCommit": "e32339f9584b868d457b790403a1a15a0dff6d1f",
+  "route": "/things/pairs",
+  "environment": "isolated local development",
+  "durationSeconds": 18,
+  "setup": {
+    "players": ["Alex", "Jo"],
+    "pairCount": 3
+  },
+  "verified": [
+    "one pair credited",
+    "four unmatched cards remain",
+    "real page reload",
+    "resume restores exact command journal",
+    "score and cleared pair preserved"
+  ],
+  "presentation": "Direct live-page capture with editorial captions composited outside the application; no app responses or state were mocked. Setup before recording; two match clicks selected from the actual generated shuffle."
+}
