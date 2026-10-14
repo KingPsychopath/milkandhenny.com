@@ -1,11 +1,15 @@
 # Co-located multiplayer audit
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: dated evidence snapshot; the normative standard is
-[room-first-multiplayer.md](./room-first-multiplayer.md)
+[room-first-multiplayer.md](../room-first-multiplayer.md)
 
 Audit date: 30 August 2026
 
-Standard: [room-first-multiplayer.md](./room-first-multiplayer.md)
+Standard: [room-first-multiplayer.md](../room-first-multiplayer.md)
 
 Scope: shipped multiplayer and group modes under `features/things`, plus the
 planned survey-board game discussed for events
@@ -85,9 +89,9 @@ Friends provide the actual content and feedback.
 explicitly assumes the phone remains on the forehead without touch during the
 round, pauses safely on interruptions, offers non-motion controls, and has a
 clear results/rematch state. Evidence:
-[HeadsUpApp.tsx](../features/things/heads-up/HeadsUpApp.tsx),
-[HeadsUpSetup.tsx](../features/things/heads-up/HeadsUpSetup.tsx), and
-[RoundPlayArea.tsx](../features/things/heads-up/RoundPlayArea.tsx).
+[HeadsUpApp.tsx](../../features/things/heads-up/HeadsUpApp.tsx),
+[HeadsUpSetup.tsx](../../features/things/heads-up/HeadsUpSetup.tsx), and
+[RoundPlayArea.tsx](../../features/things/heads-up/RoundPlayArea.tsx).
 
 **Keep and validate.** Treat this as a reference pattern for a physical phone
 role: the device is necessary, but attention remains on people. Playtest device
@@ -105,8 +109,8 @@ and collecting colour combinations is optional follow-up activity.
 is explicitly social and colour names accompany the visual colour. The optional
 QR/camera pairing and colour book, however, can quietly replace conversation
 with collection. Evidence:
-[IcebreakerApp.tsx](../features/things/icebreaker/IcebreakerApp.tsx) and
-[IcebreakerPairing.tsx](../features/things/icebreaker/IcebreakerPairing.tsx).
+[IcebreakerApp.tsx](../../features/things/icebreaker/IcebreakerApp.tsx) and
+[IcebreakerPairing.tsx](../../features/things/icebreaker/IcebreakerPairing.tsx).
 
 **Action.** Keep pairing after the introduction, never as proof that the social
 interaction happened. Playtest whether people pocket their phones after the
@@ -122,7 +126,7 @@ reveal sequence and then lies face down while the room plays.
 **Verdict: conforms; fun hypothesis strong on paper.** The implementation names
 the handoff stages, provides a hold-to-reveal action, and explicitly ends the
 device phase before discussion. Evidence:
-[LiarsPassPhoneApp.tsx](../features/things/liars/LiarsPassPhoneApp.tsx).
+[LiarsPassPhoneApp.tsx](../../features/things/liars/LiarsPassPhoneApp.tsx).
 
 **Keep and validate.** Test shoulder-surfing, accidental back/rotation, clear
 next-holder naming, and whether setup remains under the one-minute teach target.
@@ -139,9 +143,9 @@ most complete implementation of intentional attention choreography. The source
 states that the presenter narrates so phones stay quiet, directs players to say
 clues aloud, supports host transfer/readiness, and gives eliminated players a
 graveyard role. Evidence:
-[LiarsPresenterApp.tsx](../features/things/liars/LiarsPresenterApp.tsx),
-[LiarsRoomApp.tsx](../features/things/liars/LiarsRoomApp.tsx), and
-[LiarsSetupApp.tsx](../features/things/liars/LiarsSetupApp.tsx).
+[LiarsPresenterApp.tsx](../../features/things/liars/LiarsPresenterApp.tsx),
+[LiarsRoomApp.tsx](../../features/things/liars/LiarsRoomApp.tsx), and
+[LiarsSetupApp.tsx](../../features/things/liars/LiarsSetupApp.tsx).
 
 **Risks and action.** Role complexity, explanation time, balance, and the value
 of the graveyard cannot be proved statically. Keep a first-game ruleset with
@@ -158,7 +162,7 @@ prompt; the group speaks and keeps score.
 **Verdict: conforms; fun hypothesis strong on paper.** The phone is a central
 prompt rather than a private workstation. The room decides equivalence, which
 preserves human ambiguity. Evidence:
-[SoloSameBrain.tsx](../features/things/same-brain/SoloSameBrain.tsx).
+[SoloSameBrain.tsx](../../features/things/same-brain/SoloSameBrain.tsx).
 
 **Keep and validate.** The spoken countdown, scoring explanation, and dispute
 resolution should remain clear in a loud room. This is a useful low-setup
@@ -175,9 +179,9 @@ groups and correct scoring.
 input is justified, and the host has a socially flexible equivalence ruling.
 The weakness is topology: the best moment is rendered across personal phones,
 not on an optional public presenter. Evidence:
-[SameBrainRoomApp.tsx](../features/things/same-brain/SameBrainRoomApp.tsx),
-[SameBrainViews.tsx](../features/things/same-brain/SameBrainViews.tsx), and
-[SameBrainSetupApp.tsx](../features/things/same-brain/SameBrainSetupApp.tsx).
+[SameBrainRoomApp.tsx](../../features/things/same-brain/SameBrainRoomApp.tsx),
+[SameBrainViews.tsx](../../features/things/same-brain/SameBrainViews.tsx), and
+[SameBrainSetupApp.tsx](../../features/things/same-brain/SameBrainSetupApp.tsx).
 
 **Action.** Add a presenter/public reveal mode for events. After answer lock,
 show “Locked — look up”; make the shared reveal dominant; let the host hold the
@@ -195,10 +199,10 @@ reveal.
 right focal surface, and private typing is mechanically necessary. The risk is
 that a substantial typing window followed by a timed cooldown makes both the
 action and payoff feel automated. Evidence:
-[PartyPlayerApp.tsx](../features/things/spelling-party/PartyPlayerApp.tsx),
-[PartyPresenterApp.tsx](../features/things/spelling-party/PartyPresenterApp.tsx),
+[PartyPlayerApp.tsx](../../features/things/spelling-party/PartyPlayerApp.tsx),
+[PartyPresenterApp.tsx](../../features/things/spelling-party/PartyPresenterApp.tsx),
 and
-[PartyRoundCooldown.tsx](../features/things/spelling-party/PartyRoundCooldown.tsx).
+[PartyRoundCooldown.tsx](../../features/things/spelling-party/PartyRoundCooldown.tsx).
 
 **Action.** Lock and return eyes to the presenter immediately on submission.
 Keep the answer comparison on the presenter and make the post-reveal social
@@ -214,7 +218,7 @@ One device holds both touch zones and resolves the duel locally.
 **Verdict: conforms; fun hypothesis strong on paper.** It starts quickly,
 creates immediate visible causality, and avoids network fairness concerns for
 players sharing one surface. Evidence:
-[TwinDuelApp.tsx](../features/things/twin/TwinDuelApp.tsx).
+[TwinDuelApp.tsx](../../features/things/twin/TwinDuelApp.tsx).
 
 **Keep and validate.** Require or encourage saying the symbol aloud so the
 mechanic stays socially legible. Test reach, accidental touches, dominant-side
@@ -231,8 +235,8 @@ attention is inherent to the visual mechanic, but the room is still relevant
 because players compare and contest shared symbols. It nevertheless passes the
 negative test too easily: players may silently tap without a public focal
 display or spoken claim. Evidence:
-[TwinRoomApp.tsx](../features/things/twin/TwinRoomApp.tsx) and
-[TwinBoard.tsx](../features/things/twin/TwinBoard.tsx).
+[TwinRoomApp.tsx](../../features/things/twin/TwinRoomApp.tsx) and
+[TwinBoard.tsx](../../features/things/twin/TwinBoard.tsx).
 
 **Action.** Describe this as a device-sport exception, not an eyes-up game.
 Require a spoken symbol claim, create a strong communal finish/audio-visual
@@ -249,8 +253,8 @@ rival positions and finishes provide limited shared context.
 necessary dexterity surface, but players can complete parallel solo runs
 without speaking, looking up, or materially affecting one another. That is not
 room-first social causality. Evidence:
-[CentreRoomApp.tsx](../features/things/centre/CentreRoomApp.tsx) and
-[MazeBoard.tsx](../features/things/centre/MazeBoard.tsx).
+[CentreRoomApp.tsx](../../features/things/centre/CentreRoomApp.tsx) and
+[MazeBoard.tsx](../../features/things/centre/MazeBoard.tsx).
 
 **Action.** Market the current mode as a synchronised personal race. For event
 play, add a public race state, finish-order reveal, and spectator role; explore
@@ -269,9 +273,9 @@ supports surprise and comparison, but the reveal is distributed to personal
 devices and the round progresses automatically. The implementation spends the
 room’s best payoff as another phone state instead of holding it publicly.
 Evidence:
-[DrawCountryRoomApp.tsx](../features/things/draw-country/DrawCountryRoomApp.tsx),
-[DrawCanvas.tsx](../features/things/draw-country/DrawCanvas.tsx), and
-[scoring.ts](../features/things/draw-country/scoring.ts).
+[DrawCountryRoomApp.tsx](../../features/things/draw-country/DrawCountryRoomApp.tsx),
+[DrawCanvas.tsx](../../features/things/draw-country/DrawCanvas.tsx), and
+[scoring.ts](../../features/things/draw-country/scoring.ts).
 
 **Priority action.** Add a presenter showing the country prompt, aggregate
 progress, ranked drawings, and final result. Submitted phones should say
@@ -289,9 +293,9 @@ rendered on those phones.
 understandable tension, but turn-based typing creates inactive waits and the
 public ledger has no communal focal surface. A group can become silent people
 watching the same app. Evidence:
-[HotAndColdRoomApp.tsx](../features/things/hot-and-cold/HotAndColdRoomApp.tsx),
-[HeatLedger.tsx](../features/things/hot-and-cold/HeatLedger.tsx), and
-[WordVisibilityControl.tsx](../features/things/hot-and-cold/WordVisibilityControl.tsx).
+[HotAndColdRoomApp.tsx](../../features/things/hot-and-cold/HotAndColdRoomApp.tsx),
+[HeatLedger.tsx](../../features/things/hot-and-cold/HeatLedger.tsx), and
+[WordVisibilityControl.tsx](../../features/things/hot-and-cold/WordVisibilityControl.tsx).
 
 **Priority action.** Make the heat ledger, current turn, public clues, and result
 a presenter view. Prefer a team-spoken mode with one rotating input controller
@@ -310,9 +314,9 @@ immediate judgement, pausing, and paired authority fit room-first play. The
 local play area also renders the target word, so the device ownership and
 orientation are an integrity requirement rather than a cosmetic instruction.
 Evidence:
-[SpellingBeeApp.tsx](../features/things/spelling-bee/SpellingBeeApp.tsx),
-[SpellingPlayArea.tsx](../features/things/spelling-bee/SpellingPlayArea.tsx), and
-[SpellingSetup.tsx](../features/things/spelling-bee/SpellingSetup.tsx).
+[SpellingBeeApp.tsx](../../features/things/spelling-bee/SpellingBeeApp.tsx),
+[SpellingPlayArea.tsx](../../features/things/spelling-bee/SpellingPlayArea.tsx), and
+[SpellingSetup.tsx](../../features/things/spelling-bee/SpellingSetup.tsx).
 
 **Priority action.** State and enforce that local competitive mode is
 judge-held, screen hidden from the speller. If one person both sees and spells,
@@ -331,8 +335,8 @@ approved controller.
 live fun hypothesis promising.** Continuous screen use is appropriate while
 building slides and irrelevant to the live attention standard. Presentation is
 room-first because the human pitch is the activity and the display supports it.
-Evidence: [pitch-night-platform.md](./pitch-night-platform.md) and
-[PresentationSetup.tsx](../features/things/pitches/ui/PresentationSetup.tsx).
+Evidence: [pitch-night-platform.md](../pitch-night-platform.md) and
+[PresentationSetup.tsx](../../features/things/pitches/ui/PresentationSetup.tsx).
 
 **Action.** Audit presentation and authoring separately in future reviews. For
 live events, define audience participation, pitch timer visibility, host

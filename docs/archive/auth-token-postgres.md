@@ -1,5 +1,9 @@
 # JWT token-state migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in Postgres backend verified locally. Production remains on Redis. Do not set
 `AUTH_TOKEN_STORE=postgres` until the accepted 2026-09-26 Redis export has been reconciled and
 the planned writer freeze is in place. That export has no `auth:session:*`,
@@ -18,7 +22,7 @@ accepts admin and upload JWTs only. The staff value is retained in Postgres with
 but does not authorize a staff role. Missing version rows mean version 1, matching the old read
 path. A global role revocation increments the counter atomically and clears its source marker.
 
-The pinned offline RDB extractor in [the guest archive runbook](./legacy-guest-archive.md) can
+The pinned offline RDB extractor in [the guest archive runbook](../legacy-guest-archive.md) can
 write a fourth, mode-0600 JSON output for role versions:
 
 ```sh

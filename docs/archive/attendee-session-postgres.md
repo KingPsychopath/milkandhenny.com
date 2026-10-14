@@ -1,5 +1,9 @@
 # Attendee session migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in Postgres backend and offline importer verified locally. Production remains on
 Redis. Use `ATTENDEE_SESSION_STORE=postgres` only after importing and reconciling the accepted
 2026-09-26 export under the planned writer freeze. The user accepted that Redis-only writes after
@@ -17,7 +21,7 @@ and three have no schema-version field; 27 have a person ID and none has pending
 `event-scoring:attendee-person-session-version:*` key survives in that export. The existing
 validation path handles older session shapes and version/null semantics after import.
 
-Use the pinned offline extractor described in [the guest archive runbook](./legacy-guest-archive.md)
+Use the pinned offline extractor described in [the guest archive runbook](../legacy-guest-archive.md)
 with its fifth output path. The output contains live session credentials and personal data; keep
 it mode 0600, outside Git and under the same private retention as the RDB:
 

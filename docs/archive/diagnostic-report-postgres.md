@@ -1,5 +1,9 @@
 # Diagnostic report Postgres migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in implementation verified locally; no production import or switch has occurred.
 
 Migration `0104_diagnostic_reports` adds typed report rows, hashed idempotency/duplicate

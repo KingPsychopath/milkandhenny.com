@@ -1,402 +1,166 @@
 # Architecture
 
-## Shape
+Milk & Henny is a modular monolith. Writing, galleries, games, transfers, and event operations
+share one application, while each feature owns its rules and state transitions.
 
-Milk & Henny is a provider-neutral modular monolith packaged as one Node artifact. The normal
-deployment has one web process; heavy media processing may run the same artifact as a separate
-worker role.
+TanStack Start serves React pages and server functions. Nitro packages the Node server. The same
+Docker image runs the web application and, when needed, a separate heavy-media worker.
 
-```text
-Browser
-  -> TanStack Start / Nitro Node server
-       -> feature workflows
-            -> Postgres adapter (relational state, polls, outboxes, leases)
-            -> Postgres adapters (sessions, rooms, transfers, queues, realtime)
-            -> S3-compatible storage adapter (private sources and public media)
-            -> email and payments adapters
-            -> optional media-worker wake adapter
-  -> public media origin (direct images and downloads)
+## System shape
+
+```mermaid
+flowchart TB
+    Browser[Browser] --> Web[TanStack Start + Nitro]
+    Browser --> Public[Public media origin]
+    Web --> Features[Feature workflows and policies]
+    Features --> PG[(Postgres)]
+    Features --> Storage[(Private / public R2)]
+    Features --> Providers[Email / payments]
+    PG -->|claim durable jobs| Worker[Media worker · same image]
+    Worker --> Storage
+    Worker -->|job results| PG
+    PG -.->|advisory notifications| Web
+    Web -.->|live room / media updates| Browser
 ```
 
-The host supplies a port and environment variables. Railway, Docker Compose, Kubernetes, and a plain VPS all run the same `.output/server/index.mjs` artifact.
-
-## Ownership
-
-| Layer                       | Responsibility                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `src/routes`                | Routing, transport validation, response shape, coarse authorization             |
-| `features/*/*.functions.ts` | TanStack server-function boundaries                                             |
-| `features/*/*.server.ts`    | Feature workflows and durable product rules                                     |
-| `features/*/ui`             | User interaction and rendering                                                  |
-| `lib/platform`              | Postgres, Redis, object storage, email, payments, logging, provider translation |
-| `lib/shared`                | Environment-safe shared constants and pure utilities                            |
-| `ops`                       | Deployment-independent operational entry points                                 |
-| `deploy`                    | Optional independently deployed workloads                                       |
-
-Routes do not own business truth. Workers may execute feature workflows but must not redefine eligibility or state transitions.
-
-## Cross-feature composition
-
-Feature modules do not call one another in both directions. Cross-feature read models and workflows live at a neutral composition edge:
-
-```text
-events ───────┐
-tickets ──────┼─> event-operations ─> routes / server functions
-scoring ──────┘
-
-games ─> game-results durable outbox ─> explicit scoring consumer
-```
-
-`features/event-operations` composes event and ticket page data without making either feature own the other. Games publish versioned official-result envelopes to `features/game-results`; they do not import scoring or install process-global callbacks. The selected room repository persists each result beside the authoritative game mutation, while local and cross-replica signals only wake an explicit consumer. Delivery is therefore retryable and the retired scoring consumer can remain sealed without changing game rules.
-
-Event scoring is quarantined rather than deleted: historical ledgers, projections, and audit data
-remain durable, but public score routes and score-only staff roles expose no live tools. Operational
-team assignment deliberately reuses participant/team persistence without reopening points,
-leaderboards, score notifications, or automatic game-result consumption.
-
-Authentication follows the same shape: `auth.server.ts` is a stable server-only boundary over separate token/session, authorization, verification, and rate-limit modules. Upload access remains its own capability rather than accumulating in the main authentication module.
-
-Staff identity is explicit. Personal assignments link to an `event_people` record and retain their
-role preset; supervised shared stations remain deliberately personless. Remembered, revocable
-staff and scanner access is available from the root navigation after refresh. Opening or scanning
-an attendee ticket does not claim an account, select a points identity, or set state on another
-device. A ticket-backed participant exists only as durable event history and optional team
-membership.
-
-Door and checkpoint actions are authoritative request/response mutations. They do not depend on a
-WebSocket or SSE connection: the database arbitrates duplicate admission and allowance use, while
-the client presents explicit retry/recovery for network failure. Realtime channels remain for
-shared multiplayer rooms where another device's command must update the current screen.
-
-## Browser navigation and state
-
-Ordinary remote snapshots are owned by TanStack Query. A route loader prefetches the critical
-query during SSR and browser navigation; the component observes that same entry after hydration.
-Create the QueryClient with the router so each server request has an isolated cache. Feature query
-keys include every input that changes the result, including filters and non-secret access scope.
-Keep credentials out of keys and independently authorize every server read. Confirmed commands
-update complete exact entries or invalidate the affected query families. Local form drafts retain
-their own base revision and are never overwritten by a background refresh.
-
-Capability-bearing pages, live room projections, checkout outcomes, upload execution, and offline
-recovery have specialized owners. A capability URL may use a route-local loader with zero Router
-cache lifetime so the credential is neither a Query key nor a dehydrated shared snapshot. A live
-controller owns ordered events and reconnect reconciliation; Query may own independent metadata.
-These boundaries are detailed in [server-state-architecture-proposal.md](./server-state-architecture-proposal.md).
-
-The URL owns durable, addressable resources. React state owns live interaction.
-An in-place mode gets a browser-history entry only when Back should undo or
-leave that mode. Local games use this rule for setup-to-round transitions:
-`useGameScreenHistory` adds a same-URL history entry, while timers, scores,
-drawings, and motion state remain in the game and tab-scoped recovery model.
-Back returns to setup before a second Back leaves the tool. It does not make
-the live round a shareable deep link.
-
-Public content uses route paths, breadcrumbs, and contextual journey rails.
-Things, games, the pitch studio, admin, health, and transactional surfaces own
-their own product controls instead of receiving a forced global footer. The
-full decision table and URL rules live in [navigation.md](./navigation.md).
-
-## Effect subsystems
-
-Effect v4 owns asynchronous orchestration and process lifecycle where cancellation, deadlines,
-bounded concurrency, retry policy, scoped resources, or typed infrastructure failure justify it. It
-is not a general replacement for ordinary TypeScript.
-
-Events/ticketing and Pitch Night retain the established service-wrapper pattern. Multiplayer moves
-the boundary inward because game commands need deterministic replay:
-
-```text
-TanStack / Nitro boundary
-  -> ManagedRuntime (one per independently owned subsystem lifecycle)
-       -> Effect workflow
-            -> clock, randomness, ID and persistence services
-            -> pure game transition
-            -> atomic room + official-result outbox commit
-            -> advisory wake publication
-            -> typed failures, timeout, logging, spans and metrics
-```
-
-Multiplayer game rules receive an explicit `{ now, randomValues, newId }` context. They never obtain
-time, randomness or identifiers themselves. Redis, locks, outbox persistence, wake publication and
-telemetry remain in server-only Effect workflows. Infrastructure adapters may retain plain async
-implementations behind those services; the state transition itself stays ordinary TypeScript and
-returns state plus domain events. Effect remains behind `.server.ts` boundaries; browser contracts,
-React, offline games, reducers, and reconciliation hooks do not import its runtime. Promise
-conversion happens only at TanStack/Nitro edges.
-
-The runtime ownership map is deliberately small:
-
-| Runtime     | Responsibilities                                                                                                               |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Events      | Events, tickets, attendee operations, waitlists, icebreaker persistence, scoring, realtime, communications, and app scheduling |
-| Media       | Media-worker lifecycle, private transfers, album and word orchestration, and bounded media maintenance                         |
-| Multiplayer | Shared room and game-pool workflows, best-dressed voting, realtime resources, and command execution                            |
-| Pitches     | Pitch Night server workflows and presentation lifecycle                                                                        |
-
-Services compose into the owning runtime Layer. A feature service or compatibility facade does not
-create another `ManagedRuntime` or shutdown plugin. Score rules, eligibility, balance calculations,
-ticket/refund policy, validation, and repositories remain ordinary TypeScript. Runtime layers own
-execution concerns such as durable-outbox draining, advisory wake consumption, deadlines, bounded
-delivery, scheduled fibers, spans, cancellation, finalizers, and shutdown.
-
-Postgres, Redis, R2, email, and Stripe adapters remain plain async implementations. Workflows use an
-injectable service only where substitution, cancellation, lifecycle, or typed failure handling
-provides a real boundary. Provider context is scoped to the active Effect operation so existing
-plain ticket, refund, media, and realtime engines use the Layer-selected implementation without
-turning individual SDK and query calls into pipelines.
-
-Effect is pinned exactly in `package.json`; a version bump is coordinated rather than
-routine. The complete adoption, resource, cancellation, failure, retry, testing, and shutdown
-contract is [effect-lifecycle.md](./effect-lifecycle.md).
-
-## Multiplayer runtime
-
-Multiplayer is the largest Effect subsystem:
-
-```text
-TanStack / Nitro boundary
-  -> one process-wide ManagedRuntime
-       -> game-owned Effect workflow
-            -> Postgres room store in production
-            -> game-owned pure command transition
-            -> atomic room + durable outbox commit
-            -> advisory wake publication
-       -> bounded telemetry
-       -> Postgres realtime backplane in production
-```
-
-The paired-game and party-room profiles own their state transitions, authorization rules, persistence records, contracts, and browser reconciliation. Shared multiplayer code owns only repeatable capabilities: runtime lifecycle, room credentials, validation primitives, wake transport, backpressure, telemetry, and cross-replica fan-out.
-
-```text
-PairedGameRoom                 PartyRoom
-  local game authority          server game authority
-  player + judge roles          presenter + player membership
-  snapshot reconciliation       authoritative state transitions
-  command journal               action idempotency
-  device leases                 distributed mutation lock
-          \                       /
-           shared room primitives
-           shared wake transport
-           shared runtime + telemetry
-```
-
-`PairedGameRoom` names the reusable two-device authority model used by remote judging. `PartyRoom` stays scoped to the `spelling-party` feature and does not pretend to be a universal party-game abstraction. New room models compose the shared capabilities they require instead of inheriting from one generic room class.
-
-The runtime model does not imply that every participant should connect a device. Each co-located
-mode declares its own device topology and attention profile under the canonical
-[room-first multiplayer design standard](./room-first-multiplayer.md). Shared infrastructure may
-provide presenter synchronization, host pairing, private snapshots, readiness, reconnection, and
-official results; the game engine still owns the phase rhythm, rules, teams, secrets, score,
-correction policy, inactive-player role, and social fun premise. A personal device needs a game
-reason—private information, simultaneous input, identity, team control, or accessibility—not merely
-an available room primitive.
-
-A completed game publishes a neutral result such as participants or teams, raw score, placement,
-winner, and match ID. Event participation points, eligibility, rewards, claims, and reversals belong
-to the event layer and cannot be required for the match to finish. This keeps room play usable
-without forcing every person to scan in and prevents event policy from becoming game truth.
-
-Shared-room games with simultaneous starts compose the multiplayer readiness policy. Players join ready, may opt out while the lobby is open, and receive a persisted, rate-limited start request when a host tries to begin. Starting with unready players requires a second explicit action naming those players; the game engine rechecks the same players atomically before removing them. Solo games and paired-device authority flows do not use lobby readiness.
-
-The runtime is built lazily once per Node process and disposed by a Nitro shutdown hook. It owns services, realtime connections, metrics, timeouts, and scoped cleanup. It never owns authoritative room state or a permanent fiber per room. Postgres is the distributed source of truth in production, so another replica can serve the next request.
-
-Wake publication is safe to retry because it is advisory and idempotent. Room creation and state mutations are not retried generically; their atomicity and idempotency remain explicit in the game engine. Party Room serializes mutations with a bounded lease, while Paired Game commands use action IDs and atomic claims.
-
-### Multiplayer development harnesses
-
-Every synchronized game must be operable by one tester through the contract in
-[multiplayer-testing.md](./multiplayer-testing.md). A shared development shell may own virtual
-device frames, viewport presets, bots, time/failure controls, capture storage, scenario selection,
-pop-outs, and audit exports. Each game supplies an adapter that creates valid rooms, lists its real
-roles and production surfaces, defines deterministic scenarios and legal bot actions, and
-captures/restores its own authoritative state.
-
-The harness does not create a second game engine and does not hand omniscient state to production
-role components. Presenter, host, team, and player panels receive the same credentials and redacted
-projections they receive on separate devices. Privileged inspection remains visibly separate. Dev
-routes and scenario mutation boundaries fail closed outside development/test; `noindex` alone is
-not an access boundary.
-
-## Persistence
-
-Three durable systems are split by responsibility.
-
-**Postgres** (`DATABASE_URL`) holds relational product state: events, tickets, redemptions,
-checkouts, scoring ledgers and projections, attendee operations, communications/outboxes, Pitch
-Night documents, scheduler leases, and their audit records. It owns workflows that require
-transactions, relational constraints, or durable queryable history. Examples include:
-
-- A refund marks the ticket refunded and returns its seat in one transaction, or does neither.
-- Capacity is a `count(*)` of live ticket rows taken under `select ... for update` on the ticket type, so two buyers racing for the last seat serialise. There is no separate counter that can drift from the rows it describes.
-- Single admission is `update tickets set redeemed_at = now() where id = $1 and redeemed_at is null returning *`. The second scanner gets zero rows.
-- `tickets` references `ticket_types` with `on delete restrict`, so deleting an event that sold tickets fails loudly instead of orphaning receipts.
-
-Migrations are an append-only list in `lib/platform/migrations.server.ts`. The default boot mode
-applies them under an advisory lock. `DATABASE_SCHEMA_MODE=verify` checks the ledger without DDL
-for a restricted runtime role after a separate `pnpm database:migrate` step. A migration or
-verification failure is logged and surfaced on `/health` rather than killing the process.
-See [runtime role separation](./postgres-runtime-roles.md).
-
-**Production persistence** uses Postgres for expiring and coordination-heavy state: authentication sessions,
-rate limits, multiplayer rooms, advisory wake fan-out, transfer metadata, word metadata and share
-records, distributed locks, and the leased media queue. Production selects all 30 application
-store variables to `postgres` and has no Redis connection variables. Redis adapters remain in the
-codebase for explicit non-production configurations. The fixed-window limiter uses
-`RATE_LIMIT_STORE=postgres` in production.
-Upload access, auth versions and sessions, attendee sessions, CLI handshakes, passkey ceremonies,
-diagnostic reports, Best Dressed voting, room state, word shares and transfer media jobs use
-their Postgres repositories. Recoverable bearer tokens are encrypted with keys derived from
-`AUTH_SECRET`; session lookups use hashes and indexed expiry. The 2026-09-28 production cutover
-accepted the first verified Redis export as its source cutoff, so later Redis-only writes were
-intentionally excluded. Migration details and limitations are recorded in
-[the migration plan](../plan.md), [reports](./diagnostic-report-postgres.md) and
-[Best Dressed](./best-dressed-postgres.md).
-
-**R2** holds blobs. The private bucket owns incoming uploads, private/source media, pitch assets,
-album manifests during migration, and transfer files. The public bucket contains only intentionally
-published derivatives and editorial media. The production album catalogue uses
-`ALBUM_STORE=postgres`; its R2 manifest import and object-operation safety are described in
-[gallery albums](./gallery-albums-postgres.md).
-The production word repository uses a Postgres body and metadata store selected with
-`WORD_STORE=postgres`, and a Postgres share-link store selected with
-`WORD_SHARE_STORE=postgres`; migration details are in [words](./words-postgres.md).
-The [media object operation ledger](./media-object-operations.md) records tracked R2 copy/delete
-work for album and word mutations.
-
-The production app fails closed when required persistence is unavailable. In-memory fallbacks are limited to explicit development scenarios; database-backed tests run against a real Postgres and skip when none is reachable.
-
-**One independently addressable record per entity** remains the rule for mutable state. A
-single-key collection plus a re-rendering poll loop caused
-[the guest-list KV read spike](./postmortem-guestlist-kv-read-spike.md).
-
-Hot & Cold stores one immutable, word-free completion summary per browser run
-in Postgres. Numbered daily routes can therefore show privacy-thresholded
-community distributions without exposing guesses or answers. Signed-in game
-history remains a separate person-owned read model; anonymous community runs
-never create account records. Community summaries contain real completed runs
-only and remain hidden until the privacy threshold is met.
-
-### Game judging revisions
-
-Games with deterministic judging or scoring assets own an independent semantic
-version. This is deliberately not the application package version: an app
-release can leave judging untouched, and different games can revise their rules
-independently.
-
-- Major revisions change word identity, ranks, scoring, or another boundary that
-  makes results incomparable.
-- Minor revisions change official hints or another player-visible ruling while
-  preserving the comparable core score.
-- Patch revisions change metadata or implementation without intentionally
-  changing a ruling.
-
-The exact revision travels with generated assets, authoritative room state,
-browser recovery, history, and community results. Revisions coexist in durable
-storage. Revision-addressed assets keep a historical daily on its original
-ruling, while the browser recovery path can discover saves from any earlier
-revision and replay their raw guesses against the revision selected for that
-puzzle. CI compares immutable judging assets with the base revision and rejects
-asset changes without a version increase. Games that have no comparable
-generated or server-side rulings do not need this machinery.
-
-Hot and Cold also has a rolling editorial release gate. Every generated target
-must have a complete deterministic rank permutation, target at rank zero, three
-progressively closer safe hints, and matching review evidence. The next 30
-unplayed daily targets additionally require a small human trail: expected close
-words, comparison regressions, approved hints, and only failure-specific
-forbidden hints. Approval stores a hash of the exact top-30 trail and hint set,
-so regeneration automatically requires review again. The admin games view shows
-those trails, changes from the previous revision, suspicious rare or polysemous
-words, and comparison failures. The records remain source-controlled rather
-than mutable production data.
-
-Transactional email uses a Postgres outbox. Product workflows add idempotent messages, the web
-process drains them in bounded batches, and the web scheduler retries it independently. Temporary
-provider failures retry with backoff for at most 7 days or 10 attempts. Accepted and terminal rows
-remove the outbox's message body and recipient-address copy, while a provider-neutral operations ledger keeps
-masked purpose, source, entity references and delivery state for 120 days. Raw delivery events are
-folded into that state and removed after 30 days. Bounce and complaint suppressions retain only the
-recipient hash and a masked hint until reviewed.
-
-## Media
-
-R2 is currently the S3-compatible object store. `R2_PRIVATE_BUCKET` holds album manifests, draft derivatives, originals, private word bodies during migration, pitch assets, and transfers. `R2_PUBLIC_BUCKET` holds published album display derivatives, published social cards, public word bodies during migration, and public editorial media delivered through `VITE_MEDIA_PUBLIC_URL`. The private bucket has no custom domain or `r2.dev` access. Protected reads use short-lived URLs after the application checks access. Browser uploads use presigned URLs, so large file bodies bypass the web service. Independent, single-bucket credentials prevent public-media code from reading private objects and private-media code from writing the public origin by mistake.
-
-Album manifests are currently JSON objects in private R2. They are a storage format, not repository content. The admin panel and CLI call the same durable workflows. The opt-in Postgres album repository stores editable metadata and photo order; R2 keeps binary objects. Upload finalisation keeps an album in draft. Publishing copies only AVIF, WebP, and social-card derivatives to the public bucket; unpublishing removes those public objects. Originals remain private and downloads are authorised against the published catalogue after cutover.
-
-Storage implementation details remain behind `lib/platform/r2.server.ts`; the application host does not need to be Cloudflare.
-
-Every object-storage operation selects `public` or `private` explicitly; unknown namespaces never fall through to the public origin. Browser upload workflows share one transport for exact signed headers, cancellation, timeouts, and retry policy, while feature services continue to own authorisation, limits, key reservation, final verification, and publication. All word and album uploads land in the private bucket under lifecycle-managed `incoming/` prefixes. Feature finalisation verifies and promotes them, copying only intentional public results to the public bucket, so abandoned or partially completed uploads are never public assets.
-
-### Transfer upload recovery
-
-A server reservation and signed R2 targets exist before the first byte moves, and the browser keeps
-that provisional checkpoint in tab-scoped session storage. Active uploads render only live byte
-progress. After a refresh or interruption, the upload page authenticates the checkpoint against both
-the upload-session ID and its delete token, then checks the expected R2 objects by exact size. An
-empty reservation is not presented as an unfinished transfer: the page releases it and forgets the
-local checkpoint. Once at least one complete file exists, the recovery panel preserves those files
-and resends only missing or interrupted files. Finalisation removes the reservation and browser
-checkpoint. Explicit discard confirms intent, removes stored parts first, then releases the
-reservation and checkpoint.
-
-The signed upload window defaults to six hours and its reservation lasts another 30 minutes.
-Daily deep cleanup treats either completed transfer metadata or a live upload reservation as an
-ownership record, deleting a prefix only after both are absent. The private-bucket transfer lifecycle
-rule is a 31-day infrastructure backstop; it also remains one day beyond the longest user-visible
-30-day transfer lifetime.
-
-## Media processing
-
-Images and GIFs are processed on the request that finalises the upload. RAW and video are queued, because they cost seconds of CPU and can pull gigabytes off object storage:
-
-```text
-web request -> Postgres job -> media worker drain -> R2 derivatives -> Postgres event backplane -> SSE to the viewer
-```
-
-Before transfer uploads, a browser worker capability-checks still images. HEIF and other
-browser-decodable formats that the server cannot accept directly are normalised, while oversized
-stills are downscaled to a bounded working copy using `ImageDecoder` or `createImageBitmap` plus
-`OffscreenCanvas`. The source file remains an exact, separately archived original for transfers.
-Album and words uploads may send the bounded copy because their server-generated derivatives are
-the product artifact. Sharp remains the authoritative validation, metadata, orientation, and
-responsive-output boundary; browser preparation is an upload optimisation, not trusted processing.
-
-The worker is the same server image with `MEDIA_WORKER_ROLE=worker`; there is no separate worker build to drift. `MEDIA_PROCESSOR_MODE=local` processes everything inline and disables the queue — the right default, and the right setting whenever no worker is running, since a queue with no consumer just accumulates.
-
-See [media-worker.md](./media-worker.md).
-
-## Maintenance
-
-Product-time workflows are scheduled by the web application after database migrations finish. A
-Postgres lease per job makes this safe across deploy overlap, restarts, and multiple replicas; a
-stale lease is recoverable after a crashed process. The central scheduler owns communication
-fan-out, email retry wake-ups, scheduled scoring transitions, official-result recovery, Pitch
-reminders, and operations digests.
-
-The web scheduler also runs daily cleanup and recovery under a Postgres lease. It attempts each
-bounded task sequentially, logs its result, and records a failed batch for retry if any task fails.
-Authenticated cleanup routes remain available for manual recovery. Product-time jobs have their
-own leases and schedules.
-
-## Health
-
-- `/api/health` performs bounded live checks for required capabilities, exposes only safe runtime
-  metadata, and returns 503 when the process should not receive traffic.
-- `/health` renders the safe capability model for humans.
-- `/api/debug` is admin-protected and performs deeper object-storage, database, email-outbox,
-  and runtime probes.
-- `/api/debug` also exposes per-replica multiplayer operations, failures, reconciliation latency, socket termination, rate-limit, lock-contention, and realtime-backplane metrics.
-
-Required capability failures produce an unhealthy readiness response. Missing optional maintenance or worker configuration is visible without taking the core site offline.
-
-## Deployment invariants
-
-- The server listens on `$HOST` and `$PORT`.
-- Public `VITE_*` values are present at build time.
-- Secrets are supplied at runtime and never enter the client bundle.
-- The container filesystem is ephemeral; durable product mutations belong in Postgres or
-  object storage. Git contains source and build inputs, not runtime product writes.
-- `/api/health` must pass before traffic cutover.
-- The previous deployment remains available until post-cutover verification completes.
+Postgres owns application records and durable work. R2 owns bytes. Notifications reduce latency;
+readers and consumers reconcile durable state if a notification is lost. The web process also
+runs product schedules and daily recovery under database leases.
+
+The host supplies configuration and a port. Railway is one deployment adapter; the application
+artifact is `.output/server/index.mjs`. See [deployment](deployment.md).
+
+## Code ownership
+
+Paths below are relative to the repository root. Feature modules live in `features/`, outside `src`.
+
+| Boundary                               | Owns                                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/routes`                           | URLs, loaders, transport validation, coarse authorization, and response shape     |
+| `features/*/*.functions.ts`            | TanStack server-function entry points                                             |
+| `features/*/*.server.ts`               | Workflows and durable product rules                                               |
+| `features/*/ui` and feature components | Interaction and rendering                                                         |
+| `components`, `hooks`                  | Shared UI and browser capabilities                                                |
+| `lib/platform`                         | Persistence, storage, email, payments, runtime, logging, and provider translation |
+| `lib/shared`                           | Pure, environment-safe constants and utilities                                    |
+| `server/plugins`                       | Process startup, readiness, and shutdown                                          |
+| `ops`, `deploy`, `scripts`             | Independently invoked operations, deployments, and build/local tools              |
+
+Routes collect intent and shape responses. Feature workflows decide what is allowed and what
+changes. Workers execute those same workflows. Modules importing secrets, platform adapters, or
+`node:crypto` stay behind `.server.ts` boundaries; browser contracts stay pure.
+
+Cross-feature workflows live at a neutral composition edge. For example,
+`features/event-operations` combines event and ticket data without making events and tickets
+import one another in both directions. Games persist neutral result envelopes through
+`features/game-results`; they do not own event reward policy.
+
+## Follow a request
+
+1. A route loader prefetches critical page data through a feature query and server function.
+2. The server authorizes the read and calls the feature workflow.
+3. The workflow reads authoritative records and returns a domain result.
+4. React observes the same Query entry after hydration.
+5. A command crosses the authorized server boundary, commits its mutation, then updates or
+   invalidates the affected browser views.
+
+The browser cache does not decide access or establish that a remote mutation succeeded. An
+unsaved form retains its working copy and base revision. Capability pages, live room projections,
+upload execution, and offline recovery have specialized owners; see [server state](server-state.md).
+
+## Durable state and side effects
+
+| Store           | Responsibility                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
+| Postgres        | Content, tickets, sessions, rate limits, rooms, transfer metadata, outboxes, jobs, leases, and audit records |
+| Private R2      | Incoming uploads, source media, transfer files, and private pitch assets                                     |
+| Public R2       | Intentionally published derivatives and editorial media                                                      |
+| Git             | Source, migrations, fixtures, content/ruling assets, and generated build inputs                              |
+| Process memory  | Bounded connections, caches, and disposable execution state                                                  |
+| Browser storage | Versioned local recovery, offline working copies, and preferences                                            |
+
+The documented production topology and the default local environment use Postgres stores.
+Redis adapters remain for explicit non-production configurations. Historical import notes are
+[archived](archive/README.md); their pre-cutover status statements are not current architecture.
+Deployment configuration must still be verified independently of this document.
+
+An independently addressable record represents each mutable entity. Relational constraints and
+transactions enforce contended operations. Admission uses an atomic conditional update; capacity
+checks serialize against the ticket type; a refund and seat release commit together.
+
+Durable work is recorded atomically beside the state that creates it. Consumers handle repeated
+delivery. A crashed worker leaves a recoverable lease or job; a lost wake cannot erase work.
+External mutations require explicit idempotency or outcome reconciliation before retry. See
+[durable work](durable-work.md).
+
+Migrations are append-only in `lib/platform/migrations.server.ts`. Development can apply them at
+boot. Restricted runtime roles use `DATABASE_SCHEMA_MODE=verify` after a separate migration step.
+Failed schema initialization leaves readiness unhealthy. See [database roles](postgres-runtime-roles.md).
+
+## Backend execution
+
+Effect owns orchestration where deadlines, cancellation, bounded concurrency, retries, resource
+lifetime, or typed infrastructure failures justify it. Ordinary TypeScript owns deterministic
+rules, validation, repositories, browser state, and game transitions.
+
+| Managed runtime | Responsibility                                                          |
+| --------------- | ----------------------------------------------------------------------- |
+| Events          | Events, tickets, attendee operations, communications, and scheduling    |
+| Media           | Media-worker lifetime, transfers, and bounded media workflows           |
+| Multiplayer     | Server-authoritative rooms, commands, realtime, and game-pool workflows |
+| Pitches         | Pitch Night workflows and presentation lifetime                         |
+
+One independently started subsystem gets one runtime. Services extend its Layer; facades do not
+create additional runtimes. Promise conversion belongs at TanStack, Nitro, worker, or CLI edges,
+with the active abort signal. The full contract is [Effect lifecycle](effect-lifecycle.md).
+
+## Shared play
+
+The server owns shared room state. A command uses explicit clock, randomness, and ID inputs for
+its pure transition, commits the room mutation and result outbox atomically, then publishes an
+advisory wake. Reconnect reads a redacted authoritative projection and reconciles sequence and
+revision information.
+
+Shared infrastructure owns credentials, wake transport, backpressure, and lifetime. Each game owns
+rules, phase rhythm, privacy, roles, readiness, and correction. Paired-device judging and
+server-authoritative party rooms compose common primitives without sharing one universal engine.
+Local games retain their own reducer and tab-scoped recovery.
+
+Every mode declares its device topology and attention profile. A phone needs a role in the game;
+joining a room is not a reason by itself. See [room-first multiplayer](room-first-multiplayer.md)
+and [multiplayer testing](multiplayer-testing.md).
+
+Judging assets use independent semantic revisions carried through assets, rooms, recovery, and
+results. Hot & Cold also requires deterministic rank/hint checks and human editorial approval of
+upcoming dailies. Build inputs and their review trail remain in Git.
+
+## Media and event operations
+
+Uploads stage privately. Feature finalization validates ownership and bytes before promoting
+objects. Publishing copies intentional derivatives to the public bucket; originals stay private.
+Tracked copy/delete work has its own recoverable [object-operation ledger](media-object-operations.md).
+
+Images and GIFs finalize inline. In hybrid mode, RAW previews and video posters use the Postgres
+queue and a separate worker with `MEDIA_WORKER_ROLE=worker`. Local mode processes inline and
+needs no worker. See [media pipeline](media-pipeline.md) and [media worker](media-worker.md).
+
+Ticket ownership, personal identity, and game identity remain distinct. Scanners and checkpoints
+use authoritative request/response mutations, independent of room realtime. Event scoring is
+quarantined: historical ledgers remain, but live points tools and automatic result consumption
+are retired. Team assignment can use participant persistence without reopening scoring. See
+[events platform](events-platform.md).
+
+## Running and recovering
+
+The web scheduler starts after database readiness. Per-job Postgres leases prevent overlapping
+work across replicas and deploys. Product schedules and daily cleanup use bounded batches with
+independent recovery paths; see [operations](operations.md).
+
+- `/api/health` performs bounded required-capability probes and returns 503 when traffic should stop.
+- `/health` presents the safe capability model.
+- `/api/debug` requires admin access and provides deeper operational probes.
+
+Secrets are runtime inputs. Public `VITE_*` values are build inputs. The container filesystem is
+ephemeral; durable mutations belong in Postgres or storage. Traffic cutover requires healthy
+readiness and a retained rollback deployment. Backup and restoration are separate operational
+work, described in [disaster recovery](disaster-recovery.md).

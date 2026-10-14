@@ -1,5 +1,9 @@
 # Game acceptance and group playtest record — 4 September 2026
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: test protocol and evidence inventory. Empty observations are pending, not passes.
 
 The automated checks use separate browser contexts with separate cookies and browser storage.

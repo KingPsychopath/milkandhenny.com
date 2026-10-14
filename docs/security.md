@@ -37,13 +37,14 @@ You can revoke:
 
 ### Token lifecycle (mental model)
 
-Tokens are **stateless** JWTs. A deploy/rebuild does not revoke them.
+Tokens are signed JWTs with server-side revocation and role-version checks. A deploy/rebuild does
+not revoke them. Production uses the Postgres token store (`AUTH_TOKEN_STORE=postgres`).
 
 What makes an existing token stop working:
 
 - **Expiry**: once `exp` passes, the token is rejected.
-- **Single-session revoke**: admin revokes a specific `jti` (writes `auth:revoked-jti:{jti}` in Redis).
-- **Role-wide invalidate**: bump the role **token version** (the JWT `tv` must match `auth:token-version:{role}`).
+- **Single-session revoke**: admin revokes a specific `jti`; the Postgres token store records its expiry in `auth_revoked_tokens`.
+- **Role-wide invalidate**: bump the role **token version** (the JWT `tv` must match the stored role version in `auth_role_token_versions`).
 - **Secret rotation**: change `AUTH_SECRET` (signature check fails for every previously issued token).
 
 What does _not_ revoke existing tokens:
@@ -65,7 +66,7 @@ These endpoints are intended for operational control and incident response.
 | Admin login (issue JWT) | `POST /api/admin/verify`                  | Returns `{ token }` on success                                                                                                    |
 | Step-up token           | `POST /api/admin/step-up`                 | Requires an admin session (cookie or `Authorization: Bearer <adminJWT>`) + body `{ password }`. Returns short-lived step-up token |
 | CLI browser approval    | `POST /api/admin/cli-auth/request`        | Login requests use PKCE; step-up requests additionally require an admin bearer token and bind approval to that token's `jti`      |
-| List token sessions     | `GET /api/admin/tokens/sessions`          | Redis-backed list of issued sessions by `jti` with status + expiry                                                                |
+| List token sessions     | `GET /api/admin/tokens/sessions`          | Postgres-backed list of issued sessions by `jti` with status + expiry                                                             |
 | Revoke one session      | `DELETE /api/admin/tokens/sessions/{jti}` | Requires `x-admin-step-up` header                                                                                                 |
 | Revoke many sessions    | `POST /api/admin/tokens/revoke`           | Body `{ role: "admin" \| "upload" \| "all" }` + requires `x-admin-step-up`                                                        |
 
@@ -123,13 +124,13 @@ pnpm cli events list \
 `--admin-password` remains available, but can expose the password in shell
 history. Prefer `auth login` or a protected environment variable.
 
-Why auth commands are API-backed (not direct Redis/R2 writes):
+Why auth commands are API-backed:
 
 - R2 is not the source of truth for auth sessions/revocation.
-- Direct Redis writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
+- Direct persistence writes from CLI would bypass app-level auth semantics (step-up requirement, token-version invalidation rules, and session policy checks).
 - Keeping auth commands on app endpoints preserves one source of truth for session behavior and avoids CLI/server drift.
 
-CLI sessions are stored in the same Redis-backed session index as browser
+CLI sessions are stored in the same Postgres token-session table as browser
 sessions. The admin panel labels them `CLI · terminal session`; browser logins
 are labelled `browser session`. Both are one-hour admin JWTs and can be revoked
 individually or by role.
@@ -147,12 +148,13 @@ If `verify` succeeds but protected probes return `401`, check:
 
 ### Why revoked tokens still show up
 
-Revoking a session does not delete the session record immediately. We keep a small Redis-backed record (`auth:session:{jti}`) until the token’s natural expiry so:
+Revoking a session does not delete the session record immediately. The Postgres token store retains the session record with its expiry so:
 
 - the admin dashboard can show _what happened_ (`revoked` / `signed out` / `expired`) instead of the row disappearing instantly
 - you can confirm you revoked the correct session during an incident
 
-The actual “revoked” enforcement is separate (`auth:revoked-jti:{jti}`) and is checked on every authenticated request. Both keys age out automatically around the token expiry.
+Revocation enforcement is separate in `auth_revoked_tokens` and is checked on authenticated
+requests. Expiry is enforced during reads; cleanup removes expired records independently.
 
 Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere upload access is required. The dedicated `UPLOAD_PIN` flow remains for least-privilege transfer uploads. Event workers use revocable scanner links instead of a shared PIN.
 
@@ -167,7 +169,7 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
   separately.
 - **Takedown authority**: the uploader's private delete capability or an authenticated admin action
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
-- **Auto-expiry**: Redis TTL + server-side check + daily cron R2 cleanup
+- **Auto-expiry**: Postgres expiry records + server-side checks + leased daily object cleanup
 - **Cache isolation**: transfer pages and protected media are always `private, no-store`; only intentionally published public media is cacheable
 
 ---
@@ -188,7 +190,8 @@ Notes:
   - Voting closed (default): requires an admin-minted one-time code (`best-dressed:code:*`). This is the "one vote per person" mechanism.
   - Voting open (time window): codes are not required; voting is limited to "one vote per device" using a browser cookie (`mah-bd-voter`) and a per-session marker (`best-dressed:voted:<session>`).
 - The organiser can use a poster or slide QR that links to `/best-dressed` when voting is open.
-- If Redis is unavailable, best-dressed falls back to in-memory storage (local dev only). In production, configure Redis to keep votes stable.
+- Production uses the Postgres voting store and fails closed when required persistence is unavailable.
+  In-memory storage is limited to explicit development or test paths.
 
 ---
 
@@ -230,19 +233,12 @@ Each credential pair grants read, write, and delete access to one R2 bucket. Tre
 Cached public derivatives may continue to serve during rotation. Private storage operations and
 maintenance can fail until every workload receives the replacement credential.
 
-### Redis credentials leaked (`REDIS_REST_URL` / `REDIS_REST_TOKEN`)
+### Legacy Redis credentials leaked
 
-1. **Redis provider console → REST API section → Reset token**
-2. Copy the new URL and token
-3. **Update `.env.local`**
-4. **Update the production host's secret variables**
-5. **Redeploy**
-6. Test: `pnpm cli transfers list`
-
-Transfer, authentication, rate-limit, and room operations can fail during rotation. Their
-`private, no-store` policy prevents a shared cache from substituting a stale capability response.
-
-**Data at risk:** The Redis token grants read/write to vote and transfer metadata (not files — those are in R2).
+Redis adapters remain for explicit non-production configurations. Production's documented
+Postgres topology has no Redis credentials. If a legacy credential leaks, revoke it at its provider,
+replace it only in the development environment that still consumes it, and verify that consumer.
+Use [deployment](deployment.md) for the current runtime credential inventory.
 
 ### Admin password or Upload PIN leaked
 
@@ -281,5 +277,6 @@ are never production values; `VITE_*` values are public build-time configuration
 - **No secrets in code.** Every credential is an env var — rotation is config-only.
 - **No secrets in the client bundle.** `VITE_*` vars contain only public URLs and client configuration, never secrets.
 - **Token-based auth.** Short-lived JWTs (role-based TTLs), stored in httpOnly cookies by default, never raw credentials.
-- **Layered storage.** Database, Redis, and per-bucket R2 credentials have separate blast radii.
+- **Layered storage.** Database and per-bucket R2 credentials have separate blast radii. Legacy development
+  Redis credentials remain separate from production.
 - **CDN buffer.** Cached content continues serving even during a rotation window.

@@ -95,8 +95,8 @@ failure, cancellation, and idempotency contract instead of returning unconstrain
 ## Durable workers and schedules
 
 Effect owns worker and scheduler execution: fiber scope, deadlines, bounded concurrency, overlap
-prevention, cancellation, and telemetry. Postgres or Redis continues to own leases, queues,
-outboxes, attempts, and completion records.
+prevention, cancellation, and telemetry. Postgres owns production leases, queues, outboxes,
+attempts, and completion records. Legacy Redis adapters remain for explicit non-production paths.
 
 On shutdown, stop claiming new work first. A claimed item either completes inside the drain window
 or remains recoverable through its lease or durable status. An in-memory fiber is never the only

@@ -3,20 +3,25 @@
 Status: current product and architecture overview
 
 Milk & Henny operates public events, paid and complimentary tickets, attendee access, door and
-checkpoint admission, communications, waitlists, event scoring, and event-night games inside the
+checkpoint admission, communications, waitlists, and event-night games inside the
 modular monolith.
+
+Live scoring is quarantined. Historical ledgers and projections remain durable, and operational
+team assignment can reuse participant records. Public points tools, leaderboards, and automatic
+game-result consumption are retired. Scoring descriptions below concern retained historical
+models and recovery rules, not available live features.
 
 ## Ownership
 
-| Module                         | Responsibility                                                                      |
-| ------------------------------ | ----------------------------------------------------------------------------------- |
-| `features/events`              | Event records, publication, public detail, event drops, maps, and calendar output   |
-| `features/tickets`             | Inventory, checkout, issuance, QR authority, redemption, refunds, and scanner rules |
-| `features/attendee-operations` | Attendee identity, capabilities, access links, handoff, and notifications           |
-| `features/event-operations`    | Neutral workflows that compose events, tickets, payments, and attendee operations   |
-| `features/event-scoring`       | Ledger, projections, staff assignments, discoveries, claims, and lifecycle          |
-| `features/communications`      | Staged communications, waitlists, and bounded durable email delivery                |
-| `features/game-results`        | Neutral official-result envelopes and durable delivery to event scoring             |
+| Module                         | Responsibility                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| `features/events`              | Event records, publication, public detail, event drops, maps, and calendar output           |
+| `features/tickets`             | Inventory, checkout, issuance, QR authority, redemption, refunds, and scanner rules         |
+| `features/attendee-operations` | Attendee identity, capabilities, access links, handoff, and notifications                   |
+| `features/event-operations`    | Neutral workflows that compose events, tickets, payments, and attendee operations           |
+| `features/event-scoring`       | Retained historical ledgers and operational team/staff persistence; live scoring is retired |
+| `features/communications`      | Staged communications, waitlists, and bounded durable email delivery                        |
+| `features/game-results`        | Neutral official-result envelopes and durable outbox; score consumption is retired          |
 
 Routes validate transport input, perform coarse authentication, call these workflows, and shape
 responses. They do not decide ticket eligibility, refundability, capacity, scoring, or attendee
@@ -29,10 +34,10 @@ Postgres is authoritative for events, ticket types, checkouts, tickets, redempti
 staff identity, scoring, communications, waitlists, scheduler leases, and audit records. Capacity,
 single admission, refunds, and durable outbox writes rely on transactions and constraints.
 
-Redis owns expiring authentication/session state, rate limits, multiplayer rooms, advisory wakes,
-and official-result records created atomically beside Redis-owned game state. R2 owns event and
-attendee media blobs. Neither Redis publication nor an in-memory fiber substitutes for a Postgres
-or Redis durable record.
+Postgres also owns production authentication/session state, rate limits, multiplayer rooms,
+and official-result outboxes. Realtime wakes are advisory. R2 owns event and attendee media blobs;
+neither wake publication nor an in-memory fiber substitutes for a durable record. Redis adapters
+remain only for explicit non-production configurations.
 
 ## Runtime and scheduling
 
@@ -42,8 +47,8 @@ ordinary TypeScript. The runtime owns cancellation, deadlines, typed workflow fa
 delivery, scheduled fibers, advisory publication, telemetry, and resource finalization.
 
 The scheduler starts only after Postgres migrations are ready. Durable Postgres leases prevent
-overlap across replicas and deploys. It runs communications, scoring transitions and result
-recovery, Pitch reminders, operations digests, and daily housekeeping and recovery.
+overlap across replicas and deploys. It runs active communications, Pitch reminders, operations digests, and daily housekeeping and
+recovery. Live scoring transitions and automatic score-result consumption are retired.
 
 See [effect-lifecycle.md](./effect-lifecycle.md), [durable-work.md](./durable-work.md), and
 [operations.md](./operations.md).
@@ -118,5 +123,5 @@ authoritative way to detect a duplicate across devices.
 
 Software tests cannot prove camera focus, battery life, venue Wi-Fi behavior, printer output, or a
 human escalation runbook. Re-run the software and physical checks in
-[event-night-readiness.md](./event-night-readiness.md) for each material event; its recorded evidence
+[event-night-readiness.md](./archive/event-night-readiness.md) for each material event; its recorded evidence
 is a dated snapshot, not permanent readiness.

@@ -15,7 +15,7 @@ review can show whether a game has the conditions for fun. Only play with real
 groups can validate the outcome.
 
 The current implementation review lives in
-[room-first-multiplayer-audit.md](./room-first-multiplayer-audit.md).
+[room-first-multiplayer-audit.md](./archive/room-first-multiplayer-audit.md).
 
 ---
 
@@ -401,7 +401,7 @@ The game owns its fun and rules:
 
 Do not create a universal game engine that erases these differences. Compose
 shared capabilities under a game-owned engine, consistent with
-[architecture.md](./architecture.md#multiplayer-runtime).
+[architecture.md](./architecture.md#shared-play).
 
 ---
 

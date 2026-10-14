@@ -1,75 +1,73 @@
-# Documentation
+# Milk & Henny docs
 
-[../README.md](../README.md) is the project entry point. Documents here are classified so a dated
-audit or completed implementation checklist is not mistaken for current architecture.
+Start with [the project](../README.md), [product direction](product.md), and
+[architecture](architecture.md). This index separates current contracts from operational procedures
+and historical evidence.
 
-## Normative engineering contracts
+## Understand the application
 
-These describe how current code should be designed and reviewed.
+| Read                                    | For                                                           |
+| --------------------------------------- | ------------------------------------------------------------- |
+| [Product direction](product.md)         | Experiences, priorities, and boundaries                       |
+| [Architecture](architecture.md)         | System shape, module ownership, persistence, and execution    |
+| [Design language](design-language.md)   | Typography, palette, layout, and interaction                  |
+| [Navigation](navigation.md)             | URLs, history, context, and exits                             |
+| [Server state](server-state.md)         | Loaders, Query, commands, live projections, and recovery      |
+| [Storage and auth](storage-and-auth.md) | Cookies, browser storage, and access boundaries               |
+| [Effect lifecycle](effect-lifecycle.md) | Runtime ownership, cancellation, failures, and shutdown       |
+| [Durable work](durable-work.md)         | Transactions, queues, outboxes, leases, and reconciliation    |
+| [Security](security.md)                 | Authentication, authorization, secrets, and incident response |
 
-| Document                                                 | Contract                                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [architecture.md](./architecture.md)                     | Module ownership, persistence, runtimes, maintenance, and deployment     |
-| [effect-lifecycle.md](./effect-lifecycle.md)             | Effect adoption, resources, cancellation, errors, retry, and shutdown    |
-| [durable-work.md](./durable-work.md)                     | Outboxes, queues, leases, wake signals, recovery, and idempotency        |
-| [testing.md](./testing.md)                               | Blast-radius verification, test tiers, coverage, and release gates       |
-| [security.md](./security.md)                             | Authentication, authorization boundaries, secrets, and incident response |
-| [design-language.md](./design-language.md)               | Visual tokens, typography, layout, interaction, and accessibility        |
-| [navigation.md](./navigation.md)                         | URL ownership, browser history, breadcrumbs, rails, and exits            |
-| [room-first-multiplayer.md](./room-first-multiplayer.md) | Co-located multiplayer product and interaction standard                  |
-| [multiplayer-testing.md](./multiplayer-testing.md)       | One-person harnesses, scenarios, captures, and failure testing           |
-| [storage-and-auth.md](./storage-and-auth.md)             | Cookies, browser storage, and server/client state boundaries             |
+## Work on a feature
 
-## Product and feature contracts
+| Area                     | Contracts                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Events and tickets       | [Platform](events-platform.md) · [Transfer and refund policy](ticket-transfer-and-refund-policy.md)         |
+| Operational UI           | [Admin workspace map](admin-ux-map.md) · [CLI and control](admin-control.md)                                |
+| Media and sharing        | [Pipeline](media-pipeline.md) · [Object operations](media-object-operations.md) · [Worker](media-worker.md) |
+| Pitch Night              | [Studio and presentation](pitch-night-platform.md)                                                          |
+| Shared play              | [Room-first design](room-first-multiplayer.md) · [Multiplayer testing](multiplayer-testing.md)              |
+| Game rules and content   | [Pairs](pairs.md) · [Twin](twin.md) · [Liars](liars.md) · [Family Feud content](family-feud-content.md)     |
+| Historical event scoring | [Retention and closeout](event-scoring/operations.md) · [Implementation record](event-scoring/README.md)    |
 
-| Document                                                                       | Contract                                                          |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| [events-platform.md](./events-platform.md)                                     | Current event, ticket, attendee, communication, and scoring shape |
-| [event-scoring/operations.md](./event-scoring/operations.md)                   | Scoring policy, retention, closeout, and recovery                 |
-| [ticket-transfer-and-refund-policy.md](./ticket-transfer-and-refund-policy.md) | Transfer/refund product boundary and operational rules            |
-| [pitch-night-platform.md](./pitch-night-platform.md)                           | Pitch studio, persistence, presentation, and lifecycle            |
-| [liars.md](./liars.md)                                                         | Liars game rules, room behavior, privacy, and controls            |
-| [twin.md](./twin.md)                                                           | Twin game rules, fairness, architecture, and build contract       |
-| [family-feud-content.md](./family-feud-content.md)                             | Family Feud content provenance and editorial policy               |
-| [admin-ux-map.md](./admin-ux-map.md)                                           | Admin information architecture and workspace rules                |
+Public Things come from [`features/things/catalog.ts`](../features/things/catalog.ts).
+A module or old acceptance checklist alone does not establish that a feature is live.
 
-## Operations and provider runbooks
+## Develop and verify
 
-| Document                                                               | Use                                                             |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [operations.md](./operations.md)                                       | Scheduling, runtime limits, deploy checks, incidents, workers   |
-| [deployment.md](./deployment.md)                                       | Portable image, Railway/VPS setup, cutover, and rollback        |
-| [observability.md](./observability.md)                                 | Health semantics, logs, metrics, and minimum alerts             |
-| [disaster-recovery.md](./disaster-recovery.md)                         | Backup targets, PostgreSQL restore drills, and object recovery  |
-| [admin-control.md](./admin-control.md)                                 | Authenticated CLI operations and safety controls                |
-| [media-pipeline.md](./media-pipeline.md)                               | Bucket ownership, album lifecycle, and media validation         |
-| [media-worker.md](./media-worker.md)                                   | Heavy-media queue, leases, retries, reconciliation, and cutover |
-| [local-email.md](./local-email.md)                                     | Mailpit-based local delivery testing                            |
-| [cloudflare-email-events.md](./cloudflare-email-events.md)             | Email-event Queue relay and verification                        |
-| [cache-policy.md](./cache-policy.md)                                   | Origin and shared-cache response policy                         |
-| [canonical-host-and-redirects.md](./canonical-host-and-redirects.md)   | Canonical origin and auth-sensitive redirect behavior           |
-| [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md)   | Public-media WAF intent and verification                        |
-| [service-worker-cache-recovery.md](./service-worker-cache-recovery.md) | Manual recovery for an incorrectly cached service worker        |
+[Local development](local-development.md) covers the isolated Docker environment and everyday
+commands. [Testing](testing.md) defines checks by blast radius and the release gate.
+[`AGENTS.md`](../AGENTS.md) is the repository entry point for coding agents; the linked contracts
+provide the detail.
 
-## Dated evidence and incident records
+## Run and recover
 
-These records explain what was checked or what failed at a point in time. They do not prove the
-current tree or deployment is ready.
+| Runbook                                                         | Use                                                       |
+| --------------------------------------------------------------- | --------------------------------------------------------- |
+| [Deployment](deployment.md)                                     | Image, configuration, release, cutover, and rollback      |
+| [Operations](operations.md)                                     | Schedules, limits, workers, and manual recovery           |
+| [Observability](observability.md)                               | Readiness, capability reporting, logs, and alerts         |
+| [Disaster recovery](disaster-recovery.md)                       | Backups, restore drills, and object recovery              |
+| [Postgres runtime roles](postgres-runtime-roles.md)             | Separate migrations from restricted runtime access        |
+| [Local email](local-email.md)                                   | Mailpit delivery testing                                  |
+| [Cloudflare email events](cloudflare-email-events.md)           | Delivery-event relay                                      |
+| [Cache policy](cache-policy.md)                                 | Origin and shared-cache behavior                          |
+| [Canonical host and redirects](canonical-host-and-redirects.md) | Public origin and auth-sensitive redirects                |
+| [Public-media rate limits](cloudflare-rate-limit-images.md)     | WAF intent and checks                                     |
+| [Service-worker recovery](service-worker-cache-recovery.md)     | Repair an incorrectly cached worker                       |
+| [Historical guest archive](legacy-guest-archive.md)             | Restricted offline import tooling and access requirements |
 
-- [System audit and action checklist — 4 September 2026](./system-audit-2026-09-04.md): prioritized
-  admin, games, correctness, recovery, and verification work, with implementation status and evidence.
-- [Game acceptance and group playtests](./game-playtest-2026-09-04.md): mode-by-mode evidence and
-  the remaining device and first-time-group protocol.
-- [Hot & Cold human review packet](./hot-and-cold-review-2026-09-04.md): six upcoming puzzles awaiting
-  human approval.
+Runbooks describe procedures. Dated observations inside them do not prove the current deployment
+or credential state; verify those before acting.
 
-| Document                                                                                           | Record                                                    |
-| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [event-night-readiness.md](./event-night-readiness.md)                                             | Event-night audit snapshot and physical rehearsal gaps    |
-| [event-scoring/README.md](./event-scoring/README.md)                                               | Completed scoring implementation and acceptance checklist |
-| [room-first-multiplayer-audit.md](./room-first-multiplayer-audit.md)                               | Dated conformance and fun-hypothesis audit                |
-| [postmortem-guestlist-kv-read-spike.md](./postmortem-guestlist-kv-read-spike.md)                   | Guest-list Redis read-amplification incident              |
-| [postmortem-media-worker-idle-redis-commands.md](./postmortem-media-worker-idle-redis-commands.md) | Idle worker command-spike incident                        |
+## Evidence and history
 
-Obsolete handoffs, superseded migration notes, completed transient roadmaps, and tool-output
-snapshots belong in git history rather than this directory.
+[The archive](archive/README.md) holds migration snapshots, audits, review packets, and the original
+server-state proposal. These explain past decisions and checks, rather than directing current work.
+
+Two incident records retain useful failure lessons:
+
+- [Guest-list read amplification](postmortem-guestlist-kv-read-spike.md): mutable collection shape and polling cost.
+- [Idle media-worker command spike](postmortem-media-worker-idle-redis-commands.md): wake transport and idle behavior.
+
+The README artwork has [editable source and rendering instructions](assets/README.md).

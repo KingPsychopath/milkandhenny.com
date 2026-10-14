@@ -1,5 +1,9 @@
 # Passkey ceremony migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in Postgres backend verified locally. Production remains on Redis. Set
 `PASSKEY_CEREMONY_STORE=postgres` only after a fresh source check under the planned writer freeze.
 The supplied 2026-09-26 RDB has no `attendee-passkey:ceremony:v1:*` keys. Any keys in the final

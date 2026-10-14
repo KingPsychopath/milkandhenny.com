@@ -1,5 +1,9 @@
 # CLI authorization migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in Postgres backend verified locally. Production remains on Redis. Set
 `AUTH_CLI_STORE=postgres` only after the planned writer freeze and source reconciliation. The
 supplied 2026-09-26 RDB contains no active `auth:cli-*` request, approval, code or claim keys.

@@ -1,5 +1,9 @@
 # Server state and data loading proposal
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: source refactor implemented on `codex/tanstack-query-architecture`; production performance
 and release acceptance remain open.
 Prepared: 2026-09-26.
@@ -17,7 +21,7 @@ Retain the modular monolith, feature workflows, pure policies, and selective bac
 orchestration. Live rooms, offline drafts, upload execution, and local games retain explicit domain
 controllers. The target gives every kind of state a clear owner throughout the application.
 
-The existing [Postgres migration plan](../plan.md) owns persistence replacement. Its target is
+The existing [Postgres migration plan](./postgres-cutover-plan.md) owns persistence replacement. Its target is
 Postgres for authoritative application records and durable work, and object storage for binaries.
 That migration is in progress; the running architecture still includes Redis. Query adoption can
 use stable feature contracts independently of the storage migration.
@@ -39,21 +43,21 @@ budgets remain to be measured.
 
 ## Baseline before this refactor
 
-| Area                 | Evidence                                                                                                                                                                                         | Current behavior and consequence                                                                                                                                                                                           |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Router               | [router](../src/router.tsx), [dependencies](../package.json)                                                                                                                                     | Router cache, intent preloading, 30-second preload freshness, immediate ordinary staleness. No Query dependency or SSR Query integration.                                                                                  |
-| Public pages         | [home](../src/routes/index.tsx), [event route](../src/routes/events/$slug.tsx)                                                                                                                   | Isomorphic loaders call server functions and components read `useLoaderData`. This is a valid SSR foundation. Returned server-function promises are awaited before route data is ready.                                    |
-| Composite event read | [event page workflow](../features/event-operations/event-page.server.ts)                                                                                                                         | Event, ticket availability, images, and optional pitch showcase become one loader result. Internal parallel reads still wait for the whole result.                                                                         |
-| Admin                | [dashboard](../features/admin/ui/AdminDashboard.tsx), [communications](../features/admin/ui/components/CommunicationsPanel.tsx), [session hook](../features/admin/ui/hooks/useTokenSessions.ts)  | Mix of loader bootstrap, effect-driven API reads, manually maintained remote state, refresh callbacks, and mutation status. Communications already receives initial route data; several other panels fetch after mounting. |
-| Account              | [account route](../src/routes/my.tsx), [account page](../features/attendee-access/ui/MyAccountPage.tsx)                                                                                          | SSR bootstrap copied into component state, with manual mutation patches and route invalidation for identity changes.                                                                                                       |
-| Transfers            | [transfer route](../src/routes/t/$id.tsx), [gallery](../features/transfers/ui/transfer/TransferGallery.tsx), [media events](../features/transfers/ui/transfer/useTransferMediaEvents.ts)         | Loader data copied into local file/group state; SSE patches that state; some mutations invalidate the router. Download progress and selection are also local state, with different ownership needs.                        |
-| Refresh scheduling   | [admin refresh](../features/admin/ui/hooks/useAdminAutoRefresh.ts), [visibility reconciler](../hooks/useVisibilityReconciler.ts)                                                                 | Shared visibility, reconnect, coalescing, and minimum-gap policy already exists. Query adoption must preserve these policies.                                                                                              |
-| Multiplayer          | [live snapshots](../features/things/shared/useLiveRoomSnapshot.ts), [room reconciler](../features/things/shared/useRoomReconciler.ts)                                                            | Sequence/digest checks, server-clock correction, phase boundaries, socket wakes, and safety polling form a domain protocol.                                                                                                |
-| Offline work         | [offline storage](../features/offline/storage.ts), [upload recovery](../features/transfers/ui/upload/recovery.ts), [pitch controller](../features/things/pitches/ui/usePitchEditorController.ts) | Browser recovery and working copies have their own persistence and lifecycle.                                                                                                                                              |
-| Browser-only routes  | [pitch demo](../src/routes/things.pitches_.demo.tsx), [pitch editor route](../src/routes/things.pitches_.$deckId_.edit.tsx)                                                                      | `ssr: false` skips their loaders during the server request even though these particular loaders call server functions. Evaluate `ssr: "data-only"` for this case.                                                          |
+| Area                 | Evidence                                                                                                                                                                                                  | Current behavior and consequence                                                                                                                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Router               | [router](../../src/router.tsx), [dependencies](../../package.json)                                                                                                                                        | Router cache, intent preloading, 30-second preload freshness, immediate ordinary staleness. No Query dependency or SSR Query integration.                                                                                  |
+| Public pages         | [home](../../src/routes/index.tsx), [event route](../../src/routes/events/$slug.tsx)                                                                                                                      | Isomorphic loaders call server functions and components read `useLoaderData`. This is a valid SSR foundation. Returned server-function promises are awaited before route data is ready.                                    |
+| Composite event read | [event page workflow](../../features/event-operations/event-page.server.ts)                                                                                                                               | Event, ticket availability, images, and optional pitch showcase become one loader result. Internal parallel reads still wait for the whole result.                                                                         |
+| Admin                | [dashboard](../../features/admin/ui/AdminDashboard.tsx), [communications](../../features/admin/ui/components/CommunicationsPanel.tsx), [session hook](../../features/admin/ui/hooks/useTokenSessions.ts)  | Mix of loader bootstrap, effect-driven API reads, manually maintained remote state, refresh callbacks, and mutation status. Communications already receives initial route data; several other panels fetch after mounting. |
+| Account              | [account route](../../src/routes/my.tsx), [account page](../../features/attendee-access/ui/MyAccountPage.tsx)                                                                                             | SSR bootstrap copied into component state, with manual mutation patches and route invalidation for identity changes.                                                                                                       |
+| Transfers            | [transfer route](../../src/routes/t/$id.tsx), [gallery](../../features/transfers/ui/transfer/TransferGallery.tsx), [media events](../../features/transfers/ui/transfer/useTransferMediaEvents.ts)         | Loader data copied into local file/group state; SSE patches that state; some mutations invalidate the router. Download progress and selection are also local state, with different ownership needs.                        |
+| Refresh scheduling   | [admin refresh](../../features/admin/ui/hooks/useAdminAutoRefresh.ts), [visibility reconciler](../../hooks/useVisibilityReconciler.ts)                                                                    | Shared visibility, reconnect, coalescing, and minimum-gap policy already exists. Query adoption must preserve these policies.                                                                                              |
+| Multiplayer          | [live snapshots](../../features/things/shared/useLiveRoomSnapshot.ts), [room reconciler](../../features/things/shared/useRoomReconciler.ts)                                                               | Sequence/digest checks, server-clock correction, phase boundaries, socket wakes, and safety polling form a domain protocol.                                                                                                |
+| Offline work         | [offline storage](../../features/offline/storage.ts), [upload recovery](../../features/transfers/ui/upload/recovery.ts), [pitch controller](../../features/things/pitches/ui/usePitchEditorController.ts) | Browser recovery and working copies have their own persistence and lifecycle.                                                                                                                                              |
+| Browser-only routes  | [pitch demo](../../src/routes/things.pitches_.demo.tsx), [pitch editor route](../../src/routes/things.pitches_.$deckId_.edit.tsx)                                                                         | `ssr: false` skips their loaders during the server request even though these particular loaders call server functions. Evaluate `ssr: "data-only"` for this case.                                                          |
 
 This table records the starting implementation at the worktree base. The current Query ownership
-and exceptions are recorded in the checkpoint and in [architecture.md](./architecture.md).
+and exceptions are recorded in the checkpoint and in [architecture.md](../architecture.md).
 
 ## Target ownership
 
@@ -527,9 +531,9 @@ the release candidate uses `pnpm verify:release` under the repository verificati
 
 ## References
 
-Repository contracts: [architecture](./architecture.md), [Effect lifecycle](./effect-lifecycle.md),
-[durable work](./durable-work.md), [navigation](./navigation.md), and
-[CLI parity](../.cursor/rules/cli-parity.mdc).
+Repository contracts: [architecture](../architecture.md), [Effect lifecycle](../effect-lifecycle.md),
+[durable work](../durable-work.md), [navigation](../navigation.md), and
+[CLI parity](../../.cursor/rules/cli-parity.mdc).
 
 Official documentation consulted on the preparation date:
 

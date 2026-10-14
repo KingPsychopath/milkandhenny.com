@@ -1,5 +1,9 @@
 # Event-night readiness ledger
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: evidence snapshot completed at commit `9f42dbb7` on 1 September 2026
 
 This file records what was demonstrated for that tree. It does not certify the current branch,

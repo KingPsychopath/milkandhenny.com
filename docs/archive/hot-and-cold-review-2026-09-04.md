@@ -1,5 +1,9 @@
 # Human review queue — 4 September 2026
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 These puzzles need human approval. No approval has been recorded by the implementation work.
 
 ## Daily #36 — cabinet (2026-09-29)

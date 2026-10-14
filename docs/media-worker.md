@@ -24,7 +24,7 @@ The shared Media `ManagedRuntime` owns worker fibers, processing deadlines, boun
 recovery telemetry, and private-transfer orchestration. Postgres owns the queue, processing
 leases, transfer records, and worker status; R2 owns the files. Effect owns execution lifecycle,
 not durable state. See [durable work](./durable-work.md) and
-[worker status](./media-worker-status-postgres.md).
+[worker status](./archive/media-worker-status-postgres.md).
 
 ### Postgres worker credentials
 

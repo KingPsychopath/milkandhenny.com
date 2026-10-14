@@ -1,5 +1,9 @@
 # Staged Postgres transfer schema
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Migration `0111_transfer_catalogue_and_media_jobs` creates separate transfer, file, group,
 group-member, presign-reservation and media-job tables. It is additive. The application still
 reads and writes Redis transfers and jobs; no production switch or import has occurred.
@@ -16,7 +20,7 @@ attempt. An expired claim can finish its R2 upload without overwriting the winni
 The transfer row preserves the public capability ID, owner, title and expiry. It has a deletion
 token hash for verification and ciphertext/nonce columns for the existing resume flow, which
 must return the token after finalization. The staged
-[deletion-token codec](../features/transfers/delete-token-postgres.server.ts) derives a distinct
+[deletion-token codec](../../features/transfers/delete-token-postgres.server.ts) derives a distinct
 AES-GCM key from the web role's `AUTH_SECRET`, binds ciphertext to the transfer ID, and appends
 the authentication tag. Keep the same secret available for the lifetime of surviving transfers.
 Files keep stable IDs,
@@ -24,7 +28,7 @@ positions and media-processing fields. Composite foreign keys keep group members
 attached to files in their own transfer. Reservations intentionally have no transfer FK because
 presign creates them before finalization creates the transfer.
 
-The staged [catalogue repository](../features/transfers/catalogue-postgres.server.ts) commits a
+The staged [catalogue repository](../../features/transfers/catalogue-postgres.server.ts) commits a
 transfer, its files and its groups together. It reads them under one repeatable-read snapshot.
 Web reads decrypt the deletion token; worker reads omit the ciphertext columns entirely and need
 no web secret. Its staged append operation locks the transfer row and checks existing IDs,
@@ -69,7 +73,7 @@ the transfer hidden or updated. The owner takedown UI reports that file cleanup 
 Event guest drops create the empty transfer and drop token row in one Postgres transaction.
 Production has not selected the flags.
 
-The staged [Postgres reservation repository](../features/transfers/upload-reservation-postgres.server.ts)
+The staged [Postgres reservation repository](../../features/transfers/upload-reservation-postgres.server.ts)
 hashes the deletion token, actor JTI and file selection separately, records reserved count and
 bytes, admits one concurrent claimant, and hides expired rows. The initial upload workflow now
 uses it in staged Postgres mode: finalization, resume and abandon consult the same reservation
@@ -91,7 +95,7 @@ Postgres media plan is supplied, and completion checks the current claim token a
 generation before publishing. Output keys include the generation so a stale worker cannot
 overwrite a current derivative.
 
-The staged [media-job repository](../features/transfers/media-jobs-postgres.server.ts) requires
+The staged [media-job repository](../../features/transfers/media-jobs-postgres.server.ts) requires
 an existing file with the matching generation in the enqueue transaction. Workers claim due jobs
 with `SKIP LOCKED`, renew with a claim token, retry or dead-letter failed attempts, and cancel
 jobs whose source is deleted, expired or superseded. Completion locks the transfer and file,

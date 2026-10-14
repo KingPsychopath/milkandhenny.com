@@ -67,13 +67,13 @@ import is safe; an existing runtime event or a different source export causes a 
 supplied export has no active `auth:upload-open` window. A later window is outside the accepted
 cutoff, so the migration must not invent an active window from a newer source.
 An optional fourth output extracts the role token-version counters for
-[the JWT migration](./auth-token-postgres.md).
+[the JWT migration](./archive/auth-token-postgres.md).
 An optional fifth output extracts attendee sessions and their absolute expiries for
-[the attendee-session migration](./attendee-session-postgres.md).
+[the attendee-session migration](./archive/attendee-session-postgres.md).
 An optional sixth output extracts current and retired diagnostic reports and their
-absolute expiries for [the report migration](./diagnostic-report-postgres.md).
+absolute expiries for [the report migration](./archive/diagnostic-report-postgres.md).
 An optional seventh output extracts active and retired Best Dressed voting state for
-[the voting migration](./best-dressed-postgres.md).
+[the voting migration](./archive/best-dressed-postgres.md).
 
 ## Import and verify
 

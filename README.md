@@ -1,45 +1,68 @@
 # milk & henny
 
-A portable TanStack Start application for writing, photo galleries, party games, private file
-transfers, and events/ticketing.
+Thoughts, stories, and things worth sharing.
 
-The web application is a standard Node server. The included Docker image runs on Railway, a VPS,
-or another container host.
+![Milk & Henny: an editorial page, a picture contact sheet, a pair of matching cards, and a ticket, arranged on warm paper.](docs/assets/milk-and-henny.png)
 
-## Runtime architecture
+[Visit the site](https://milkandhenny.com) · [Explore Things](https://milkandhenny.com/things) · [Architecture](docs/architecture.md) · [Docs](docs/README.md)
 
-```mermaid
-flowchart LR
-    Browser --> Web[Web app: TanStack Start + Nitro]
-    Web --> DB[(Postgres: content, sessions, rooms, transfers, jobs, leases)]
-    Web --> R2[(R2: private sources and public media)]
-    DB -->|claim durable jobs| Worker[Media worker: same image]
-    Worker --> R2
-    Worker -->|results and job status| DB
-    DB -->|realtime notifications| Web
-    Web -->|live updates| Browser
-    Web -->|daily leased cleanup and recovery| DB
-```
+Milk & Henny is a place to read something, keep a moment, play with friends, and bring people
+together. The quiet editorial site and the tools behind an event live in the same application:
+from a photo album to a shared game, from an invitation to the person checking tickets at the door.
 
-Postgres owns durable state and work; R2 owns files. The web process runs user-visible schedules
-with Postgres leases, including daily cleanup and recovery. The media worker drains heavy jobs.
-Production no longer connects to Redis. See
-[architecture](./docs/architecture.md) and [durable work](./docs/durable-work.md) for the contracts.
+## What's here
 
-The application is a modular monolith. UI routes collect intent, server functions and API routes
-enforce transport/auth boundaries, feature modules own workflows, and `lib/platform` contains
-external adapters.
+|               |                                                                              |
+| ------------- | ---------------------------------------------------------------------------- |
+| **Words**     | Essays, stories, and notes, with an editor and private sharing.              |
+| **Pics**      | Photo albums, captions, responsive images, and deliberately published media. |
+| **Things**    | Games for a spare minute or a room full of people, plus a pitch studio.      |
+| **Events**    | Event pages, tickets, waitlists, attendee access, and door tools.            |
+| **Transfers** | Private file sharing with expiry, upload recovery, and media previews.       |
 
-## Requirements
+Try [Pairs](https://milkandhenny.com/things/pairs) for a small, immediate game,
+[Hot & Cold](https://milkandhenny.com/things/hot-and-cold) for a hidden-word puzzle, or
+[Family Feud](https://milkandhenny.com/things/family-feud) for a host-led room.
+[Words](https://milkandhenny.com/words) and [Pics](https://milkandhenny.com/pics) are the slower side.
 
-- The Node.js version used by the Dockerfile
-- The package-manager version pinned by `packageManager` in `package.json`
-- PostgreSQL for application state and durable work
-- S3-compatible object-storage credentials for media and transfers
+<details>
+<summary>A little motion study</summary>
 
-## Local development
+![A matching pair turns over, the contact sheet gains a photograph, and a ticket receives its admission mark.](docs/assets/milk-and-henny.gif)
 
-Install Docker and start its engine, then run:
+An illustrated product study, using the site's own typography and palette. These are drawn
+representations of the features, rather than screen recordings. [Static version](docs/assets/milk-and-henny.png).
+
+</details>
+
+## What it's working towards
+
+A useful place around the things people make and do together. Reading should feel unhurried.
+Games should give people a reason to look up and talk. Sharing should make it clear what is public,
+what is private, and what happens next. The backstage tools should make an event easier to run.
+
+Those goals shape both the interface and the code: a small visual vocabulary, explicit ownership,
+and recovery when a connection drops or a process restarts. [Product direction](docs/product.md)
+sets out the priorities and the boundaries.
+
+## How it's built
+
+One **TanStack Start / React** application, served by **Nitro** as a Node process. Features own their
+rules; routes and server functions expose them. **Postgres** owns records, transactions, rooms,
+and durable work. **R2** holds private sources and intentional public derivatives.
+
+**Effect** coordinates fallible backend work and subsystem lifetimes. Game rules, validation,
+repositories, and browser code stay ordinary TypeScript. Heavy media can run in a separate worker
+using the same Docker image. The application can run on Railway or another container host.
+
+The [architecture overview](docs/architecture.md) explains the boundaries and follows a request
+through the system. The [design language](docs/design-language.md) explains the warm paper,
+serif reading type, monospace controls, and restrained motion.
+
+## Run it locally
+
+Use the Node version in [Dockerfile](Dockerfile) and the pnpm version pinned in
+[package.json](package.json). Start Docker, then:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -47,132 +70,28 @@ pnpm dev:setup
 pnpm dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). Setup downloads the service images and semantic
-model once; later starts work offline. Vite updates the browser as you edit.
+Open [127.0.0.1:3000](http://127.0.0.1:3000). Local mode supplies Postgres, object storage, and
+Mailpit; it excludes inherited remote credentials and dotenv files. The first setup downloads
+service images and the semantic model. Later starts use the cached copies.
 
-The default mode uses local Postgres, S3-compatible storage, and Mailpit. It ignores remote
-credentials and dotenv files. Database and uploaded files persist in Docker volumes; the local
-authentication secret persists in the ignored `.local-dev` directory. No Redis or hosted account is
-needed. Admin password: `local-admin-password`. Upload PIN: `local-upload-pin`.
+[Local development](docs/local-development.md) covers sign-in, data, email, and stopping services.
+[Deployment](docs/deployment.md) covers configuration and the production image.
 
-Run `pnpm dev:stop` to stop services while keeping data. Run `pnpm dev:cli <command>` to use the
-CLI against the same local environment. The email inbox is at
-[http://127.0.0.1:18025](http://127.0.0.1:18025).
+## Find your way around
 
-For an intentionally configured environment, copy `.env.example` to `.env.local` and use
-`pnpm dev:server`. Browser tests use that lower-level command with their own isolated fixtures.
-Real payment processing and deployment still require their provider configuration.
+| Path                                          | Purpose                                                  |
+| --------------------------------------------- | -------------------------------------------------------- |
+| [`src/routes`](src/routes)                    | Pages, URL state, and HTTP boundaries                    |
+| [`features`](features)                        | Product workflows, rules, and feature UI                 |
+| [`components`](components) · [`hooks`](hooks) | Shared interface and browser behavior                    |
+| [`lib/platform`](lib/platform)                | Database, storage, email, payments, and runtime adapters |
+| [`lib/shared`](lib/shared)                    | Environment-safe constants and utilities                 |
+| [`server/plugins`](server/plugins)            | Startup, readiness, and shutdown                         |
+| [`ops`](ops) · [`scripts`](scripts)           | Operations, local tools, and generated assets            |
+| [`docs`](docs/README.md)                      | Product, architecture, contracts, and runbooks           |
 
-Useful commands:
+For code changes, start with `pnpm check` and the tests for the behavior you changed. Build when
+bundling or server/client boundaries change. The [verification guide](docs/testing.md) describes
+the broader release checks.
 
-```bash
-pnpm check
-pnpm test
-pnpm build
-pnpm start
-pnpm cli
-```
-
-The project uses the native TypeScript compiler (`tsgo`), Oxlint, and Oxfmt. ESLint and Prettier are
-intentionally not part of the toolchain.
-
-## Environment contract
-
-Copy [`.env.example`](./.env.example). A full production deployment needs these core values. The
-template also documents the Postgres store selectors, worker role, and optional integrations:
-
-```dotenv
-VITE_BASE_URL=https://milkandhenny.com
-VITE_MEDIA_PUBLIC_URL=https://pics.milkandhenny.com
-
-DATABASE_URL=
-
-R2_ACCOUNT_ID=
-R2_PUBLIC_BUCKET=milkandhenny-pics
-R2_PUBLIC_ACCESS_KEY=
-R2_PUBLIC_SECRET_KEY=
-R2_PRIVATE_BUCKET=milkandhenny-private
-R2_PRIVATE_ACCESS_KEY=
-R2_PRIVATE_SECRET_KEY=
-
-AUTH_SECRET=
-ADMIN_PASSWORD=
-UPLOAD_PIN=
-```
-
-Only `VITE_*` variables enter the browser bundle. Never prefix credentials or authentication secrets with `VITE_`.
-
-`CRON_SECRET`, media-worker configuration, external ZIP service settings, and performance tuning
-are documented in `.env.example`. Production sets the application store selectors to `postgres`
-and runs migrations before starting restricted web and worker database roles; see
-[deployment](./docs/deployment.md) and [Postgres runtime roles](./docs/postgres-runtime-roles.md).
-
-Effect v4 owns backend orchestration and lifecycle for Events, Media, Multiplayer, and Pitches.
-Product rules, repositories, and browser code remain ordinary TypeScript. Postgres stores
-authoritative room state and the leased media queue, and carries cross-replica wake notifications.
-
-Application-owned runtime metadata uses `APP_COMMIT_SHA` and `APP_INSTANCE_ID`. Hosting-provider metadata is accepted only as an adapter when those canonical variables are omitted; an instance ID must be unique per running process or replica.
-
-## Health and capabilities
-
-- `/api/health` — machine-readable readiness check with bounded required-capability probes.
-- `/health` — safe human-readable capability page.
-- `/api/debug` — admin-protected deep database, object-storage, and runtime probes.
-
-The capability page distinguishes required services from optional functions. Advanced RAW/video processing is expected to show as disabled while `MEDIA_PROCESSOR_MODE=local`.
-
-## Docker or VPS
-
-Build-time public values must be supplied while creating the image:
-
-```bash
-docker build \
-  --build-arg VITE_BASE_URL=https://milkandhenny.com \
-  --build-arg VITE_MEDIA_PUBLIC_URL=https://pics.milkandhenny.com \
-  -t milkandhenny .
-```
-
-Run with the remaining variables supplied through an env file or secret manager:
-
-```bash
-docker run --env-file .env.local -p 3000:3000 milkandhenny
-```
-
-The image runs as an unprivileged user, listens on `$PORT`, and includes a Docker health check.
-
-## Railway
-
-`railway.toml` selects the same Dockerfile and `/api/health` endpoint used everywhere else. Railway is deployment configuration only; application code does not import Railway APIs.
-
-Deployment sequence:
-
-1. Create a Railway project and web service.
-2. Add the production variables from `.env.example`.
-3. Deploy the repository or current directory.
-4. Verify the temporary Railway domain and `/health`.
-5. Add the custom domains and update DNS.
-6. Keep the previous deployment available briefly for rollback.
-
-## Scheduled maintenance
-
-The web process runs cleanup and recovery once a day under a Postgres lease. Each task is bounded;
-one failure does not prevent later tasks, and the failed batch retries after an hour. Reminders,
-email, event drops, digests, and game-pool cleanup have their own shorter leased schedules. See
-[operations](./docs/operations.md) for the jobs, limits, and manual recovery routes.
-
-## Media worker
-
-Images and GIFs are processed inline. RAW previews and video posters are queued in Postgres for a
-dedicated worker—the same server image run with `MEDIA_WORKER_ROLE=worker`.
-
-```dotenv
-MEDIA_PROCESSOR_MODE=local    # everything inline; the default for development
-MEDIA_PROCESSOR_MODE=hybrid   # heavy routes queued; requires a worker with Postgres job storage
-```
-
-See [`docs/media-worker.md`](./docs/media-worker.md) for the split, the delivery
-guarantees, and the cutover order.
-
-## Documentation
-
-See [`docs/README.md`](./docs/README.md) for architecture, security, media, operations, and deployment notes.
+The repository is available for viewing and reference under its [license](LICENSE).

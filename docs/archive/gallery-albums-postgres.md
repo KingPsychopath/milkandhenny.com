@@ -1,5 +1,9 @@
 # Gallery album Postgres migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in implementation rehearsed locally. Production still reads and writes private R2
 manifests; no production import or switch has occurred.
 

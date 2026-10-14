@@ -33,7 +33,9 @@ other.
 ## 2. Shared: rooms and lobby
 
 Both modes use the same room infrastructure as the other multiplayer things — a seven-character room
-code, QR invite, one Redis key per room, a 90 minute TTL, and rematch that keeps the roster.
+code, QR invite, an independently addressable room record with expiry, and rematch that keeps the
+roster. Production and default local configuration select `LIARS_ROOM_STORE=postgres`; Redis is
+a legacy adapter for explicit non-production configurations.
 
 **5–16 players** for mafia. **4–16** for imposter.
 

@@ -64,7 +64,7 @@ Replaced `/guestlist`, which was removed along with the standalone guest list.
 - **Auth**: generally **no staff/admin auth** required to vote
 - **Voter identity**: cookie (`mah-bd-voter`) for "one vote per device" and session enforcement
 - **Client storage**: `localStorage["bestDressedVote"]` is a **UX hint** (not the source of truth)
-- **Why**: server is the source of truth (cookie + Redis); localStorage is only for convenience UI
+- **Why**: server is the source of truth (cookie + durable session store); localStorage is only for convenience UI
 
 ### Upload (`/upload`)
 

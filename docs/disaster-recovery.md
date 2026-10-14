@@ -25,7 +25,7 @@ For the current production deployment, the owner chose Railway-managed daily and
 backups without an external backup destination. This narrows recovery to what remains available in
 the Railway project; deleting the volume also deletes its Railway backups. Confirm the schedules
 are enabled in the Postgres service before relying on the 24-hour recovery target. The one-time
-encrypted local dump and restore drill are recorded in `plan.md`; they are not a recurring schedule.
+encrypted local dump and restore drill are recorded in the [historical cutover plan](./archive/postgres-cutover-plan.md); they are not a recurring schedule.
 
 ## PostgreSQL restore drill
 

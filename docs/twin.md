@@ -543,21 +543,19 @@ distraction and a tell about who to watch.
 
 ### 10.3 Persistence
 
-One key per room, as everywhere else — `things:twin:v1:room:<id>:state` plus `:lock`, written under
-`withMultiplayerRoomLock`.
+Production and default local configuration select `TWIN_ROOM_STORE=postgres`. The room engine
+commits accepted commands, action receipts, room state, and result outbox records through the
+Postgres room repository. In this mode, heat-log events update `room.loggedHeats` alongside the
+room mutation; they do not require a second Redis log write.
 
-**The heat log lives in its own key**, `…:log`, and this is not optional. Twelve players over fifty
-heats is six hundred result records; carried in the room value that is tens of kilobytes re-read by
-every player on every 8-second poll for the whole game, which is precisely the shape of
-`docs/postmortem-guestlist-kv-read-spike.md`. So:
+Live projections omit the ending payload until the game is finished. The completed view folds
+logged heats into the constellation. Keep those browser projections bounded and role-appropriate;
+private authoritative state must not be sent merely because it shares the room record.
 
-- The log is **appended to** at each `settleAt` and **never read during play.**
-- `TwinSnapshot.ending` is `null` until `finished`, at which point the log is read once and folded
-  into the constellation payload.
-- The log key carries the room's TTL and dies with it.
-
-Everything else follows the house rules: production fails closed without Redis, the in-memory store
-is `createMemoryRoomStore("twin")` and dev-only, never retry 4xx, ref-stable callbacks in the poller.
+The legacy Redis adapter uses `things:twin:v1:room:<id>:state`, its lock, and a separate expiring
+heat-log key. That storage layout describes the optional legacy adapter rather than production.
+In-memory rooms and logs remain development/test paths. Production fails closed without required
+persistence; polling uses ref-stable callbacks and never automatically retries 4xx responses.
 
 ### 10.4 Actions
 

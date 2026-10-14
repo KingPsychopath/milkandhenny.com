@@ -1,5 +1,9 @@
 # Postgres and object-storage implementation plan
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: implementation in progress; production cutover is authorized but has not started.
 
 Created: 2026-09-26.
@@ -20,7 +24,7 @@ URLs, valid access, invalidations, original expiry, pending work, and recoverabl
 Preserve offline/browser recovery contracts. Existing event-scoring quarantine remains in force.
 Import the historical guest list into a restricted Postgres archive table with source provenance;
 it is not an active guest or attendee record. The local tool and operational gates are in
-[the archive runbook](./docs/legacy-guest-archive.md).
+[the archive runbook](../legacy-guest-archive.md).
 
 This document records the agreed plan. Implementing it, obtaining production inventory,
 and executing its operational steps must follow the active task's authorization. Pushing,
@@ -29,8 +33,8 @@ completion is not implementation completion.
 
 ### Working rules
 
-- Follow [AGENTS.md](./AGENTS.md), the pinned toolchain in [package.json](./package.json), and the
-  runtime in [Dockerfile](./Dockerfile).
+- Follow [AGENTS.md](../../AGENTS.md), the pinned toolchain in [package.json](../../package.json), and the
+  runtime in [Dockerfile](../../Dockerfile).
 - Make coherent local commits at completed implementation milestones; include only task-owned
   changes. Preserve unrelated work, including the pre-existing Dockerfile modification observed
   when this plan was created.
@@ -52,30 +56,30 @@ facts before finalizing physical DDL and cutover timing.
 
 Relevant contracts:
 
-- [Architecture](./docs/architecture.md)
-- [Durable work](./docs/durable-work.md)
-- [Effect lifecycle](./docs/effect-lifecycle.md)
-- [Media pipeline](./docs/media-pipeline.md)
-- [Media worker](./docs/media-worker.md)
-- [Operations](./docs/operations.md)
-- [Disaster recovery](./docs/disaster-recovery.md)
-- [Room-first multiplayer](./docs/room-first-multiplayer.md)
-- [Multiplayer verification](./docs/multiplayer-testing.md)
-- [CLI parity](./.cursor/rules/cli-parity.mdc)
+- [Architecture](../architecture.md)
+- [Durable work](../durable-work.md)
+- [Effect lifecycle](../effect-lifecycle.md)
+- [Media pipeline](../media-pipeline.md)
+- [Media worker](../media-worker.md)
+- [Operations](../operations.md)
+- [Disaster recovery](../disaster-recovery.md)
+- [Room-first multiplayer](../room-first-multiplayer.md)
+- [Multiplayer verification](../multiplayer-testing.md)
+- [CLI parity](../../.cursor/rules/cli-parity.mdc)
 
 Current implementation entry points:
 
-| Area                          | Existing files                                                                                                                                                                                                                                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Database and migration runner | [Postgres](./lib/platform/postgres.server.ts), [migrations](./lib/platform/migrations.server.ts)                                                                                                                                                                                                                                |
-| Words and shares              | [store](./features/words/store.server.ts), [types](./features/words/content-types.ts), [shares](./features/words/share.server.ts), [image metadata](./features/words/image.server.ts)                                                                                                                                           |
-| Albums                        | [album repository](./features/media/album-repository.server.ts)                                                                                                                                                                                                                                                                 |
-| Transfers                     | [records](./features/transfers/store.server.ts), [reservations](./features/transfers/upload-reservation.server.ts), [queue](./features/transfers/media-queue.server.ts), [reconciliation](./features/transfers/media-reconcile.server.ts)                                                                                       |
-| Worker and updates            | [worker runtime](./features/system/media-worker-runtime.server.ts), [status](./features/transfers/media-worker-status.server.ts), [events](./features/transfers/media-events.server.ts)                                                                                                                                         |
-| Authentication                | [attendee sessions](./features/attendee-access/session.server.ts), [token sessions](./features/auth/internal/token-session.server.ts), [CLI authentication](./features/auth/cli-auth.server.ts), [passkey ceremonies](./features/attendee-access/passkeys.server.ts), [upload windows](./features/auth/upload-access.server.ts) |
-| Small shared state            | [rate limits](./lib/platform/rate-limit.server.ts), [reports](./features/reports/report-store.server.ts), [Best Dressed](./features/best-dressed/best-dressed.server.ts)                                                                                                                                                        |
-| Multiplayer                   | [backplane](./features/things/shared/multiplayer-realtime-backplane.server.ts), [paired engine](./features/things/remote/paired-game-room-engine.server.ts), [result outbox](./features/game-results/outbox.server.ts)                                                                                                          |
-| Pool and presentations        | [pool credentials](./features/things/pool/pool-redis.server.ts), [presentation state](./features/things/pitches/presentation.server.ts)                                                                                                                                                                                         |
+| Area                          | Existing files                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database and migration runner | [Postgres](../../lib/platform/postgres.server.ts), [migrations](../../lib/platform/migrations.server.ts)                                                                                                                                                                                                                                            |
+| Words and shares              | [store](../../features/words/store.server.ts), [types](../../features/words/content-types.ts), [shares](../../features/words/share.server.ts), [image metadata](../../features/words/image.server.ts)                                                                                                                                               |
+| Albums                        | [album repository](../../features/media/album-repository.server.ts)                                                                                                                                                                                                                                                                                 |
+| Transfers                     | [records](../../features/transfers/store.server.ts), [reservations](../../features/transfers/upload-reservation.server.ts), [queue](../../features/transfers/media-queue.server.ts), [reconciliation](../../features/transfers/media-reconcile.server.ts)                                                                                           |
+| Worker and updates            | [worker runtime](../../features/system/media-worker-runtime.server.ts), [status](../../features/transfers/media-worker-status.server.ts), [events](../../features/transfers/media-events.server.ts)                                                                                                                                                 |
+| Authentication                | [attendee sessions](../../features/attendee-access/session.server.ts), [token sessions](../../features/auth/internal/token-session.server.ts), [CLI authentication](../../features/auth/cli-auth.server.ts), [passkey ceremonies](../../features/attendee-access/passkeys.server.ts), [upload windows](../../features/auth/upload-access.server.ts) |
+| Small shared state            | [rate limits](../../lib/platform/rate-limit.server.ts), [reports](../../features/reports/report-store.server.ts), [Best Dressed](../../features/best-dressed/best-dressed.server.ts)                                                                                                                                                                |
+| Multiplayer                   | [backplane](../../features/things/shared/multiplayer-realtime-backplane.server.ts), [paired engine](../../features/things/remote/paired-game-room-engine.server.ts), [result outbox](../../features/game-results/outbox.server.ts)                                                                                                                  |
+| Pool and presentations        | [pool credentials](../../features/things/pool/pool-redis.server.ts), [presentation state](../../features/things/pitches/presentation.server.ts)                                                                                                                                                                                                     |
 
 M1 must follow indirect adapter users, Lua scripts, CLI commands, operational scripts, browser
 recovery stores, and object prefixes as well as direct Redis imports. Inspect the fully migrated
@@ -485,7 +489,7 @@ implementation follows listed dependencies. M12 and M13 remain operational gates
 
 ### M1 — Inventory and physical schema specification
 
-Evidence ledger: [production and source inventory](./docs/postgres-migration-inventory.md).
+Evidence ledger: [production and source inventory](./postgres-migration-inventory.md).
 
 - [x] Capture the effective production Postgres schema, migration ledger, server limits and
       top-level object-storage counts without reading private content.
@@ -526,7 +530,7 @@ mapping are reviewable. Production-dependent facts remain visible blockers if un
 - [ ] Implement the remaining additive migrations using the ordered runner and locking.
 - [x] Add read-only schema verification mode, migration/verification CLI commands and a
       non-superuser runtime-role grant script. Production credential separation remains a
-      release gate; see [the role runbook](./docs/postgres-runtime-roles.md).
+      release gate; see [the role runbook](../postgres-runtime-roles.md).
 - [ ] Implement dedicated listener/reconnect lifecycle and advisory publication primitives.
 - [x] Implement a bounded Postgres expiry cleanup for rate-limit windows, invoked by maintenance.
 - [ ] Implement remaining expiry/cleanup and lease primitives consumed by real feature workflows.
@@ -869,7 +873,7 @@ targets for publication/deletion tests, and never send real user email/payment e
 
 - Completed: M0 planning document; read-only M1 production Postgres schema and top-level R2
   inventory; SHA-256 identity and full structural/type decode of the supplied Upstash RDB export and a static
-  Redis/browser key-family map in [the inventory](./docs/postgres-migration-inventory.md).
+  Redis/browser key-family map in [the inventory](./postgres-migration-inventory.md).
 - Commits: planning `b982c582`; first production inventory `39481052`; Redis export and static
   recovery inventory `dfb0cee1`; R2 reference reconciliation `db0fbe9e`; legacy/relational
   audit `feffa644`; migration-ledger safeguards `44d5cfe6`; archive tooling `97dea649`;

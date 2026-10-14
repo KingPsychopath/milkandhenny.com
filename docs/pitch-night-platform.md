@@ -9,8 +9,10 @@ Pitch Night is two connected products:
 2. A cinematic marketing route at `/pitch-night` that leads to the studio and the existing event
    checkout.
 
-It stays inside the modular monolith. Postgres owns durable deck state, R2 owns uploaded media,
-Redis owns short-lived presentation rooms, and the browser owns the fastest working copy.
+It stays inside the modular monolith. Postgres owns durable deck state and expiring presentation rooms, R2 owns uploaded media,
+and the browser owns the fastest working copy. The documented production and default local
+configuration select `PITCH_PRESENTATION_STORE=postgres`; a Redis adapter remains for explicit
+non-production configurations.
 
 ## Editor boundary
 
@@ -37,7 +39,7 @@ counts as a slide.
 - **Backup** — a bounded server snapshot made independently of the current draft.
 - **Publish** — atomically copies the current draft into the public snapshot. Public readers never
   see half-edited work.
-- **Presentation room** — an expiring Redis session connecting a display, a host and approved
+- **Presentation room** — an expiring room record connecting a display, a host and approved
   phone controllers.
 
 ## State and ownership

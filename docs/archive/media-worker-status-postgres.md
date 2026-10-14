@@ -1,5 +1,9 @@
 # Postgres media worker status
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Migration `0110_media_worker_instances` adds one row per worker process. Each process has a
 random instance ID and an optional deployment ID (`MEDIA_WORKER_DEPLOYMENT_ID`, falling back to
 `RAILWAY_DEPLOYMENT_ID`). Heartbeats, last processed time and last error are recorded on that row;

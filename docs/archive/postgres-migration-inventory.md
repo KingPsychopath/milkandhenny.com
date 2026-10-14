@@ -1,7 +1,11 @@
 # Postgres migration inventory
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: M1 evidence in progress. Captured 2026-09-26. This is an inventory, not approval to run
-the migration or executable target DDL. [The implementation plan](../plan.md) owns the gates.
+the migration or executable target DDL. [The implementation plan](./postgres-cutover-plan.md) owns the gates.
 
 ## Production evidence
 
@@ -185,7 +189,7 @@ identifies `guest:list` as the original whole-list guest store (initial commit `
 current source has no reader. Commit `9f6dc320` identifies the two `user-report:*` keys as the
 prior report format. The user directed import of the historical guest list into a restricted
 Postgres archive table, with source provenance and no active guest-list behavior; see
-[the archive runbook](./legacy-guest-archive.md). Retain the
+[the archive runbook](../legacy-guest-archive.md). Retain the
 protected source export for recovery until a retention period and archive access policy are
 agreed. Retain/import the unexpired legacy report with its original expiry if the target report
 schema can represent it.
@@ -213,14 +217,14 @@ channels have no durable row to copy.
 | Pool and presentations | `things:game-pool:v1:run:*:{room:*:join-token,assignment:*}`, `pitches:presentation:*` and locks                                                                                                                                                                                  | Expiring assignment/presentation recovery                                                    |
 
 The `events:*` and `tickets:*` record/index helpers in
-[events/config.server.ts](../features/events/config.server.ts) have no active callers. Ticket
+[events/config.server.ts](../../features/events/config.server.ts) have no active callers. Ticket
 workflows import only its rate-limit key builders, passed as identities to the general
 `ratelimit:*` adapter. The supplied export contains none of the old event/ticket record keys.
 
 Browser state remains on the device: transfer upload recovery and last result in session storage,
 gallery selections, local multiplayer credentials/invites/pending commands/drafts and preferences,
 game-pool membership/client ID, and Pitch Studio IndexedDB credentials/drafts/media (plus its
-device ID in local storage). [Active room recovery](../features/things/shared/active-room-recovery.ts)
+device ID in local storage). [Active room recovery](../../features/things/shared/active-room-recovery.ts)
 discovers local and session credentials by key pattern. Server migration must preserve their
 existing expiry, credential and action-reconciliation contracts without a browser wipe.
 
@@ -229,16 +233,16 @@ existing expiry, credential and action-reconciliation contracts without a browse
 This map identifies implementation roots to inspect. It does not yet claim every key, script,
 object reference or browser recovery path is accounted for.
 
-| State                                                                                | Current authority / entry points                                                                                                                                                                                                                                                | Planned authority                                               |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Relational events, tickets, people, communications, pitches and retained scoring     | [migrations](../lib/platform/migrations.server.ts), [Postgres adapter](../lib/platform/postgres.server.ts)                                                                                                                                                                      | Existing Postgres tables with evidenced integrity changes       |
-| Word metadata, share/PIN state and indexes                                           | [word store](../features/words/store.server.ts), [share store](../features/words/share.server.ts) in Redis; Markdown and media in R2; [opt-in body/metadata store](./words-postgres.md) rehearsed locally                                                                       | Postgres content and access records; R2 binaries                |
-| Editable album/photo manifests and derivatives                                       | [album repository](../features/media/album-repository.server.ts) and R2; [opt-in Postgres catalogue](./gallery-albums-postgres.md) rehearsed locally                                                                                                                            | Postgres catalogue; R2 binaries/derived exports                 |
-| Transfers, reservations, file/group status and media jobs                            | [transfer store](../features/transfers/store.server.ts), [reservations](../features/transfers/upload-reservation.server.ts), [queue](../features/transfers/media-queue.server.ts) remain in Redis; [staged Postgres schema and isolated import](./transfers-postgres-schema.md) | Postgres records and transactional jobs; R2 files               |
-| Media worker heartbeat and live fan-out                                              | [worker runtime](../features/system/media-worker-runtime.server.ts), [opt-in per-instance status](./media-worker-status-postgres.md), [events](../features/transfers/media-events.server.ts); Redis queue and events remain active by default                                   | Postgres status, claims and advisory notifications              |
-| Attendee and token sessions, ceremonies, revocations, upload windows and rate limits | [attendee sessions](../features/attendee-access/session.server.ts), [token sessions](../features/auth/internal/token-session.server.ts), [rate limiter](../lib/platform/rate-limit.server.ts) in Redis, with existing Postgres identity tables                                  | Postgres scoped security records                                |
-| Reports, Best Dressed, pool and presentation state                                   | [reports](../features/reports/report-store.server.ts), [Best Dressed](../features/best-dressed/best-dressed.server.ts), [pool](../features/things/pool/pool-redis.server.ts), [presentations](../features/things/pitches/presentation.server.ts) in Redis                       | Postgres domain records                                         |
-| Multiplayer rooms, action receipts, result outbox and wake fan-out                   | [room engines](../features/things/shared/room-primitives.server.ts), [result outbox](../features/game-results/outbox.server.ts), [backplane](../features/things/shared/multiplayer-realtime-backplane.server.ts) in Redis                                                       | Postgres room/recovery/result authority; advisory notifications |
+| State                                                                                | Current authority / entry points                                                                                                                                                                                                                                                         | Planned authority                                               |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Relational events, tickets, people, communications, pitches and retained scoring     | [migrations](../../lib/platform/migrations.server.ts), [Postgres adapter](../../lib/platform/postgres.server.ts)                                                                                                                                                                         | Existing Postgres tables with evidenced integrity changes       |
+| Word metadata, share/PIN state and indexes                                           | [word store](../../features/words/store.server.ts), [share store](../../features/words/share.server.ts) in Redis; Markdown and media in R2; [opt-in body/metadata store](./words-postgres.md) rehearsed locally                                                                          | Postgres content and access records; R2 binaries                |
+| Editable album/photo manifests and derivatives                                       | [album repository](../../features/media/album-repository.server.ts) and R2; [opt-in Postgres catalogue](./gallery-albums-postgres.md) rehearsed locally                                                                                                                                  | Postgres catalogue; R2 binaries/derived exports                 |
+| Transfers, reservations, file/group status and media jobs                            | [transfer store](../../features/transfers/store.server.ts), [reservations](../../features/transfers/upload-reservation.server.ts), [queue](../../features/transfers/media-queue.server.ts) remain in Redis; [staged Postgres schema and isolated import](./transfers-postgres-schema.md) | Postgres records and transactional jobs; R2 files               |
+| Media worker heartbeat and live fan-out                                              | [worker runtime](../../features/system/media-worker-runtime.server.ts), [opt-in per-instance status](./media-worker-status-postgres.md), [events](../../features/transfers/media-events.server.ts); Redis queue and events remain active by default                                      | Postgres status, claims and advisory notifications              |
+| Attendee and token sessions, ceremonies, revocations, upload windows and rate limits | [attendee sessions](../../features/attendee-access/session.server.ts), [token sessions](../../features/auth/internal/token-session.server.ts), [rate limiter](../../lib/platform/rate-limit.server.ts) in Redis, with existing Postgres identity tables                                  | Postgres scoped security records                                |
+| Reports, Best Dressed, pool and presentation state                                   | [reports](../../features/reports/report-store.server.ts), [Best Dressed](../../features/best-dressed/best-dressed.server.ts), [pool](../../features/things/pool/pool-redis.server.ts), [presentations](../../features/things/pitches/presentation.server.ts) in Redis                    | Postgres domain records                                         |
+| Multiplayer rooms, action receipts, result outbox and wake fan-out                   | [room engines](../../features/things/shared/room-primitives.server.ts), [result outbox](../../features/game-results/outbox.server.ts), [backplane](../../features/things/shared/multiplayer-realtime-backplane.server.ts) in Redis                                                       | Postgres room/recovery/result authority; advisory notifications |
 
 ## Open M1 evidence and decisions
 

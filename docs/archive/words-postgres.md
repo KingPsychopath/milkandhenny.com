@@ -1,5 +1,9 @@
 # Words Postgres migration
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: opt-in word body, metadata and share implementation rehearsed locally. Production still
 uses Redis metadata/shares and R2 Markdown. No production import or switch has occurred.
 

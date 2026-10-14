@@ -1,5 +1,9 @@
 # System audit and action checklist — 4 September 2026
 
+> Historical record. Status statements and production observations below describe the work at
+> the time it was recorded. For current contracts, start with [architecture](../architecture.md)
+> and [deployment](../deployment.md).
+
 Status: dated baseline findings with implementation and verification tracking; not a release approval.
 Baseline: `a3380a32`; the working tree was clean before this audit.
 
@@ -153,7 +157,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       or serialize the relevant transition in one transaction. Return a conflict that preserves the
       operator's draft. **Done when:** a concurrent scheduler claim and edit have one valid ordering;
       content cannot change after the delivery claim. Add the exact interleaving regression.
-      Evidence: [communication-plans.server.ts](../features/communications/communication-plans.server.ts),
+      Evidence: [communication-plans.server.ts](../../features/communications/communication-plans.server.ts),
       `updateCommunicationPlanStage` and scheduled fan-out transitions.
 
 - [x] **A02 · P1 · S · Reproduced — Stop send times moving when a stage is edited.**
@@ -163,7 +167,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       field and final schedule. **Done when:** unchanged edits preserve the instant in UTC, London summer
       and winter, and a second browser timezone; ambiguous/nonexistent daylight-saving times have a
       deliberate outcome. Evidence:
-      [CommunicationsPanel.tsx](../features/admin/ui/components/CommunicationsPanel.tsx),
+      [CommunicationsPanel.tsx](../../features/admin/ui/components/CommunicationsPanel.tsx),
       `openStage` / `saveStage`.
 
 - [x] **A03 · P1 · M · Reproduced — Preserve unfinished admin edits across navigation.**
@@ -174,9 +178,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       never persist authentication credentials with drafts. **Done when:** workspace switches, Back,
       refresh, and expired-session recovery preserve edits or offer an explicit discard choice. Reuse
       the working patterns in the words editor where appropriate.
-      Evidence: [AdminDashboard.tsx](../features/admin/ui/AdminDashboard.tsx),
-      [EventsPanel.tsx](../features/admin/ui/components/EventsPanel.tsx),
-      [EditorAdminClient.tsx](../features/admin/ui/editor/EditorAdminClient.tsx).
+      Evidence: [AdminDashboard.tsx](../../features/admin/ui/AdminDashboard.tsx),
+      [EventsPanel.tsx](../../features/admin/ui/components/EventsPanel.tsx),
+      [EditorAdminClient.tsx](../../features/admin/ui/editor/EditorAdminClient.tsx).
 
 - [ ] **A04 · P1 · S · Reproduced — Renew the six missing Hot & Cold approvals.**
       `pnpm check:hot-and-cold-quality` currently fails for daily #36 `cabinet`, #37 `brother`,
@@ -184,8 +188,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       comparisons before updating approval evidence; do not bypass the gate or mechanically approve
       hashes. **Done when:** the rolling 30-puzzle window passes the existing check and the admin
       accurately explains the remaining work. Evidence:
-      [check-hot-and-cold-quality.ts](../scripts/check-hot-and-cold-quality.ts),
-      [HotAndColdReviewPanel.tsx](../features/admin/ui/components/HotAndColdReviewPanel.tsx).
+      [check-hot-and-cold-quality.ts](../../scripts/check-hot-and-cold-quality.ts),
+      [HotAndColdReviewPanel.tsx](../../features/admin/ui/components/HotAndColdReviewPanel.tsx).
 
 - [x] **A05 · P1 · M · Code-confirmed gap — Establish recovery for Redis-owned writing metadata.**
       Words require Redis metadata and its index to locate and interpret their stored bodies. Restoring
@@ -195,8 +199,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       provider configuration separately. **Done when:** an isolated loss-and-restore drill recovers
       a public word and a private draft, including visibility and media references. Do not restore
       obsolete sessions just to recover content. Evidence:
-      [words/store.server.ts](../features/words/store.server.ts), `getWord` / `getWordMeta`,
-      [disaster-recovery.md](./disaster-recovery.md).
+      [words/store.server.ts](../../features/words/store.server.ts), `getWord` / `getWordMeta`,
+      [disaster-recovery.md](../disaster-recovery.md).
 
 ## Admin: make the normal job safe and short
 
@@ -206,7 +210,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       device zone. Unlike A02, an unchanged ordinary round trip is not necessarily wrong; the mismatch
       is the meaning of the editable field. **Done when:** starts, doors, ends, and ticket sales windows
       show an explicit zone and retain the same event meaning across device zones, with DST tests.
-      Evidence: [EventsPanel.tsx](../features/admin/ui/components/EventsPanel.tsx),
+      Evidence: [EventsPanel.tsx](../../features/admin/ui/components/EventsPanel.tsx),
       `toLocalInput`, `fromLocalInput`, and the timezone field.
 
 - [x] **A07 · P2 · M · Code-confirmed — Detect concurrent admin edits.**
@@ -216,9 +220,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       beginning with events, and a useful reload/review conflict state. **Done when:** two editors
       cannot silently erase one another's changes; the second keeps its local draft. The words editor
       already provides a precedent. Evidence:
-      [events.server.ts](../features/events/events.server.ts), `updateEvent`,
-      [events/store.server.ts](../features/events/store.server.ts), `putEvent`,
-      [words/store.server.ts](../features/words/store.server.ts), `WordUpdateConflictError`.
+      [events.server.ts](../../features/events/events.server.ts), `updateEvent`,
+      [events/store.server.ts](../../features/events/store.server.ts), `putEvent`,
+      [words/store.server.ts](../../features/words/store.server.ts), `WordUpdateConflictError`.
 
 - [x] **A08 · P2 · M · Code-confirmed — Complete resource navigation in admin.**
       The URL accepts an event, but the dashboard does not connect `EventsPanel`'s
@@ -226,9 +230,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       Refresh and Back therefore cannot consistently restore the selected job. Persist addressable
       selection in validated search parameters while keeping unsaved form state separate. **Done when:**
       opening a specific event or pitch workspace, refreshing, copying its URL, and using Back restore
-      the same resource. Evidence: [admin/index.tsx](../src/routes/admin/index.tsx),
-      [AdminDashboard.tsx](../features/admin/ui/AdminDashboard.tsx),
-      [navigation.md](./navigation.md).
+      the same resource. Evidence: [admin/index.tsx](../../src/routes/admin/index.tsx),
+      [AdminDashboard.tsx](../../features/admin/ui/AdminDashboard.tsx),
+      [navigation.md](../navigation.md).
 
 - [x] **A09 · P2 · M · Code-confirmed — Make Communications reads bounded and workspace-specific.**
       Initial loading fetches contacts, messages, all plans, templates, surveys, and events together.
@@ -239,9 +243,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       data through the route/server boundary. **Done when:** viewing a plan does not synchronize all
       contacts, one failed subview does not disable unrelated tools, and cost is bounded with a large
       seeded audience. Evidence:
-      [communications/route.ts](../src/routes/api/admin/communications/route.ts),
-      [communications.server.ts](../features/communications/communications.server.ts), `syncContacts`,
-      [CommunicationsPanel.tsx](../features/admin/ui/components/CommunicationsPanel.tsx), `load`.
+      [communications/route.ts](../../src/routes/api/admin/communications/route.ts),
+      [communications.server.ts](../../features/communications/communications.server.ts), `syncContacts`,
+      [CommunicationsPanel.tsx](../../features/admin/ui/components/CommunicationsPanel.tsx), `load`.
 
 - [x] **A10 · P2 · M · Design, browser-observed — Put the mobile job above the fold.**
       At 390×844 the Games admin uses roughly the first 430px for shared header/navigation; explanation
@@ -249,9 +253,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       switcher visible, with utilities and editorial review one level away. Do not remove capabilities.
       **Done when:** an operator can see the current task and its primary action immediately on a phone,
       and keyboard navigation and desktop workspace switching remain clear. Evidence:
-      [AdminSectionNav.tsx](../features/admin/ui/components/AdminSectionNav.tsx),
-      [AdminDashboard.tsx](../features/admin/ui/AdminDashboard.tsx),
-      [GamePoolsPanel.tsx](../features/admin/ui/components/GamePoolsPanel.tsx).
+      [AdminSectionNav.tsx](../../features/admin/ui/components/AdminSectionNav.tsx),
+      [AdminDashboard.tsx](../../features/admin/ui/AdminDashboard.tsx),
+      [GamePoolsPanel.tsx](../../features/admin/ui/components/GamePoolsPanel.tsx).
 
 - [x] **A11 · P2 · M · Code-confirmed / design — Make event forms explain errors locally.**
       The event `Field` uses a 40px minimum height, has no field-error contract, and does not connect its
@@ -260,8 +264,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       targets; keep optional publishing/media controls progressively disclosed. **Done when:** an empty
       or invalid save names and focuses the problem, assistive technology gets the hint/error, and
       required setup is distinguishable from optional detail. Evidence:
-      [EventsPanel.tsx](../features/admin/ui/components/EventsPanel.tsx), `Field` and event form,
-      [CommunicationsPanel.tsx](../features/admin/ui/components/CommunicationsPanel.tsx), `Field`.
+      [EventsPanel.tsx](../../features/admin/ui/components/EventsPanel.tsx), `Field` and event form,
+      [CommunicationsPanel.tsx](../../features/admin/ui/components/CommunicationsPanel.tsx), `Field`.
 
 - [x] **A12 · P2 · S · Design — Make the quality gate actionable from its summary.**
       Games shows “release blocked” beside the first upcoming puzzle, which is itself approved; the
@@ -270,7 +274,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       approval workflow. Keep quality review separate from running a game night. **Done when:** the six
       failures in A04 are discoverable directly from the summary and an approved puzzle cannot look like
       the cause. Evidence:
-      [HotAndColdReviewPanel.tsx](../features/admin/ui/components/HotAndColdReviewPanel.tsx).
+      [HotAndColdReviewPanel.tsx](../../features/admin/ui/components/HotAndColdReviewPanel.tsx).
 
 ## Games: orientation, pace, and recovery
 
@@ -279,8 +283,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       text. Touch users cannot reliably distinguish offline from reconnecting. Show a short written
       state when unhealthy, without replacing the game prompt. **Done when:** a phone user and a screen
       reader can both understand the state without color or hover. Evidence:
-      [RoomHeader.tsx](../features/things/shared/RoomHeader.tsx),
-      [RoomHeader.css](../features/things/shared/RoomHeader.css).
+      [RoomHeader.tsx](../../features/things/shared/RoomHeader.tsx),
+      [RoomHeader.css](../../features/things/shared/RoomHeader.css).
 
 - [x] **G02 · P2 · M · Code-confirmed — Give the Family Feud buzzer explicit recovery feedback.**
       The hook exposes connection state and read messages, but the buzzer does not render them. Before
@@ -289,8 +293,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       acknowledgement, reconcile before claiming that the buzz was not recorded: it may have committed.
       Preserve the existing MC assignment fallback. **Done when:** offline-before-load, a stale faceoff,
       and a lost successful response each produce truthful, actionable feedback. Evidence:
-      [FamilyFeudBuzzerApp.tsx](../features/things/family-feud/FamilyFeudBuzzerApp.tsx),
-      [useFamilyFeudRoom.ts](../features/things/family-feud/useFamilyFeudRoom.ts).
+      [FamilyFeudBuzzerApp.tsx](../../features/things/family-feud/FamilyFeudBuzzerApp.tsx),
+      [useFamilyFeudRoom.ts](../../features/things/family-feud/useFamilyFeudRoom.ts).
 
 - [x] **G03 · P2 · M · Code-confirmed / design — Let the room own Same Brain's reveal hold.**
       The default reveal lasts 20 seconds and `advance` starts the next round automatically. A host can
@@ -298,9 +302,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       co-located default, retaining explicitly chosen automatic pacing where useful. **Done when:**
       laughter, answer correction, and discussion can finish before “next round”, with one clear host
       action and a waiting cue for everyone else. Evidence:
-      [same-brain-rules.ts](../features/things/same-brain/same-brain-rules.ts),
-      [same-brain-room-engine.server.ts](../features/things/same-brain/same-brain-room-engine.server.ts),
-      `advance`; [room-first-multiplayer.md](./room-first-multiplayer.md).
+      [same-brain-rules.ts](../../features/things/same-brain/same-brain-rules.ts),
+      [same-brain-room-engine.server.ts](../../features/things/same-brain/same-brain-room-engine.server.ts),
+      `advance`; [room-first-multiplayer.md](../room-first-multiplayer.md).
 
 - [x] **G04 · P2 · M · Validate — Reconcile pool expiry with putting phones away.**
       Pool assignments expire after 90 seconds without a heartbeat; room reads update that heartbeat,
@@ -310,9 +314,9 @@ as small changes; do not turn the checklist into a framework rewrite.
       proven game deletion. **Done when:** the same player returns to the correct room/seat without
       duplicate allocation, or receives a deliberate host-approved recovery; absent users still release
       genuinely abandoned capacity. Evidence:
-      [membership.server.ts](../features/things/pool/membership.server.ts),
-      [useVisibilityReconciler.ts](../hooks/useVisibilityReconciler.ts),
-      [same-brain-room.server.ts](../features/things/same-brain/same-brain-room.server.ts).
+      [membership.server.ts](../../features/things/pool/membership.server.ts),
+      [useVisibilityReconciler.ts](../../hooks/useVisibilityReconciler.ts),
+      [same-brain-room.server.ts](../../features/things/same-brain/same-brain-room.server.ts).
 
 - [x] **G05 · P2 · L · Code-confirmed coverage gap — Complete isolated-device game journeys.**
       Dedicated multiscreen browser journeys exist for Same Brain and Family Feud. Dev harnesses exist
@@ -321,8 +325,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       Spelling Party presenter/player recovery, then paired judging, Twin, Centre, and Draw Country.
       Reuse real production surfaces, not a second engine. **Done when:** each mode meets its required
       harness level and proves one complete match plus its most consequential recovery/privacy boundary.
-      Evidence: [e2e](../e2e), [multiplayer-testing.md](./multiplayer-testing.md),
-      [multiplayer registry](../features/things/shared/multiplayer-telemetry.ts).
+      Evidence: [e2e](../../e2e), [multiplayer-testing.md](../multiplayer-testing.md),
+      [multiplayer registry](../../features/things/shared/multiplayer-telemetry.ts).
 
 - [x] **G06 · P3 · S · Design, browser-observed — Shorten Family Feud's first setup decision.**
       At 390×844, six vibe choices precede the launch action; it is outside the first viewport. Present
@@ -330,7 +334,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       one choice. Keep adult content opt-in. Make the TV/presenter versus MC-phone role unmistakable.
       **Done when:** a first-time host can identify the required devices and start with defaults without
       reading the whole deck catalog. Evidence:
-      [FamilyFeudSetupApp.tsx](../features/things/family-feud/FamilyFeudSetupApp.tsx).
+      [FamilyFeudSetupApp.tsx](../../features/things/family-feud/FamilyFeudSetupApp.tsx).
 
 - [ ] **G07 · P2 · L · Validate — Run the same lifecycle acceptance pass for every game mode.**
       Test teach → join → ready → first input → waiting → reveal → correction → finish → rematch/leave.
@@ -339,8 +343,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       Single-device modes additionally need safe secret handoff and motion-control alternatives.
       **Done when:** the mode matrix below records real results and specific exceptions rather than
       assuming shared components make every game correct.
-      Evidence: [game surfaces](../features/things),
-      [room-first-multiplayer.md](./room-first-multiplayer.md).
+      Evidence: [game surfaces](../../features/things),
+      [room-first-multiplayer.md](../room-first-multiplayer.md).
 
 - [ ] **G08 · P3 · M · Validate — Record first-time-group playtests.**
       Run at least two independent groups for each proposed headline event game. Record time to first
@@ -348,7 +352,7 @@ as small changes; do not turn the checklist into a framework rewrite.
       moments, and willingness to replay. Test at realistic room distance, noise, and lighting.
       **Done when:** fun and accessibility claims are backed by observations; fixes go into game-owned
       work items. A harness or this audit cannot validate social fun.
-      Evidence: [room-first-multiplayer.md](./room-first-multiplayer.md), playtest requirements.
+      Evidence: [room-first-multiplayer.md](../room-first-multiplayer.md), playtest requirements.
 
 ## Systems: protect the edges and reduce maintenance
 
@@ -359,8 +363,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       against the authoritative row/version. **Done when:** a close or schema change has a defined
       ordering with submissions, and accepted responses cannot reference invalidated choices/questions.
       Add real-Postgres concurrency regressions, not just sequential tests. Evidence:
-      [polls.server.ts](../features/polls/polls.server.ts), `savePoll` / `submitPollVote`,
-      [surveys.server.ts](../features/surveys/surveys.server.ts), submission transaction.
+      [polls.server.ts](../../features/polls/polls.server.ts), `savePoll` / `submitPollVote`,
+      [surveys.server.ts](../../features/surveys/surveys.server.ts), submission transaction.
 
 - [x] **S02 · P2 · M · Code-confirmed — Commit word metadata and index changes together.**
       Creation writes the body, then performs separate Redis `SET` and `SADD`; deletion removes metadata
@@ -368,8 +372,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       or stale index membership. Make the Redis pair atomic and explicitly reconcile cross-store body
       promotion/cleanup. **Done when:** fault injection between each boundary leaves either a usable
       record or a discoverable repair state, and retry does not get stuck on an invisible existing slug.
-      Evidence: [words/store.server.ts](../features/words/store.server.ts),
-      `createWordLocked` and deletion; [durable-work.md](./durable-work.md).
+      Evidence: [words/store.server.ts](../../features/words/store.server.ts),
+      `createWordLocked` and deletion; [durable-work.md](../durable-work.md).
 
 - [x] **S03 · P2 · M · Validate — Bound game-pool bookkeeping after a successful game command.**
       Game facades await pool membership writes after the authoritative game operation, suppressing
@@ -378,8 +382,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       budget and reconciliation path where needed. **Done when:** a stalled pool database cannot hold
       successful gameplay hostage or misrepresent an accepted command as uncommitted. Preserve required
       moderation effects and eventual membership correctness.
-      Evidence: [same-brain-room.server.ts](../features/things/same-brain/same-brain-room.server.ts),
-      [membership.server.ts](../features/things/pool/membership.server.ts).
+      Evidence: [same-brain-room.server.ts](../../features/things/same-brain/same-brain-room.server.ts),
+      [membership.server.ts](../../features/things/pool/membership.server.ts).
 
 - [x] **S04 · P2 · S · Code-confirmed — Fail CI if its test database is unavailable.**
       `vitest.globalSetup.ts` sets `MAH_TEST_DB_READY=0` and skips database suites on any connection error,
@@ -387,8 +391,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       actually ran. Preserve convenient local skipping and throw in CI when the required database is
       missing. **Done when:** deliberately broken CI database configuration fails loudly rather than
       reporting a misleading green database test run.
-      Evidence: [vitest.globalSetup.ts](../vitest.globalSetup.ts),
-      [postgres test helper](../__tests__/helpers/postgres.ts), [CI](../.github/workflows/ci.yml).
+      Evidence: [vitest.globalSetup.ts](../../vitest.globalSetup.ts),
+      [postgres test helper](../../__tests__/helpers/postgres.ts), [CI](../../.github/workflows/ci.yml).
 
 - [ ] **S05 · P2 · M · Validate — Prove recovery and backup retention, not just backup commands.**
       The backup tool writes a checksum sidecar; restore verifies the archive catalogue but does not
@@ -397,8 +401,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       schedules, retention, separate failure domain, and restore durations. **Done when:** tampered or
       mismatched archives are rejected and a deleted permanent image/document can be restored from an
       earlier retained copy. Provider settings were not inspected in this audit.
-      Evidence: [postgres-archive.mjs](../ops/postgres-archive.mjs),
-      [disaster-recovery.md](./disaster-recovery.md).
+      Evidence: [postgres-archive.mjs](../../ops/postgres-archive.mjs),
+      [disaster-recovery.md](../disaster-recovery.md).
 
 - [ ] **S06 · P2 · M · Design — Monitor product readiness between deployments.**
       The Hot & Cold quality window advances with time, while its CI gate runs on code changes. Add
@@ -406,10 +410,10 @@ as small changes; do not turn the checklist into a framework rewrite.
       oldest-work age and last successful run alongside counts, and make per-replica versus aggregate
       multiplayer metrics explicit. Reuse current health/outbox telemetry. **Done when:** an operator
       learns about an approaching content gap or stalled worker before users do, without noisy unchanged
-      alerts. Evidence: [CI](../.github/workflows/ci.yml),
-      [SystemHealthPanel.tsx](../features/admin/ui/components/SystemHealthPanel.tsx),
-      [application-scheduler-service.server.ts](../features/system/application-scheduler-service.server.ts),
-      [observability.md](./observability.md).
+      alerts. Evidence: [CI](../../.github/workflows/ci.yml),
+      [SystemHealthPanel.tsx](../../features/admin/ui/components/SystemHealthPanel.tsx),
+      [application-scheduler-service.server.ts](../../features/system/application-scheduler-service.server.ts),
+      [observability.md](../observability.md).
 
 - [x] **S07 · P2 · M · Design — Split admin files by independent responsibility.**
       EventsPanel is 4,236 lines and CommunicationsPanel 2,741 at this baseline. They contain distinct
@@ -418,8 +422,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       only where contracts really match. **Done when:** each extracted unit owns its state and requests,
       the shell only composes/navigation, and changes need fewer branches and less duplicated code.
       Do not split by arbitrary line count or introduce a universal admin engine.
-      Evidence: [EventsPanel.tsx](../features/admin/ui/components/EventsPanel.tsx),
-      [CommunicationsPanel.tsx](../features/admin/ui/components/CommunicationsPanel.tsx).
+      Evidence: [EventsPanel.tsx](../../features/admin/ui/components/EventsPanel.tsx),
+      [CommunicationsPanel.tsx](../../features/admin/ui/components/CommunicationsPanel.tsx).
 
 - [x] **S08 · P2 · M · Code-confirmed coverage gap — Add consequential admin browser journeys.**
       Existing admin component tests include static markup assertions; the browser suite emphasizes
@@ -427,8 +431,8 @@ as small changes; do not turn the checklist into a framework rewrite.
       selection/history, timezone-preserving scheduling, conflict recovery, and permission-shaped
       workspace access. Include a phone viewport and keyboard operation. **Done when:** A01–A03 and
       A06–A11 have behavior-level regression coverage at the boundary that actually failed.
-      Evidence: [admin-events-panel.test.ts](../__tests__/unit/admin-events-panel.test.ts),
-      [e2e](../e2e).
+      Evidence: [admin-events-panel.test.ts](../../__tests__/unit/admin-events-panel.test.ts),
+      [e2e](../../e2e).
 
 ## Coverage map and remaining release evidence
 

@@ -1,8 +1,9 @@
 # Postgres migration and runtime roles
 
-Status: local role separation verified; production still uses the `postgres` superuser for the
-web connection. Do not switch production credentials until the release and backup gates in
-[the migration plan](../plan.md) pass.
+Use separate migration and runtime credentials. The last production role observation recorded
+in this runbook was on 2026-09-26; it does not establish today's principal or grants. Verify the
+current role before credential changes. The historical cutover evidence is in
+[the archive](./archive/postgres-cutover-plan.md).
 
 The application now supports two schema startup modes:
 

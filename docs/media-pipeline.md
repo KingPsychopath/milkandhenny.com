@@ -6,7 +6,7 @@ R2 has two buckets with independent, single-bucket credentials.
 
 | Private source bucket                  | Public delivery bucket            |
 | -------------------------------------- | --------------------------------- |
-| Album JSON manifests                   | Published album AVIF variants     |
+| Legacy album JSON import sources       | Published album AVIF variants     |
 | Incoming album uploads                 | Published album WebP variants     |
 | Album originals                        | Published album social-card JPEGs |
 | Draft copies of every album derivative | Public word media                 |
@@ -15,16 +15,19 @@ R2 has two buckets with independent, single-bucket credentials.
 
 The private bucket must have no custom domain and no `r2.dev` URL. Signed reads use `private, no-store`. The public bucket uses its custom domain and long cache lifetimes for versioned image variants.
 
-Album manifests remain JSON because JSON is a suitable object-storage format. They do not live in the repository or container filesystem. Mutable words remain Markdown in their Redis-backed records. Repository JSON, Markdown, source code, fixtures, and generated static assets are valid only when they are configuration, test data, or build inputs rather than runtime product records.
+Postgres owns the editable album catalogue, ordering, captions, publication state, and word
+Markdown/metadata. R2 stores media bytes. Legacy album JSON manifests are import sources, not a
+second mutable catalogue when `ALBUM_STORE=postgres` is selected. Repository Markdown, JSON,
+fixtures, and generated static assets are source or build inputs, not runtime product writes.
 
 ## Album lifecycle
 
 1. The browser uploads to `incoming/albums/{slug}/...` in private R2 with a short-lived presigned URL.
 2. Finalisation decodes the file with Sharp. A decode failure rejects the upload.
 3. The server writes a normalised private JPEG original, AVIF and WebP variants at 480, 960, and up to 1600 pixels, a 1200 × 630 social card, a dominant colour, and a small blur data URL.
-4. Finalisation updates the private manifest and keeps the album in draft.
-5. Publish copies only AVIF, WebP, and social-card objects to public R2, then marks the private manifest as published.
-6. Unpublish hides the manifest first and deletes the public objects. It cannot recall copies that a visitor already downloaded or cached while the album was public.
+4. Finalisation updates the album catalogue and keeps the album in draft.
+5. Publish copies only AVIF, WebP, and social-card objects to public R2, then marks the catalogue entry as published.
+6. Unpublish hides the catalogue entry first and deletes the public objects. It cannot recall copies that a visitor already downloaded or cached while the album was public.
 7. Original downloads use an application route that confirms the album and photo are published before it issues a one-hour private signed URL.
 
 Use an R2 lifecycle rule to expire `incoming/albums/` after one day. Finalisation also deletes its incoming objects immediately.
@@ -57,7 +60,7 @@ Non-media transfers and all explicit downloads use attachment disposition and `a
 ## Other media
 
 - Public words write media to public R2. Private words write media and responsive variants to private R2 and use an authenticated, short-lived signed route.
-- Transfers use capability IDs, Redis expiry records, private R2, short-lived signed previews, and attachment downloads. Ordinary images and GIFs process inline. RAW and video poster work can run in the media worker.
+- Transfers use capability IDs, Postgres expiry records, private R2, short-lived signed previews, and attachment downloads. Ordinary images and GIFs process inline. RAW and video poster work can run in the media worker.
 - Pitch images, audio, video, and thumbnails stay private. Access requires the pitch owner workflow and a short-lived signed URL.
 
 See [media-worker.md](./media-worker.md) for queued RAW and video processing and [deployment.md](./deployment.md) for the bucket and lifecycle setup.
