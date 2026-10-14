@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Milk & Henny — architecture</title>
+    <style>
+      /* site-tokens */
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("/public/fonts/geist-mono-latin-v6.woff2");
+        font-weight: 100 900;
+      }
+      @font-face {
+        font-family: "Lora";
+        src: url("/public/fonts/lora-latin-v37.woff2");
+        font-weight: 400 700;
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+      }
+      svg {
+        display: block;
+      }
+      text {
+        fill: var(--foreground);
+        font-family: "Lora", serif;
+        font-weight: 400;
+      }
+      .mono {
+        font-family: "Geist Mono", monospace;
+        font-size: 16px;
+      }
+      .small {
+        font-size: 14px;
+      }
+      .muted {
+        fill: var(--stone-500);
+      }
+      .heading {
+        font-size: 29px;
+        letter-spacing: -0.8px;
+      }
+      .divider {
+        stroke: var(--stone-300);
+        stroke-width: 1;
+        fill: none;
+      }
+      .flow {
+        stroke: var(--stone-500);
+        stroke-width: 1.2;
+        fill: none;
+        stroke-linejoin: round;
+      }
+      .wake {
+        stroke: var(--stone-500);
+        stroke-width: 1.2;
+        fill: none;
+        stroke-dasharray: 4 5;
+      }
+      .paper {
+        fill: var(--background);
+      }
+      .accent {
+        fill: var(--prose-hashtag);
+      }
+    </style>
+  </head>
+  <body>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="1200"
+      height="860"
+      viewBox="0 0 1200 860"
+      role="img"
+      aria-labelledby="title description"
+    >
+      <title id="title">Milk & Henny architecture: one application, clear boundaries</title>
+      <desc id="description">
+        The browser calls a TanStack Start and Nitro web process. Feature workflows and pure
+        policies use platform adapters to access Postgres and R2, email, and payments. Postgres owns
+        state and durable work, and sends advisory wakes to the web process, which sends live
+        updates to the browser. A separate media worker uses the same Docker image, claims and
+        settles Postgres jobs, and processes R2 blobs. The browser reads intentionally published
+        media directly.
+      </desc>
+      <defs>
+        <marker
+          id="arrow"
+          viewBox="0 0 8 8"
+          refX="7"
+          refY="4"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M1 1L7 4L1 7" fill="none" stroke="var(--stone-500)" stroke-width="1" />
+        </marker>
+      </defs>
+
+      <text
+        x="64"
+        y="65"
+        class="mono"
+        style="font-size: 22px; font-weight: 600; letter-spacing: -1px"
+      >
+        milk &amp; henny
+      </text>
+      <text x="1136" y="65" text-anchor="end" class="mono small muted">
+        architecture / modular monolith
+      </text>
+      <text x="64" y="133" style="font-size: 38px; letter-spacing: -1px">
+        One application. Clear boundaries.
+      </text>
+      <text x="64" y="165" class="mono muted">Postgres owns state. R2 owns files.</text>
+      <path d="M64 193H1136" class="divider" />
+
+      <!-- Advisory paths return attention to readers; durable state stays in Postgres. -->
+      <path d="M1038 335V235H590V250" class="wake" marker-end="url(#arrow)" />
+      <text x="820" y="220" class="mono small muted">advisory wakes</text>
+
+      <text x="64" y="292" class="heading">Browser</text>
+      <text x="64" y="325" class="mono muted">React / Query</text>
+      <text x="64" y="351" class="mono muted">URL / local state</text>
+      <path d="M254 291H344" class="flow" marker-end="url(#arrow)" />
+      <text x="266" y="274" class="mono small muted">request</text>
+      <path d="M344 316H254" class="wake" marker-end="url(#arrow)" />
+      <text x="261" y="342" class="mono small muted">updates</text>
+
+      <text x="344" y="238" class="mono small muted">01 / web process</text>
+      <rect x="344" y="250" width="490" height="320" class="divider" />
+      <text x="366" y="293" class="heading">TanStack Start + Nitro</text>
+      <text x="366" y="322" class="mono muted">routes / server functions</text>
+      <path d="M366 343H812" class="divider" />
+      <text x="366" y="386" class="heading">Feature workflows</text>
+      <text x="366" y="415" class="mono muted">product rules + pure policies</text>
+      <text x="366" y="444" class="mono small muted">Effect coordinates fallible work</text>
+      <path d="M366 465H812" class="divider" />
+      <text x="366" y="505" class="heading">Platform adapters</text>
+      <text x="366" y="536" class="mono muted">database · R2 · email · payments</text>
+
+      <path d="M834 390H934" class="flow" marker-end="url(#arrow)" />
+      <text x="851" y="371" class="mono small muted">state</text>
+      <path d="M934 335H1136" class="divider" />
+      <text x="954" y="376" class="heading">Postgres</text>
+      <text x="954" y="410" class="mono muted">state + durable work</text>
+      <text x="954" y="438" class="mono small muted">transactions · leases</text>
+
+      <path d="M704 570V648" class="flow" marker-end="url(#arrow)" />
+      <text x="724" y="613" class="mono small muted">files</text>
+      <path d="M159 371V694H544" class="flow" marker-end="url(#arrow)" />
+      <text x="214" y="677" class="mono small muted">published media reads</text>
+
+      <path d="M544 648H834" class="divider" />
+      <text x="564" y="689" class="heading">R2</text>
+      <text x="564" y="719" class="mono muted">private sources</text>
+      <text x="564" y="747" class="mono muted">public derivatives</text>
+      <text x="564" y="777" class="mono small accent">publication is explicit</text>
+
+      <path d="M1038 469V648" class="flow" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+      <text x="1056" y="551" class="mono small muted">claim</text>
+      <text x="1056" y="576" class="mono small muted">settle</text>
+      <path d="M934 648H1136" class="divider" />
+      <text x="954" y="689" class="heading">Media worker</text>
+      <text x="954" y="719" class="mono muted">same Docker image</text>
+      <text x="954" y="747" class="mono muted">heavy media jobs</text>
+      <path d="M934 694H834" class="flow" marker-end="url(#arrow)" />
+      <text x="858" y="677" class="mono small muted">blobs</text>
+
+      <path d="M64 802H1136" class="divider" />
+      <text x="64" y="833" class="mono small muted">solid / reads &amp; writes</text>
+      <text x="344" y="833" class="mono small muted">dashed / advisory signals</text>
+      <text x="1136" y="833" text-anchor="end" class="mono small muted">lost wake ≠ lost work</text>
+    </svg>
+  </body>
+</html>

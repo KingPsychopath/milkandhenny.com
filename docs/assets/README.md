@@ -51,3 +51,19 @@ browser, and FFmpeg. Omit `README_BROWSER_CHANNEL` to use Playwright's installed
 
 The committed capture uses an isolated local app with no hosted credentials. Pairs runs in the
 browser and does not need a database for this scenario.
+
+## Architecture diagram
+
+[`architecture.html`](architecture.html) is the editable SVG/HTML composition used in the README
+and architecture overview. It follows the system shape in [architecture](../architecture.md), with
+serif headings, monospace labels, hairline connectors, and one warm accent for explicit publication.
+The light and dark exports read the actual theme tokens and bundled fonts from the site.
+
+```bash
+README_BROWSER_CHANNEL=chrome node docs/assets/render.mjs --architecture
+```
+
+This writes `architecture-light.png` and `architecture-dark.png` at twice the display resolution.
+The Markdown uses a `picture` element to select a variant for the browser's preferred color scheme,
+with a light image and descriptive alt text as the fallback. The textual system diagram remains in
+the architecture document for reference.

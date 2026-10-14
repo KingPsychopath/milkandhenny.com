@@ -8,6 +8,14 @@ Docker image runs the web application and, when needed, a separate heavy-media w
 
 ## System shape
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-dark.png" />
+  <img src="assets/architecture-light.png" alt="Browser requests cross the TanStack Start and Nitro web process into feature workflows and platform adapters. Postgres owns state and durable jobs; R2 owns private sources and public derivatives. A media worker uses the same Docker image. Dashed arrows show advisory wakes and live updates." />
+</picture>
+
+<details>
+<summary>Text diagram</summary>
+
 ```mermaid
 flowchart TB
     Browser[Browser] --> Web[TanStack Start + Nitro]
@@ -22,6 +30,8 @@ flowchart TB
     PG -.->|advisory notifications| Web
     Web -.->|live room / media updates| Browser
 ```
+
+</details>
 
 Postgres owns application records and durable work. R2 owns bytes. Notifications reduce latency;
 readers and consumers reconcile durable state if a notification is lost. The web process also

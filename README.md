@@ -55,6 +55,11 @@ sets out the priorities and the boundaries.
 
 ## How it's built
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.png" />
+  <img src="docs/assets/architecture-light.png" alt="Browser requests cross the TanStack Start and Nitro web process into feature workflows and platform adapters. Postgres owns state and durable jobs; R2 owns private sources and public derivatives. A media worker uses the same Docker image. Dashed arrows show advisory wakes and live updates." />
+</picture>
+
 One **TanStack Start / React** application, served by **Nitro** as a Node process. Features own their
 rules; routes and server functions expose them. **Postgres** owns records, transactions, rooms,
 and durable work. **R2** holds private sources and intentional public derivatives.
