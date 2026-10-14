@@ -14,6 +14,21 @@ Docker image runs the web application and, when needed, a separate heavy-media w
 </picture>
 
 <details>
+<summary>Follow a request and a media job</summary>
+
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="assets/architecture-dark.png" />
+  <source media="(prefers-reduced-motion: reduce)" srcset="assets/architecture-light.png" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-flow-dark.gif" />
+  <img src="assets/architecture-flow-light.gif" alt="A request reaches a feature workflow and Postgres, then returns to the browser. A separate media job is committed, claimed by the worker, processed through R2, and settled before a wake updates the viewer." />
+</picture>
+
+A drawn sequence of a read and a queued media job. The timing is illustrative.
+[Light video](assets/architecture-flow-light.mp4) · [Dark video](assets/architecture-flow-dark.mp4).
+
+</details>
+
+<details>
 <summary>Text diagram</summary>
 
 ```mermaid

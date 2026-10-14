@@ -8,17 +8,18 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const architecture = process.argv.includes("--architecture");
+const animate = process.argv.includes("--animate");
+if (animate && !architecture) throw new Error("Only the architecture diagram has a motion export.");
 const directory = dirname(fileURLToPath(import.meta.url));
 const root = resolve(directory, "../..");
-// Optional module path lets an artifact runtime render without changing project dependencies.
 const { chromium } = await import(process.env.README_PLAYWRIGHT_MODULE || "@playwright/test");
 const css = await readFile(join(root, "src/styles/globals.css"), "utf8");
 const tokens = css.match(/:root\s*\{[^}]+\}/)?.[0];
 const darkTokens = css.match(/\[data-theme="dark"\]\s*\{[^}]+\}/)?.[0];
-if (!tokens) throw new Error("Site theme tokens were not found.");
+if (!tokens || (architecture && !darkTokens)) throw new Error("Site theme tokens were not found.");
 const source = (
   await readFile(join(directory, architecture ? "architecture.html" : "product-study.html"), "utf8")
-).replace("/* site-tokens */", architecture ? `${tokens}\n${darkTokens ?? ""}` : tokens);
+).replace("/* site-tokens */", architecture ? `${tokens}\n${darkTokens}` : tokens);
 const server = createServer(async (request, response) => {
   try {
     if (request.url === "/") {
@@ -42,52 +43,76 @@ let browser;
 const frames = await mkdtemp(join(tmpdir(), "milk-henny-readme-"));
 try {
   browser = await chromium.launch({ headless: true, channel: process.env.README_BROWSER_CHANNEL });
+  const url = `http://127.0.0.1:${server.address().port}/`;
   const page = await browser.newPage({
     viewport: { width: 1200, height: architecture ? 860 : 680 },
     deviceScaleFactor: architecture ? 2 : 1,
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(url);
   await page.evaluate(() => document.fonts.ready);
-  if (architecture) {
-    if (!darkTokens) throw new Error("Site dark theme tokens were not found.");
+  if (!architecture) {
+    await page.screenshot({ path: join(directory, "milk-and-henny.png") });
+  } else {
     for (const theme of ["light", "dark"]) {
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value;
       }, theme);
       await page.screenshot({ path: join(directory, `architecture-${theme}.png`) });
-    }
-    console.log("Rendered light and dark architecture diagrams.");
-  } else {
-    await page.screenshot({ path: join(directory, "milk-and-henny.png") });
-    // 8-second closed loop, with a long readable hold and no flashing or camera movement.
-    for (let frame = 0; frame < 96; frame++) {
-      await page.evaluate((seconds) => window.renderFrame(seconds), frame / 12);
-      await page.screenshot({ path: join(frames, `${String(frame).padStart(3, "0")}.png`) });
-    }
-    await run("ffmpeg", [
-      "-y",
-      "-v",
-      "error",
-      "-framerate",
-      "12",
-      "-i",
-      join(frames, "%03d.png"),
-      "-filter_complex",
-      "[0:v]split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3",
-      "-loop",
-      "0",
-      join(directory, "milk-and-henny.gif"),
-    ]);
-    // Keep four full-size review frames outside the repository when requested.
-    if (process.env.README_REVIEW_DIR) {
-      await mkdir(process.env.README_REVIEW_DIR, { recursive: true });
-      for (const seconds of [0, 2.85, 4.2, 7.9]) {
-        await page.evaluate((time) => window.renderFrame(time), seconds);
-        await page.screenshot({ path: join(process.env.README_REVIEW_DIR, `${seconds}.png`) });
+      if (!animate) continue;
+      const motion = await browser.newPage({ viewport: { width: 1200, height: 860 } });
+      await motion.goto(url);
+      await motion.evaluate(() => document.fonts.ready);
+      await motion.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      const frameDirectory = join(frames, theme);
+      await mkdir(frameDirectory);
+      for (let frame = 0; frame < 200; frame++) {
+        await motion.evaluate((seconds) => window.renderFrame(seconds), frame / 10);
+        await motion.screenshot({
+          path: join(frameDirectory, `${String(frame).padStart(3, "0")}.png`),
+        });
       }
+      await run("ffmpeg", [
+        "-y",
+        "-v",
+        "error",
+        "-framerate",
+        "10",
+        "-i",
+        join(frameDirectory, "%03d.png"),
+        "-c:v",
+        "libx264",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        join(directory, `architecture-flow-${theme}.mp4`),
+      ]);
+      await run("ffmpeg", [
+        "-y",
+        "-v",
+        "error",
+        "-framerate",
+        "10",
+        "-i",
+        join(frameDirectory, "%03d.png"),
+        "-filter_complex",
+        "[0:v]scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3",
+        "-loop",
+        "0",
+        join(directory, `architecture-flow-${theme}.gif`),
+      ]);
+      await motion.close();
     }
-    console.log("Rendered README poster and motion study.");
   }
+  console.log(
+    architecture
+      ? "Rendered architecture diagrams and requested motion exports."
+      : "Rendered README poster.",
+  );
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

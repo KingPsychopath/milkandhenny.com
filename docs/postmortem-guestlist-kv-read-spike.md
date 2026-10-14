@@ -16,7 +16,7 @@ This nearly exhausted the KV free tier for the day.
 - Significant and unexpected KV command usage from a single local browser tab.
 - Local dev console spam, making real issues hard to notice.
 
-## Root Cause
+## Root cause
 
 Two changes interacted badly:
 
@@ -27,7 +27,7 @@ Because the UI tick caused a re-render every second, the inline callback became 
 
 Result: the intended polling rate (seconds) accidentally became ~**1 request / second**.
 
-## Why This Was Easy To Miss
+## Detection gap
 
 - The bug looked like "just logs" in dev, but every log line was a real KV-backed API request.
 - React Strict Mode can amplify "effect correctness" issues in dev (double-invocation), so code must be idempotent and cleanup must be correct. This incident was not _caused_ by Strict Mode, but Strict Mode is a good forcing function to write safer effects.
@@ -70,7 +70,7 @@ Polling is now:
 
 This halves reads vs the previous 5s/30s behavior while still feeling "live" for door staff.
 
-## Verification / Regression Guard
+## Verification and regression checks
 
 - Added unit tests for `fetchWithRetry`:
   - does not retry on 401

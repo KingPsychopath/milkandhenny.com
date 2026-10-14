@@ -5,7 +5,7 @@
 > and [deployment](../deployment.md).
 
 Status: M1 evidence in progress. Captured 2026-09-26. This is an inventory, not approval to run
-the migration or executable target DDL. [The implementation plan](./postgres-cutover-plan.md) owns the gates.
+the migration or executable target DDL. [The implementation plan](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/postgres-cutover-plan.md) owns the gates.
 
 ## Production evidence
 

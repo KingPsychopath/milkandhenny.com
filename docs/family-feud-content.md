@@ -7,8 +7,8 @@ database boards.
 ## Source mix
 
 - 68 cards are original material written for this game.
-- 8 cards adapt broad concepts from the genuinely crowdsourced ProtoQA development set. Their
-  prompts and answer boards were rewritten for this audience rather than copied verbatim.
+- 8 cards adapt broad concepts from the crowdsourced ProtoQA development set. Their
+  prompts and answer boards were rewritten for this audience.
 - ProtoQA adaptations therefore account for about 10.5% of the 76-card built-in library.
 
 Adapted cards retain their ProtoQA source ID in `FamilyFeudCardDefinition.provenance`. The current

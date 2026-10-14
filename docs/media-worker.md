@@ -5,8 +5,6 @@ object storage. Doing that on the request that finalises an upload makes the
 upload slow and competes with the CPU serving the gallery. So the heavy routes
 go through a queue, and a second service drains it.
 
----
-
 ## Shape
 
 **One image, two roles.** The web service and the media worker deploy the same

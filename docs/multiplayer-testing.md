@@ -29,8 +29,6 @@ Requiring six phones and five friends to reproduce a defect is a product
 development failure. Requiring friends to judge whether the room is actually
 fun is not; that is the final evidence a harness cannot manufacture.
 
----
-
 ## 1. Principles
 
 ### Use real product surfaces
@@ -70,8 +68,6 @@ Harness routes and mutation endpoints MUST fail closed outside development and
 test environments. Captures can contain secrets and credentials. They are
 unsafe development artifacts, not production exports or support bundles.
 
----
-
 ## 2. Testability levels
 
 These levels describe development readiness, not game quality.
@@ -101,8 +97,6 @@ Use the lowest level that controls the real risk. A two-phone pairing with one
 decision does not need a versioned whole-match replay system. A ten-minute
 social-deduction room does. Teams SHOULD record the reason when they require a
 level above or below these triggers.
-
----
 
 ## 3. One route, predictable controls
 
@@ -134,8 +128,6 @@ The first viewport should offer:
 The route MAY support stable development query parameters such as
 `?scenario=tie&fast=1&layout=grid`. Automated tools may use them, but loading a
 URL MUST NOT overwrite an existing capture or production record.
-
----
 
 ## 4. Standard multi-surface workspace
 
@@ -200,8 +192,6 @@ phase, when two personal-device phases occur consecutively, or when a result
 phase has no communal focal surface. These warnings are design diagnostics, not
 automatic proof that the phase is wrong.
 
----
-
 ## 5. Shared harness capabilities versus game adapters
 
 Centralize the mechanics of testing, not the rules being tested.
@@ -246,8 +236,6 @@ interface MultiplayerDevAdapter {
 Do not force domain state into a universal room schema to satisfy this adapter.
 `HarnessRoom`, scenario input, capture payload, and automation actions remain
 game-owned generic parameters or opaque values behind validated boundaries.
-
----
 
 ## 6. Scenarios, fixtures, and captures
 
@@ -302,8 +290,6 @@ When a capture reveals an important regression:
 4. add or extend the integration test;
 5. check in the recipe, not the raw credential-bearing capture.
 
----
-
 ## 7. Simulated players and human control
 
 The default room must be playable by one person.
@@ -327,8 +313,6 @@ targets but cannot demonstrate persuasion. For drawing and dexterity, stored
 valid/invalid gestures can advance the engine, but manual control remains
 necessary to evaluate feel.
 
----
-
 ## 8. Time, connection, and failure controls
 
 Waiting for production timers is not testing. Games SHOULD accept a validated
@@ -351,8 +335,6 @@ The harness provides:
 Failure controls MUST be bounded to the harness room and development adapter.
 Do not install global network monkey patches that could affect unrelated app
 work in another tab.
-
----
 
 ## 9. Inspector and audit bundle
 
@@ -383,8 +365,6 @@ or bug report containing:
 
 This is distinct from a restorable capture. Audit bundles are safe to share
 after redaction; captures are presumed secret.
-
----
 
 ## 10. Required scenario matrix
 
@@ -427,8 +407,6 @@ cover every applicable lifecycle risk.
 - inactive and eliminated roles see only their intended action;
 - result and social-hold state do not auto-advance unexpectedly.
 
----
-
 ## 11. Automated tests and human tests
 
 The harness complements the test suite; it does not replace it.
@@ -460,8 +438,6 @@ An agent should be able to start the local app, open the documented dev route,
 launch a named scenario, identify panels from stable metadata, perform actions,
 and export an audit without reading secrets from internal storage. It still
 must report that social fun is unvalidated until people play together.
-
----
 
 ## 12. Current coverage audit
 
@@ -500,8 +476,6 @@ The recommended migration order is:
    Together alongside their room-first product corrections;
 5. add paired-role adapters for remote judging and Icebreaker;
 6. add the survey-board game to the shared shell before treating it as shipped.
-
----
 
 ## 13. Definition of done for a multiplayer mode
 

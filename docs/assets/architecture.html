@@ -113,19 +113,21 @@
       <text x="64" y="133" style="font-size: 38px; letter-spacing: -1px">
         One application. Clear boundaries.
       </text>
-      <text x="64" y="165" class="mono muted">Postgres owns state. R2 owns files.</text>
+      <text id="flow-caption" x="64" y="165" class="mono muted">
+        Postgres owns state. R2 owns files.
+      </text>
       <path d="M64 193H1136" class="divider" />
 
       <!-- Advisory paths return attention to readers; durable state stays in Postgres. -->
-      <path d="M1038 335V235H590V250" class="wake" marker-end="url(#arrow)" />
+      <path id="flow-wake" d="M1038 335V235H590V250" class="wake" marker-end="url(#arrow)" />
       <text x="820" y="220" class="mono small muted">advisory wakes</text>
 
       <text x="64" y="292" class="heading">Browser</text>
       <text x="64" y="325" class="mono muted">React / Query</text>
       <text x="64" y="351" class="mono muted">URL / local state</text>
-      <path d="M254 291H344" class="flow" marker-end="url(#arrow)" />
+      <path id="flow-request" d="M254 291H344" class="flow" marker-end="url(#arrow)" />
       <text x="266" y="274" class="mono small muted">request</text>
-      <path d="M344 316H254" class="wake" marker-end="url(#arrow)" />
+      <path id="flow-updates" d="M344 316H254" class="wake" marker-end="url(#arrow)" />
       <text x="261" y="342" class="mono small muted">updates</text>
 
       <text x="344" y="238" class="mono small muted">01 / web process</text>
@@ -140,16 +142,16 @@
       <text x="366" y="505" class="heading">Platform adapters</text>
       <text x="366" y="536" class="mono muted">database · R2 · email · payments</text>
 
-      <path d="M834 390H934" class="flow" marker-end="url(#arrow)" />
+      <path id="flow-state" d="M834 390H934" class="flow" marker-end="url(#arrow)" />
       <text x="851" y="371" class="mono small muted">state</text>
       <path d="M934 335H1136" class="divider" />
       <text x="954" y="376" class="heading">Postgres</text>
       <text x="954" y="410" class="mono muted">state + durable work</text>
       <text x="954" y="438" class="mono small muted">transactions · leases</text>
 
-      <path d="M704 570V648" class="flow" marker-end="url(#arrow)" />
+      <path id="flow-files" d="M704 570V648" class="flow" marker-end="url(#arrow)" />
       <text x="724" y="613" class="mono small muted">files</text>
-      <path d="M159 371V694H544" class="flow" marker-end="url(#arrow)" />
+      <path id="flow-public" d="M159 371V694H544" class="flow" marker-end="url(#arrow)" />
       <text x="214" y="677" class="mono small muted">published media reads</text>
 
       <path d="M544 648H834" class="divider" />
@@ -158,20 +160,66 @@
       <text x="564" y="747" class="mono muted">public derivatives</text>
       <text x="564" y="777" class="mono small accent">publication is explicit</text>
 
-      <path d="M1038 469V648" class="flow" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+      <path
+        id="flow-jobs"
+        d="M1038 469V648"
+        class="flow"
+        marker-start="url(#arrow)"
+        marker-end="url(#arrow)"
+      />
       <text x="1056" y="551" class="mono small muted">claim</text>
       <text x="1056" y="576" class="mono small muted">settle</text>
       <path d="M934 648H1136" class="divider" />
       <text x="954" y="689" class="heading">Media worker</text>
       <text x="954" y="719" class="mono muted">same Docker image</text>
       <text x="954" y="747" class="mono muted">heavy media jobs</text>
-      <path d="M934 694H834" class="flow" marker-end="url(#arrow)" />
+      <path id="flow-blobs" d="M934 694H834" class="flow" marker-end="url(#arrow)" />
       <text x="858" y="677" class="mono small muted">blobs</text>
 
       <path d="M64 802H1136" class="divider" />
       <text x="64" y="833" class="mono small muted">solid / reads &amp; writes</text>
       <text x="344" y="833" class="mono small muted">dashed / advisory signals</text>
       <text x="1136" y="833" text-anchor="end" class="mono small muted">lost wake ≠ lost work</text>
+      <circle id="flow-pulse" r="4" fill="var(--prose-hashtag)" opacity="0" />
     </svg>
+    <script>
+      // Illustrative sequence, not measured timings. All movement follows the drawn connections.
+      const phases = [
+        [0.6, 1.5, "request", false, "request / authorize the read"],
+        [2.0, 3.0, "state", false, "feature / read authoritative state"],
+        [3.4, 4.3, "state", true, "result / return the domain data"],
+        [4.8, 5.7, "request", true, "response / render the returned data"],
+        [7.0, 8.0, "state", false, "media / commit a durable job"],
+        [8.6, 9.8, "jobs", false, "worker / claim the queued job"],
+        [10.4, 11.3, "blobs", false, "storage / read the private source"],
+        [11.7, 12.6, "blobs", false, "worker / write the preview objects"],
+        [13.2, 14.4, "jobs", true, "job / record the processing result"],
+        [15.0, 16.8, "wake", false, "wake / notify the web process"],
+        [17.3, 18.2, "updates", false, "viewer / reconcile processing state"],
+      ];
+      const caption = document.getElementById("flow-caption");
+      const pulse = document.getElementById("flow-pulse");
+      window.renderFrame = (seconds) => {
+        const time = typeof seconds === "number" ? seconds : -1;
+        const current = phases.find(([start, end]) => time >= start && time <= end);
+        const latest = phases.findLast(([start]) => time >= start);
+        caption.textContent =
+          time < 0.5 || time >= 19.3
+            ? "Postgres owns state. R2 owns files."
+            : (latest?.[4] ?? "request / authorize the read");
+        pulse.setAttribute("opacity", "0");
+        if (!current) return;
+        const [start, end, route, reverse] = current;
+        const progress = (time - start) / (end - start);
+        const path = document.getElementById(`flow-${route}`);
+        const point = path.getPointAtLength(
+          path.getTotalLength() * (reverse ? 1 - progress : progress),
+        );
+        pulse.setAttribute("cx", point.x);
+        pulse.setAttribute("cy", point.y);
+        pulse.setAttribute("opacity", Math.min(1, progress * 8, (1 - progress) * 8));
+      };
+      window.renderFrame(null);
+    </script>
   </body>
 </html>

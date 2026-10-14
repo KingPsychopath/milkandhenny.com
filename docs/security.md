@@ -2,8 +2,6 @@
 
 Authentication, protections, rate limiting, and what to do when credentials leak.
 
----
-
 ## Authentication
 
 | Gate           | Env var                        | Protects                                                   | Verified by                    |
@@ -26,7 +24,7 @@ Notes:
 - The upload dashboard uses the httpOnly auth cookie for its client-driven presign/finalize calls.
 - Words media upload endpoints (`/api/upload/words/*`) are admin-only; the `UPLOAD_PIN` gate is for transfers.
 
-See also: [storage-and-auth.md](./storage-and-auth.md) for the "cookies vs localStorage" mental model and feature-by-feature mapping.
+See also: [storage-and-auth.md](./storage-and-auth.md) for cookie and browser-storage ownership.
 
 Destructive admin actions require **step-up** re-auth (`POST /api/admin/step-up`) and include `x-admin-step-up` on the request.
 
@@ -35,7 +33,7 @@ You can revoke:
 - **One session** (single token) by `jti` (admin dashboard token sessions list)
 - **All sessions for a role** by bumping the role token version (admin dashboard "revoke admin sessions" / "revoke all role sessions", or CLI)
 
-### Token lifecycle (mental model)
+### Token lifecycle
 
 Tokens are signed JWTs with server-side revocation and role-version checks. A deploy/rebuild does
 not revoke them. Production uses the Postgres token store (`AUTH_TOKEN_STORE=postgres`).
@@ -72,7 +70,7 @@ These endpoints are intended for operational control and incident response.
 
 ### CLI authentication
 
-If your production domain redirects between hostnames (example: `milkandhenny.com` -> `www.milkandhenny.com`), Bearer auth can fail after redirect because some clients/proxies drop the `Authorization` header on redirected requests.
+If your production domain redirects between hostnames (example: `www.milkandhenny.com` -> `milkandhenny.com`), Bearer auth can fail after redirect because some clients/proxies drop the `Authorization` header on redirected requests.
 
 All auth-sensitive CLI requests resolve the canonical host first, then use that
 origin. This prevents a redirect from dropping the `Authorization` header.
@@ -158,8 +156,6 @@ requests. Expiry is enforced during reads; cleanup removes expired records indep
 
 Admin tokens act as the master token for normal app gates: an `admin` JWT is accepted anywhere upload access is required. The dedicated `UPLOAD_PIN` flow remains for least-privilege transfer uploads. Event workers use revocable scanner links instead of a shared PIN.
 
----
-
 ## Transfer Security
 
 - **View IDs**: 22-char base64url values generated from 128 random bits
@@ -171,8 +167,6 @@ Admin tokens act as the master token for normal app gates: an `admin` JWT is acc
 - **No indexing**: `robots: noindex, nofollow` on all transfer pages
 - **Auto-expiry**: Postgres expiry records + server-side checks + leased daily object cleanup
 - **Cache isolation**: transfer pages and protected media are always `private, no-store`; only intentionally published public media is cacheable
-
----
 
 ## Best-Dressed Protections
 
@@ -193,8 +187,6 @@ Notes:
 - Production uses the Postgres voting store and fails closed when required persistence is unavailable.
   In-memory storage is limited to explicit development or test paths.
 
----
-
 ## Cloudflare WAF
 
 Public images are served from `pics.milkandhenny.com` (the public R2 bucket's custom domain). Transfer files live in a separate private R2 bucket and are reached through short-lived signed redirects from the application. Every successful object request counts as an R2 read.
@@ -206,8 +198,6 @@ configuration, verify normal gallery bursts remain below it, and review provider
 
 The repository-side intent and verification steps are in
 [cloudflare-rate-limit-images.md](./cloudflare-rate-limit-images.md).
-
----
 
 ## Incident Response & Key Rotation
 

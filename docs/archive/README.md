@@ -6,7 +6,7 @@ and [the docs index](../README.md) for current contracts. Check deployed state i
 
 ## Persistence cutover
 
-The [original plan](postgres-cutover-plan.md) and [inventory](postgres-migration-inventory.md)
+The [original plan](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/postgres-cutover-plan.md) and [inventory](postgres-migration-inventory.md)
 record the Postgres migration, source cutoff, import rehearsals, and acceptance gates.
 
 Feature records preserve schema and importer details:
@@ -22,12 +22,12 @@ The maintained [runtime-role runbook](../postgres-runtime-roles.md) and
 
 ## Architecture implementation record
 
-[Server-state proposal and verification diary](server-state-architecture-proposal.md).
+[Server-state proposal and verification diary](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/server-state-architecture-proposal.md).
 The current ownership contract is [server state](../server-state.md).
 
 ## Audits and review packets
 
-- [System audit — 4 September 2026](system-audit-2026-09-04.md).
+- [System audit — 4 September 2026](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/system-audit-2026-09-04.md).
 - [Game acceptance and group playtests — 4 September 2026](game-playtest-2026-09-04.md).
 - [Hot & Cold human review packet — 4 September 2026](hot-and-cold-review-2026-09-04.md).
 - [Event-night readiness snapshot](event-night-readiness.md).

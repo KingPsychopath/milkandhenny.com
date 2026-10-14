@@ -49,37 +49,28 @@ pnpm cli admin request POST /api/admin/events/after-school-club-2026-09-01/ticke
   --admin-token "$TOKEN" --yes
 ```
 
-Use `--output` for PDFs, CSV files, images, or any response that must be preserved
-byte-for-byte:
+Use `--output` to keep a response byte-for-byte:
 
 ```sh
-pnpm cli admin request POST /api/admin/events/EVENT/scoring \
-  --json '{"action":"print-pdf","kind":"hunt","layout":"eight-clues","paper":"a4"}' \
-  --step-up --output ./hunt-pack.pdf --yes
+pnpm cli admin request GET /api/admin/events --output ./events.json
 ```
 
-For a multi-operation setup, put requests in one JSON array and approve the whole
-reviewed batch once. Each route still performs its normal authorization, validation,
-audit, and idempotency checks:
+For several requests, put their method, path, and optional body in a JSON array:
 
 ```json
 [
-  {
-    "method": "POST",
-    "path": "/api/admin/events/EVENT/scoring",
-    "body": { "action": "settings", "leaderboardVisibility": "preview" }
-  },
-  {
-    "method": "POST",
-    "path": "/api/admin/events/EVENT/scoring",
-    "body": { "action": "state", "state": "ready", "reason": "Event setup" }
-  }
+  { "method": "GET", "path": "/api/admin/events" },
+  { "method": "GET", "path": "/api/admin/communications" }
 ]
 ```
 
 ```sh
-pnpm cli admin batch --file ./event-setup.json --step-up --yes
+pnpm cli admin batch --file ./requests.json
 ```
+
+Each route keeps its authorization and validation. Mutating batches require the usual confirmation
+and any step-up permission. Live scoring tools are retired; historical scoring commands are for
+explicit administrative recovery, not routine event setup.
 
 Useful controls include:
 

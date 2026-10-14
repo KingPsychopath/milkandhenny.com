@@ -1,42 +1,27 @@
-# README artwork
+# Documentation visuals
 
-The poster and optional eight-second GIF are illustrated product studies, not captured UI.
-An editorial page, a contact sheet, a matching pair, and a ticket describe the product in the site's
-visual language. The stable poster is the README's main image; motion is behind a disclosure.
+The README uses a product illustration, a recorded Pairs game, and an architecture diagram.
+All use the site's theme tokens, Lora, and Geist Mono. Font licenses are in
+[public/fonts](../../public/fonts/README.md).
 
-[`product-study.html`](product-study.html) is editable HTML/CSS/SVG. The timeline exposes
-`renderFrame(seconds)` so every output is sampled deterministically. It draws from the actual
-`:root` tokens in [`globals.css`](../../src/styles/globals.css), and renders the repository's
-Lora and Geist Mono font files. No new font or application dependency is introduced.
+## Product illustration
 
-With project dependencies installed, Chromium available to Playwright, and FFmpeg on PATH:
+[`product-study.html`](product-study.html) draws the editorial page, contact sheet, matching cards,
+and ticket used in `milk-and-henny.png`.
 
 ```bash
-node docs/assets/render.mjs
+README_BROWSER_CHANNEL=chrome node docs/assets/render.mjs
 ```
 
-To use an installed Chrome, set `README_BROWSER_CHANNEL=chrome`. Otherwise, if needed, install the browser with `pnpm exec playwright install chromium`. The renderer uses a
-loopback-only temporary server and removes its temporary frames. It writes `milk-and-henny.png`
-and `milk-and-henny.gif` beside the source. `README_REVIEW_DIR` optionally retains sampled review
-frames outside the repository. `README_PLAYWRIGHT_MODULE` can point to an existing artifact
-runtime's Playwright module instead of the project's installation.
-
-Keep the GIF visually quiet and preserve its closed loop. Review the poster at README width and
-sample the card flip, ticket mark, and reset when revising it. Fonts retain their licenses in
-[`public/fonts`](../../public/fonts/README.md).
+The renderer reads tokens from [globals.css](../../src/styles/globals.css), serves fonts through a
+temporary loopback-only server, and writes the poster beside its source.
 
 ## Pairs recovery demo
 
-`pairs-recovery.gif` and `pairs-recovery.mp4` show the real Pairs application in an editorial recording
-frame. Alex and Jo play on one shared device, match a pair, reload the page, and resume with the
-same score and cleared cards. `pairs-recovery.png` is the final still. The capture checks the score,
-remaining cards, and exact recovered command journal before exporting.
-
-[`capture-pairs.mjs`](capture-pairs.mjs) drives ordinary UI controls and captures live frames.
-[`demo-frame.html`](demo-frame.html) supplies only the surrounding title and step captions. It does
-not change the application, seed storage, or mock server responses. Setup occurs before recording;
-the two matching card clicks are chosen from the actual randomly generated shuffle. This is a
-shared-device recovery demo, not a multiplayer network or production-health claim.
+[`capture-pairs.mjs`](capture-pairs.mjs) records the local application. Alex and Jo match a pair,
+reload, and resume. It checks the score, remaining cards, and exact recovered command journal
+before exporting `pairs-recovery.gif`, `pairs-recovery.mp4`, and a final still.
+[`demo-frame.html`](demo-frame.html) supplies the surrounding title and step captions.
 
 Run the local app, then capture it in a separate terminal:
 
@@ -45,25 +30,27 @@ README_BROWSER_CHANNEL=chrome README_DEMO_URL=http://127.0.0.1:3000 \
   README_DEMO_COMMIT=$(git rev-parse HEAD) node --import tsx docs/assets/capture-pairs.mjs
 ```
 
-The capture refuses non-local hosts. It needs the repository dependencies, an available Playwright
-browser, and FFmpeg. Omit `README_BROWSER_CHANNEL` to use Playwright's installed Chromium.
-`pairs-recovery.json` records the source commit, scenario, checks, and presentation choices.
+Setup occurs before recording. Matching clicks are chosen from the real random shuffle; application
+responses and storage are not seeded. `pairs-recovery.json` records the scenario and checks.
+The capture accepts local hosts only. Pairs needs no hosted credentials or database for this demo.
 
-The committed capture uses an isolated local app with no hosted credentials. Pairs runs in the
-browser and does not need a database for this scenario.
+## Architecture flow
 
-## Architecture diagram
-
-[`architecture.html`](architecture.html) is the editable SVG/HTML composition used in the README
-and architecture overview. It follows the system shape in [architecture](../architecture.md), with
-serif headings, monospace labels, hairline connectors, and one warm accent for explicit publication.
-The light and dark exports read the actual theme tokens and bundled fonts from the site.
+[`architecture.html`](architecture.html) draws the system shape in
+[architecture](../architecture.md). Static light and dark PNGs use twice the display resolution.
+The 20-second motion sequence follows a read, then job enqueue, worker claim, R2 processing,
+settlement, and advisory notification. A small marker moves along existing connectors; the layout
+stays fixed. Timing is illustrative.
 
 ```bash
-README_BROWSER_CHANNEL=chrome node docs/assets/render.mjs --architecture
+README_BROWSER_CHANNEL=chrome node docs/assets/render.mjs --architecture --animate
 ```
 
-This writes `architecture-light.png` and `architecture-dark.png` at twice the display resolution.
-The Markdown uses a `picture` element to select a variant for the browser's preferred color scheme,
-with a light image and descriptive alt text as the fallback. The textual system diagram remains in
-the architecture document for reference.
+Omit `--animate` for PNGs only. Motion exports are `architecture-flow-light.gif`,
+`architecture-flow-dark.gif`, and their MP4 versions. The README selects light/dark images with
+`picture`; reduced-motion preferences select the static image inside the disclosure.
+
+The scripts need repository dependencies and a Playwright browser. Motion exports also need
+FFmpeg on PATH. Omit `README_BROWSER_CHANNEL` to use installed Playwright Chromium.
+`README_PLAYWRIGHT_MODULE` can select an existing artifact runtime's Playwright module for the
+illustration and architecture renderer. Temporary frames are removed after export.

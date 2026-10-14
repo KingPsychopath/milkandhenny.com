@@ -1,29 +1,16 @@
-# Design Language
+# Design language
 
-Milk & Henny is intentionally "writing-first": content gets the space, the UI stays quiet, and the tone is warm rather than sterile.
+Milk & Henny uses Lora for reading, Geist Mono for controls, warm stone surfaces, and restrained
+motion. Editorial pages give content a narrow reading measure and generous spacing. Operational
+screens use the same tokens with layouts suited to their tasks.
 
-This document explains the decisions behind the visual system so changes stay consistent over time.
-
----
-
-## The Core Idea
-
-**Editorial typewriter**: a blend of reading-first editorial layout and confident monospace UI chrome.
-
-- **Prose is serif** (Lora): long-form reading feels human.
-- **UI is mono** (Geist Mono): labels feel deliberate, grounded, and slightly "tool-like".
-- **Color is warm stone**: no cold blue-greys; accent is amber.
-- **Motion is subtle**: opacity and small transforms; nothing flashy.
-
----
-
-## Color System (Warm Stone, Apple-Like Restraint)
+## Color
 
 The palette is defined as CSS variables in `src/styles/globals.css` and switched via `[data-theme="dark"]`.
 
-Principles:
+Use these rules:
 
-- **No hardcoded hex in components**. Use theme variables/classes.
+- Use theme variables or classes for component colors.
 - **Neutral-first**: most UI should read as stone + ink, with emphasis via weight/opacity/spacing.
 - **Light mode** uses cream/warm stone (paper-like).
 - **Dark mode** uses deep warm brown (ink-like), not blue-black.
@@ -31,9 +18,9 @@ Principles:
 - **Admin semantic colour**: operational state may use restrained green (healthy/success), amber
   (waiting/attention), and red (failed/blocked). Keep surrounding surfaces neutral, always pair colour
   with a written label, and leave inactive or historical states grey.
-- **Avoid "system blue" energy**: links/interactive states should feel quiet; prefer underline/opacity over color swaps.
+- Links use underline, opacity, or weight changes before a new color.
 
-### Palette (source of truth: `src/styles/globals.css`)
+### Theme tokens
 
 Do not duplicate the color values in documentation; the implementation uses OKLCH tokens and may
 be tuned. Preserve these roles:
@@ -47,9 +34,7 @@ be tuned. Preserve these roles:
 | `--selection-bg`, `--selection-fg`                           | Text selection                        |
 | `--status-positive`, `--status-attention`, `--status-danger` | Operational status semantics          |
 
-Practical usage notes:
-
-- If you need a new color, add a token in `src/styles/globals.css` (light + dark) rather than introducing a one-off hex.
+- Add new tokens in `src/styles/globals.css` for light and dark themes.
 - For interactive states, prefer underline/opacity/weight changes before adding new hues.
 
 Related utilities:
@@ -57,13 +42,9 @@ Related utilities:
 - `theme-muted`, `theme-subtle`, `theme-faint`
 - `theme-border`, `theme-border-strong`, `theme-border-faint`
 
----
+## Typography
 
-## Typography (Two-World Model)
-
-Typography expresses which "world" you're in while keeping a single brand voice.
-
-### 1) Editorial surfaces
+### Editorial surfaces
 
 Routes: `/`, `/words`, `/words/[slug]`, `/vault/[slug]`, `/pics`
 
@@ -71,39 +52,30 @@ Routes: `/`, `/words`, `/words/[slug]`, `/vault/[slug]`, `/pics`
 - **Labels + metadata** (date, reading time, crumbs, share): `font-mono` (Geist Mono).
 - **Prose wrapper**: `.prose-blog` sets the reading rhythm (size, line-height, spacing).
 
-### 2) Non-editorial / utility surfaces (not the focus here)
+### Operational surfaces
 
-Some routes are intentionally more "app-like". This doc is primarily about the editorial site; keep non-editorial UI consistent by reusing the same tokens (color, focus, borders) without forcing serif-prose rules everywhere.
+Admin, games, scanners, and the pitch studio use task-specific layouts. Reuse the theme tokens,
+controls, focus treatment, and typography; prose layout is optional on these surfaces.
 
----
+## Editorial layout
 
-## Layout (Single Column, Maximum Readability)
-
-The default layout is intentionally simple:
+Editorial pages use:
 
 - Single column.
 - Max width: `max-w-2xl`.
 - Generous vertical spacing.
 - Hairline dividers using `theme-border`.
 
-Design rule of thumb:
+Keep editorial navigation small enough to fit the reading column.
 
-If you feel tempted to add a sidebar, it probably means the page content hierarchy needs work.
-
----
-
-## Spacing + Rhythm (Breathing Room)
-
-The editorial site should feel calm and deliberate.
+## Spacing
 
 - **Max width** stays `max-w-2xl` (reading measure > density).
 - **Horizontal padding** stays consistent (`px-6`) so pages align.
 - **Vertical spacing** should come from a small repeatable set (avoid one-off `mt-[23px]`-style tweaks).
 - **Dividers** are hairlines (`theme-border`) used to separate sections, not to create boxes.
 
----
-
-## Editorial Components (Patterns To Repeat)
+## Editorial components
 
 Keep these consistent so new pages feel like they belong immediately:
 
@@ -112,29 +84,27 @@ Keep these consistent so new pages feel like they belong immediately:
 - **Post pages**: generous top padding; reading progress bar is a 2px accent, not a decoration.
 - **Footer**: mono, faint; one or two lines max; no link grids.
 
----
+## Images and diagrams
 
-## Imagery (Quiet, Captioned, Intentional)
-
-Images should feel like editorial inserts, not UI decorations.
+Images explain content or show the product. Diagrams use the site fonts, theme tokens, and
+hairline connectors. Label flows and ownership; keep timing illustrative unless it was measured.
 
 - Prefer **one strong image** over multiple small ones.
 - If an image has meaning, it should have **alt text** and render with a **caption** (figure-like treatment).
 - Avoid heavy shadows, borders, or saturated overlays; let the warm stone surfaces do the work.
 
----
-
-## Content + Voice (Milk & Henny Tone)
+## Copy
 
 - **UI labels** are short, lowercase, and mono (tool-like, calm).
 - **Headlines** can be more expressive (serif), but avoid gimmicks (no emoji, no excessive punctuation).
-- Prefer **clarity over cleverness** in navigation and metadata.
+- Name the action or state directly in navigation and metadata.
+- Describe behavior, constraints, and recovery. Cut praise, generic significance, repeated summaries,
+  and claims unsupported by the implementation. Keep historical observations dated.
+- Use headings to locate information. Reserve tables for comparisons and structured data.
 
----
+## Interaction
 
-## Interaction (Quiet, Predictable)
-
-We prefer "confidence through restraint":
+Controls use:
 
 - **Hover** should usually be `opacity` changes, not sudden color flips.
 - **Focus** uses a consistent theme-aware outline for keyboard navigation.
@@ -194,17 +164,13 @@ editorial, legal, contact, and subscription surfaces, not a compulsory element
 of every product screen. See [navigation.md](./navigation.md) for the browser
 history and URL-state rule.
 
----
-
-## Accessibility (Baseline Rules)
+## Accessibility
 
 - Don’t remove focus rings; use the existing theme-aware focus outline.
 - Keep contrast high for body text; use muted tokens for metadata, not for primary content.
 - Interactive text should still read as interactive (underline is fine; loud colors are not required).
 
----
-
-## Motion (Sunlight to Moonlight)
+## Motion
 
 Motion exists to clarify, not decorate:
 
@@ -213,9 +179,7 @@ Motion exists to clarify, not decorate:
 - Avoid defining custom CSS utilities that collide with Tailwind utilities.
   Example: never create a `.duration-300` class (Tailwind already owns that name).
 
----
-
-## Where Styles Live
+## Styles
 
 We intentionally keep styling in three buckets:
 

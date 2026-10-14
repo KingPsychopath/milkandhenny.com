@@ -129,5 +129,4 @@ For every new or materially changed Effect workflow:
     existing shutdown owner.
 12. Run the focused tests, then the repository checks required by [testing.md](./testing.md).
 
-References: [Effect v4 migration guide](https://github.com/Effect-TS/effect/blob/main/MIGRATION.md)
-and [Effect resource management](https://effect.website/docs/resource-management/introduction/).
+Reference: [Effect v4 migration guide](https://github.com/Effect-TS/effect/blob/main/MIGRATION.md).

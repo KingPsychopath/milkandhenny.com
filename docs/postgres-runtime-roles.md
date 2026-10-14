@@ -3,7 +3,7 @@
 Use separate migration and runtime credentials. The last production role observation recorded
 in this runbook was on 2026-09-26; it does not establish today's principal or grants. Verify the
 current role before credential changes. The historical cutover evidence is in
-[the archive](./archive/postgres-cutover-plan.md).
+[the archive](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/postgres-cutover-plan.md).
 
 The application now supports two schema startup modes:
 

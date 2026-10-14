@@ -17,8 +17,6 @@ groups can validate the outcome.
 The current implementation review lives in
 [room-first-multiplayer-audit.md](./archive/room-first-multiplayer-audit.md).
 
----
-
 ## 1. Product intent
 
 A room-first game uses software to help people play **with one another in the
@@ -46,8 +44,6 @@ bluff, perform, race, teach, surprise, judge, negotiate, recognise, celebrate,
 or laugh. “Submit answers on their phones” is an interface description, not a
 fun premise.
 
----
-
 ## 2. Normative language
 
 - **MUST** is required for a conforming mode.
@@ -60,8 +56,6 @@ fun premise.
   laptop, or centrally placed tablet.
 - The **host** or **MC** is the person pacing and ruling the game. The host may
   also play only when the mode explicitly supports it.
-
----
 
 ## 3. What “fun” means here
 
@@ -122,8 +116,6 @@ least two independent groups containing first-time players and record:
 A simple post-game check is enough: “What was the best moment?”, “What was
 confusing?”, and “Would you play another round?”
 
----
-
 ## 4. What “flow” means here
 
 Flow means players stay oriented and socially engaged without reasoning about
@@ -165,8 +157,6 @@ These are diagnostic thresholds, not accessibility time limits. The UI MUST
 support people who need more time and the MC MUST be able to pause where timing
 is not the skill being tested.
 
----
-
 ## 5. Classify the mode on two axes
 
 Do not describe a game with a single “phone level”. Device count and attention
@@ -199,8 +189,6 @@ documented reason above 40%. Measure active phases, excluding setup and genuine
 breaks, during playtesting rather than pretending these numbers can be inferred
 from source.
 
----
-
 ## 6. Give every surface one job
 
 | Surface       | Owns                                                                                     | Must not become                                             |
@@ -215,8 +203,6 @@ A proposed player-phone action is justified only when it protects private
 information, captures simultaneous independent input, establishes identity,
 provides a fair team controller or buzzer, or supplies an accessibility path.
 Convenience alone is not enough.
-
----
 
 ## 7. Canonical round rhythm
 
@@ -247,8 +233,6 @@ There MUST NOT be two consecutive heads-down phases without a room or shared
 beat between them. A competitive timer MAY close input, but a reveal or
 reaction state SHOULD wait for the MC or an explicit group action.
 
----
-
 ## 8. Universal interaction rules
 
 During active play:
@@ -277,8 +261,6 @@ Individual points SHOULD NOT encourage teammates to shout over, withhold help
 from, or sabotage one another unless that conflict is the declared mechanic.
 If the room is divided into teams, the game result belongs to the team by
 default; event rewards can later credit eligible members.
-
----
 
 ## 9. Topology-specific rules
 
@@ -343,8 +325,6 @@ This is either a lightweight `glance` mode or an explicit exception.
 - If a shared display would materially improve the best moment, the event mode
   SHOULD provide one even if a personal-only fallback remains available.
 
----
-
 ## 10. Teams, host authority, scoring, and rewards
 
 ### Teams
@@ -380,8 +360,6 @@ If event credit is needed, use team membership already established outside the
 round or a post-game, signed claim flow. A QR claim is shown after the result,
 not during play, and must be resistant to casual reuse.
 
----
-
 ## 11. Architecture boundary
 
 Shared multiplayer infrastructure owns repeatable capabilities:
@@ -402,8 +380,6 @@ The game owns its fun and rules:
 Do not create a universal game engine that erases these differences. Compose
 shared capabilities under a game-owned engine, consistent with
 [architecture.md](./architecture.md#shared-play).
-
----
 
 ## 12. Required room play profile
 
@@ -436,8 +412,6 @@ MUST include this profile in its feature documentation or implementation plan:
 If the game has multiple modes, repeat the topology, attention, phone job, and
 exception fields for each mode.
 
----
-
 ## 13. One-person operability
 
 Every multiplayer mode MUST be testable by one developer or agent before a
@@ -460,8 +434,6 @@ Harness success proves reproducibility, role projections, controls, and
 resilience. It cannot prove that conversation, tension, inclusion, or laughter
 works with real people. Real-device testing and first-time-group playtests remain
 separate release evidence.
-
----
 
 ## 14. Review gate
 

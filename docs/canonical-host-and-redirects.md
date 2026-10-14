@@ -1,83 +1,18 @@
-# Canonical Host and Redirects
+# Canonical host and redirects
 
-This note explains why host canonicalization exists (`milkandhenny.com` vs `www.milkandhenny.com`) and why it matters operationally.
+The production origin is `https://milkandhenny.com`. Cloudflare permanently redirects
+`https://www.milkandhenny.com` to that origin while preserving the path and query string.
+Railway keeps both domains attached for TLS and origin ownership.
 
----
+## Authenticated requests
 
-## What "canonical host" means
+A client or proxy can drop `Authorization` when following a redirect. The symptom is a successful
+login followed by a `401` from a protected endpoint.
 
-A canonical host is the one true hostname your app treats as primary.
+CLI authentication resolves the final origin before sending credentials or looking up a stored
+session. `auth sessions`, `auth revoke`, and `auth diagnose` use that origin consistently.
+Prefer the canonical origin in scripts and API clients.
 
-Example:
-
-- Input host: `https://www.milkandhenny.com`
-- Canonical host: `https://milkandhenny.com`
-
-Non-canonical hosts should redirect to the canonical one.
-
-Production enforces this at Cloudflare with a permanent redirect that preserves
-the path and query string. Railway keeps both custom domains attached so TLS and
-origin ownership remain valid for either hostname.
-
----
-
-## Why redirects exist
-
-Using one canonical host prevents duplicate surfaces and policy drift:
-
-- SEO consistency (one indexed URL per page)
-- Analytics consistency (traffic not split across hosts)
-- Cookie/session consistency (fewer edge-case host mismatches)
-- Cache consistency (single cache key space)
-- Security consistency (one expected origin for sensitive requests)
-
----
-
-## Why this matters for you
-
-For auth-sensitive CLI/API calls, redirects can break auth if `Authorization` headers are dropped on follow-up redirected requests by a client/proxy path.
-
-Observed symptom:
-
-- Login/verify appears successful
-- Next protected endpoint returns `401 Unauthorized`
-
-This can happen when calling one host that redirects to another.
-
----
-
-## How it affects this repo
-
-The CLI auth commands now resolve the canonical host first, then run requests
-and credential-store lookups on that final origin:
-
-- `pnpm cli auth sessions`
-- `pnpm cli auth revoke`
-- `pnpm cli auth diagnose`
-
-This avoids redirect-induced auth-header loss and keeps the per-origin stored
-token consistent across `www` and non-`www` input.
-
----
-
-## Quick checks
-
-Use:
-
-```bash
-pnpm cli auth diagnose --admin-password <password> --base-url https://milkandhenny.com
-```
-
-If verify succeeds but protected probes fail:
-
-1. Check `AUTH_SECRET` consistency across environments/instances.
-2. Check CDN/proxy redirect/header behavior for `Authorization`.
-
----
-
-## Practical rule
-
-Treat canonical host resolution as part of auth hygiene:
-
-- Human-facing links can redirect.
-- Machine auth flows should prefer canonical origin directly.
+If verification succeeds but protected probes fail, check the redirect and header handling first,
+then confirm that the server instances use the same `AUTH_SECRET`. Use the CLI's browser login
+and diagnostics described in [admin control](admin-control.md).

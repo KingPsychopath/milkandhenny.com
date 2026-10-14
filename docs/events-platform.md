@@ -112,7 +112,7 @@ operations, and telemetry. A game remains playable when event scoring is disable
 
 Operational policy and closeout are in
 [event-scoring/operations.md](./event-scoring/operations.md). The completed implementation checklist
-in [event-scoring/README.md](./event-scoring/README.md) is historical evidence and not a substitute
+in [event-scoring/README.md](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/event-scoring/README.md) is historical evidence and not a substitute
 for current verification.
 
 ## Door and event-night verification

@@ -6,13 +6,13 @@ Thoughts, stories, and things worth sharing.
 
 [Visit the site](https://milkandhenny.com) · [Explore Things](https://milkandhenny.com/things) · [Architecture](docs/architecture.md) · [Docs](docs/README.md)
 
-Milk & Henny is a place to read something, keep a moment, play with friends, and bring people
-together. The quiet editorial site and the tools behind an event live in the same application:
-from a photo album to a shared game, from an invitation to the person checking tickets at the door.
+Milk & Henny publishes writing and photo albums, hosts games, and provides tools for private
+file sharing and events. The same application handles the public pages and the work behind them:
+editing a post, running a shared game, issuing tickets, and checking people in.
 
 ## What's here
 
-|               |                                                                              |
+| Area          | What it does                                                                 |
 | ------------- | ---------------------------------------------------------------------------- |
 | **Words**     | Essays, stories, and notes, with an editor and private sharing.              |
 | **Pics**      | Photo albums, captions, responsive images, and deliberately published media. |
@@ -20,38 +20,27 @@ from a photo album to a shared game, from an invitation to the person checking t
 | **Events**    | Event pages, tickets, waitlists, attendee access, and door tools.            |
 | **Transfers** | Private file sharing with expiry, upload recovery, and media previews.       |
 
-Try [Pairs](https://milkandhenny.com/things/pairs) for a small, immediate game,
+Play [Pairs](https://milkandhenny.com/things/pairs) from memory,
 [Hot & Cold](https://milkandhenny.com/things/hot-and-cold) for a hidden-word puzzle, or
 [Family Feud](https://milkandhenny.com/things/family-feud) for a host-led room.
-[Words](https://milkandhenny.com/words) and [Pics](https://milkandhenny.com/pics) are the slower side.
+Browse [Words](https://milkandhenny.com/words) and [Pics](https://milkandhenny.com/pics) for writing and albums.
 
-## Play, refresh, pick up where you left off
+## A table that survives a refresh
 
-![Pairs: Alex and Jo share a table, match a pair, refresh the page, and resume with the score and cleared cards intact.](docs/assets/pairs-recovery.gif)
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/pairs-recovery.png" />
+  <img src="docs/assets/pairs-recovery.gif" alt="Pairs: Alex and Jo share a table, match a pair, refresh the page, and resume with the score and cleared cards intact." />
+</picture>
 
 A recording of the local application: two players on one device, a matching pair, a real page
 reload, and the same table restored. [Watch the video](docs/assets/pairs-recovery.mp4) ·
 [Capture notes and source](docs/assets/README.md#pairs-recovery-demo).
 
-<details>
-<summary>A little motion study</summary>
-
-![A matching pair turns over, the contact sheet gains a photograph, and a ticket receives its admission mark.](docs/assets/milk-and-henny.gif)
-
-An illustrated product study, using the site's own typography and palette. These are drawn
-representations of the features, rather than screen recordings. [Static version](docs/assets/milk-and-henny.png).
-
-</details>
-
 ## What it's working towards
 
-A useful place around the things people make and do together. Reading should feel unhurried.
-Games should give people a reason to look up and talk. Sharing should make it clear what is public,
-what is private, and what happens next. The backstage tools should make an event easier to run.
-
-Those goals shape both the interface and the code: a small visual vocabulary, explicit ownership,
-and recovery when a connection drops or a process restarts. [Product direction](docs/product.md)
-sets out the priorities and the boundaries.
+Reading should be unhurried. Shared games should leave room for conversation. Uploads, tickets,
+and accepted game actions should recover after an interruption. Privacy and publication should
+be clear to the person sharing. [Product direction](docs/product.md) explains these priorities.
 
 ## How it's built
 
@@ -60,11 +49,26 @@ sets out the priorities and the boundaries.
   <img src="docs/assets/architecture-light.png" alt="Browser requests cross the TanStack Start and Nitro web process into feature workflows and platform adapters. Postgres owns state and durable jobs; R2 owns private sources and public derivatives. A media worker uses the same Docker image. Dashed arrows show advisory wakes and live updates." />
 </picture>
 
-One **TanStack Start / React** application, served by **Nitro** as a Node process. Features own their
-rules; routes and server functions expose them. **Postgres** owns records, transactions, rooms,
-and durable work. **R2** holds private sources and intentional public derivatives.
+<details>
+<summary>Follow a request and a media job</summary>
 
-**Effect** coordinates fallible backend work and subsystem lifetimes. Game rules, validation,
+<picture>
+  <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.png" />
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/architecture-light.png" />
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-flow-dark.gif" />
+  <img src="docs/assets/architecture-flow-light.gif" alt="A request reaches a feature workflow and Postgres, then returns to the browser. A separate media job is committed, claimed by the worker, processed through R2, and settled before a wake updates the viewer." />
+</picture>
+
+A drawn sequence of a read and a queued media job. The timing is illustrative.
+[Light video](docs/assets/architecture-flow-light.mp4) · [Dark video](docs/assets/architecture-flow-dark.mp4).
+
+</details>
+
+One TanStack Start / React application, served by Nitro as a Node process. Features own their
+rules; routes and server functions expose them. Postgres owns records, transactions, rooms,
+and durable work. R2 holds private sources and intentional public derivatives.
+
+Effect coordinates fallible backend work and subsystem lifetimes. Game rules, validation,
 repositories, and browser code stay ordinary TypeScript. Heavy media can run in a separate worker
 using the same Docker image. The application can run on Railway or another container host.
 

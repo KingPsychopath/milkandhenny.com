@@ -1,24 +1,31 @@
-# Media object operation ledger
+# Media object operations
 
-Status: transactional Postgres queue foundation only. It has no production caller or executor;
-album and word R2 workflows still use their existing direct operations.
+The Postgres `media_object_operations` ledger records R2 work beside the mutation that creates it.
+Albums enqueue publication copies and deletions; deleted words and transfers enqueue private
+object cleanup. The Media runtime drains these records in bounded batches.
 
-Migration `0109_media_object_operations` stores owner identity and revision, a copy/delete target,
-source details for copies, availability, attempt count, claim token/owner/lease and bounded error
-code. A caller enqueues through `enqueueMediaObjectOperation` inside the same Postgres transaction
-that makes its owner revision durable. Repeating an identical owner/revision/target operation
-returns the same row; a different payload with the same identity fails.
+## Enqueue and claim
 
-Claims use `FOR UPDATE SKIP LOCKED`. An expired lease can be reclaimed with a new claim token;
-renewal, completion and failure accept only the current unexpired token. Exhausted claims are
-marked dead. The queue is durable and independent of a wake signal. Retrying a copy or delete
-will be safe only when the executor uses immutable source generations and verifies the current
-owner revision. A stale external R2 mutation can still happen if owner edits or deletion race
-with an in-flight operation, so those workflows must block or fence conflicting generations
-before this ledger is used for production side effects.
+Each record identifies its owner and revision, operation, source and target, availability,
+attempt count, claim token, lease, and error code. Enqueue occurs inside the owner's transaction.
+Repeating the same owner/revision/target operation returns its existing row; a different payload
+under that identity fails.
 
-The next implementation step is to bind album and word mutations, object references and their
-pending generations to ledger inserts; add an idempotent executor to the existing Media runtime;
-then test interruption before/after each R2 mutation, lease expiry, stale completion, concurrent
-edits and reference-safe deletion. Do not select the Postgres album/word stores until those
-paths and reconciliation have passed.
+Claims use `FOR UPDATE SKIP LOCKED`. An expired lease can be reclaimed. Renewal and settlement
+require the current unexpired claim token; exhausted attempts become dead records. A lost wake
+cannot remove queued work.
+
+## Owner-specific execution
+
+- [Albums](../features/media/album-object-deletions.server.ts) hold the album mutation lock across
+  the R2 operation. Publication copies require the current publishing revision. Deletions check
+  whether the target remains referenced. The album becomes published after its copies settle.
+- [Words](../features/words/media-deletions.server.ts) serialize cleanup with slug reuse, verify
+  that no word owns the slug, and limit deletion to its media prefix.
+- [Transfers](../features/transfers/object-deletions.server.ts) accept only private-object
+  deletions. Deleting an already absent object is safe to repeat after an uncertain response.
+
+The [Media runtime](../features/system/media-worker-runtime.server.ts) enables the album and
+transfer loops with `ALBUM_OBJECT_DELETION_RUNNER=postgres` and
+`TRANSFER_OBJECT_DELETION_RUNNER=postgres`. Word cleanup follows `WORD_STORE=postgres`.
+See [the worker runbook](media-worker.md) for configuration and recovery.

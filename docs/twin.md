@@ -13,8 +13,6 @@ The game is our own. The underlying mathematics is a finite projective plane and
 property, but the name, the symbols and the artwork of the commercial games in this genre are — none
 of that appears here.
 
----
-
 ## 1. The design rules everything follows
 
 > **Every heat is the same length for everybody, and speed is measured on the device that saw the
@@ -42,8 +40,6 @@ Third:
 
 A phone lets you tap every symbol on the card in half a second. If wrong taps were free, that would
 be the dominant strategy and the game would be over. §3.4.
-
----
 
 ## 2. The deck
 
@@ -130,8 +126,6 @@ is also what makes a presenter screen possible later.
 
 The seed is per **deal**, not per card id: a card that comes back around in a rematch is laid out
 differently.
-
----
 
 ## 3. The heat
 
@@ -229,8 +223,6 @@ The old middle card is buried — out of play for the rest of the game, exactly 
 a card on a pile. Total cards in the game is therefore fixed at `players × hand + 1` and the deck
 never needs a reserve.
 
----
-
 ## 4. Fairness, timing and cheating
 
 ### 4.1 What gets ranked
@@ -271,8 +263,6 @@ other players' hands — are in. Anything beyond that is not, for the same reaso
 accepts that you could submit a traced outline. This is a party game on a personal site, and the
 enforcement mechanism is that people are in the same room.
 
----
-
 ## 5. The hand
 
 ### 5.1 The stack
@@ -288,8 +278,6 @@ remain face down and the result briefly replays only the pairing that was just s
 
 The dealing phase provides the physical card beat instead: a small face-down pack shuffles and fans
 into place before the first heat, without exposing either player's next answer.
-
----
 
 ## 6. Winning
 
@@ -328,8 +316,6 @@ Presented after the winner, as a short list of named cards. Precedent: `LiarsEnd
 
 An award is only shown when it was actually earned — no "0 connections" trophies — and a player who
 sweeps several gets them all on one line rather than six separate cards.
-
----
 
 ## 7. The constellation
 
@@ -372,8 +358,6 @@ just as readable static, which is the test of whether the motion was decoration.
 
 The heat log — see §10.3, because it must not live in the room snapshot.
 
----
-
 ## 8. The connection, in play
 
 When you land a match: the symbol you tapped and its twin both scale to 1.35 and hold, a line traces
@@ -386,8 +370,6 @@ positions and two card rects, and use it in both places.
 
 Other players' results arrive at `settleAt` as a quiet ordered list of names and times. Nobody's
 result animates on your phone except your own.
-
----
 
 ## 9. The board — one device
 
@@ -453,8 +435,6 @@ anywhere else in this codebase, and this is the one game where a dimmed screen e
 
 `useFullscreen` is offered but not forced, and orientation is left `auto`. The duel board is
 symmetric and works either way up.
-
----
 
 ## 10. Architecture
 
@@ -577,8 +557,6 @@ which card they hold; it looks up their top card, intersects, and rules.
 Validation in `twin-room.functions.ts` via the existing `multiplayer-validation` helpers, with
 `elapsedMs` bounded before it reaches the engine.
 
----
-
 ## 11. Symbols
 
 31 symbols for v1, hand-tuned, mono-line, single-colour, inline SVG in one registry.
@@ -601,8 +579,6 @@ Symbols are structured as a **deck** from the start — `twin-symbols.ts` export
 set id — because `heads-up` and `spelling` both already have a deck concept and an alternate set is
 the obvious first thing anyone will ask for.
 
----
-
 ## 12. Testing
 
 Per `.cursor/rules/testing.mdc`, the pure modules carry the weight.
@@ -617,18 +593,13 @@ Per `.cursor/rules/testing.mdc`, the pure modules carry the weight.
 | `twin-rules.test.ts`      | Ties on emptying resolve by misses → elapsed → chain                                                                                                                                                      |
 | `twin-engine` integration | A full game over a fake clock: deal, heats, disconnect mid-heat, rematch keeps the roster and re-deals                                                                                                    |
 
-The deck property test is the one that matters. Every other rule in this document is downstream of
-"any two cards share exactly one symbol", and if that ever fails the game does not degrade, it
-becomes unplayable in a way that looks like a UI bug.
+The deck property test enforces that any two cards share exactly one symbol. A failure invalidates
+the round even when the board renders correctly.
 
----
+## 13. Possible extensions
 
-## 13. Open, deliberately
-
-- **A presenter screen.** `liars` and `spelling-party` both have one, and a TV showing the middle
-  card with the heat's constellation growing live would be the best-looking thing on the site. It is
-  not v1 because the middle card is already on everyone's phone and a big screen adds nothing to
-  play — only to watching.
+- **A presenter screen.** `liars` and `spelling-party` both have one, and a TV could show the middle card and
+  the heat's constellation to observers. Add it only when that observer role improves shared play.
 - **Sound.** `useGameSound` exists. The connection wants a sound and the cooldown wants a different
   one, and both should be chosen against the real animation rather than specified here.
 - **Difficulty inside an order.** Tightening the scale range and widening rotation makes a card

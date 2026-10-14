@@ -58,4 +58,4 @@ Cookies, browser storage, and access rules are covered in [storage and auth](sto
 Browser history and addressable resources are covered in [navigation](navigation.md).
 
 The original refactor proposal and verification diary are retained as
-[historical evidence](archive/server-state-architecture-proposal.md).
+[historical evidence](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/archive/server-state-architecture-proposal.md).

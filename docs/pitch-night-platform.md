@@ -55,8 +55,7 @@ browser IndexedDB working copy
 ```
 
 Published decks are sealed for public readers. An owner capability may keep editing the private
-draft, but public output changes only after another explicit publish. This is safer than mutating
-the version people may already be presenting.
+draft, but public output changes only after another explicit publish. A presentation keeps its published snapshot until the next explicit publish.
 
 Access tokens live in URL fragments and IndexedDB, never in query strings or logs. Recovery adds a
 new device token and sends it only to the original email; it does not invalidate working devices.

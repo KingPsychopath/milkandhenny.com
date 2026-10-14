@@ -8,8 +8,6 @@ data and pure functions, and is the single source of truth at runtime — the se
 sheet, the deal, and the engine all read from it, so the rules a player is shown cannot drift from
 the rules the server enforces.
 
----
-
 ## 1. The design rule everything follows
 
 > **Every role gets an identically-shaped event at every beat. Only the contents differ.**
@@ -27,8 +25,6 @@ The second rule, downstream of it:
 Nobody should be counting votes, tracking whose turn it is, remembering who is dead, working out how
 long is left, or asking what a role does. The phone does all of it. People are here to shout at each
 other.
-
----
 
 ## 2. Shared: rooms and lobby
 
@@ -64,8 +60,6 @@ loud is itself a tell.
 25 seconds. One card, **hold to reveal**, so nobody catches it over your shoulder. Shows your role,
 what you do, and your win condition. Mafia see each other here. Every other role sees only itself.
 A _read my role again_ affordance stays in the header all game.
-
----
 
 ## 3. Mafia
 
@@ -324,8 +318,6 @@ Set by arithmetic, and tighter than people expect. Nine players, two mafia:
 At ~3 minutes a round, a nine-player game runs **12–15 minutes** lobby to win screen. The 90-minute
 room TTL fits four or five games with rematches.
 
----
-
 ## 4. Imposter
 
 The word game. Everyone gets the same secret word; the imposter gets nothing and has to bluff
@@ -431,8 +423,6 @@ This is the one place typing is unavoidable, and it is worth it.
 the game — that is how the genre plays, and it maps onto the rematch machinery the other room games
 already use.
 
----
-
 ## 5. Shared systems
 
 ### 5.1 Alive and dead
@@ -448,8 +438,8 @@ State is carried three ways at once, and never by colour alone.
   persistent line at the top: `you are dead · you can watch, you cannot vote`.
 - Dead players keep a full spectator view and see everything at the end. No vote, no night action.
 
-Red and green is the worst pairing for the ~8% of men with deuteranopia, so **colour never carries
-meaning on its own** — the glyphs and the strikethrough do, and colour reinforces.
+Colour never carries state alone. The glyphs, strikethrough, and written labels must remain
+understandable without distinguishing red from green.
 
 ### 5.2 Status glyphs
 
@@ -469,49 +459,18 @@ trusted to hide.
 
 ### 5.3 The night transition
 
-Every device runs the identical transition — same duration, same luminance curve, same animation —
-regardless of role.
+Every role uses the same transition duration, luminance curve, animation, and headline.
 
-- **The night headline is the same words for everybody: `Choose someone`.** `who dies tonight` set
-  in forty-point serif is legible from across a table, so the largest type on screen was the most
-  role-revealing string in the game — while the deal card two minutes earlier had been
-  hold-to-reveal precisely to avoid that. The jester already borrowed the villager's label, so the
-  intent existed; it just stopped at the one screen that stays up for forty-five seconds. The label
-  now sits where a form label sits, at a size that needs looking at rather than glancing at.
-- **Screens away, before every night:** its own held screen with a countdown to the moment roles
-  appear. Without the countdown the screen gives no reason to move _now_, so people read it, agree
-  with it, and keep holding the phone flat until their role arrives — the exact moment it is worth
-  something to their neighbour.
-- **The night hint:** one line under the action prompt saying what tonight buys you. The full rules
-  were only ever on the deal card, read four minutes before they matter. Villagers are who this
-  hurts: `whose door to watch` over a list of names never says that the doctor and detective also
-  count as having gone out, which is the whole reason a single sighting proves nothing.
-- **Dusk, 5s — wash, hold, clear.** Cream goes to `--things-night` in the first second, the sky
-  holds while a crescent moon rises and eight stars arrive, and only then does it clear. It used to
-  be a single 2.5s crossfade with a 5s moon animating inside it, so the moon was cut off about
-  halfway up and the back half of the beat played against a bare screen — the cutscene covered less
-  than half the pause it existed to fill. Stretching the crossfade would have been worse: it fades
-  opacity the whole way, so the moon would have been faintest at the exact moment it finished
-  rising. Everything now settles inside the hold.
-- **Dawn, 2.5s:** a sun comes up — not the moon going back down, which is what the first version did
-  and which is both wrong and the opposite of a sunrise. Dawn also had **no sound at all**: the one
-  transition that happens to everybody at once was landing in silence while dusk got a breath and a
-  descending drone. It now runs dusk's shape backwards — the same drone rising, with a chime over
-  it. Not birdsong: synthesised birds either sound like a sample library or like a modem, and both
-  belong to a different game than one set in Lora on warm stone.
-- The window already existed — five seconds in which nothing role-specific may be on screen — so
-  giving it something to look at costs nothing and makes the pause read as a scene rather than a
-  stall.
-- **Nothing role-specific is on screen during dusk.** Every device shows the same words — _"Night
-  falls. Turn your screen away from the person next to you."_ — so a phone lying face up on the
-  table gives nothing away, and there is a real moment to move it. Five seconds rather than two and
-  a half: the first was a transition, this is a warning.
-- Role content appears only _after_ the transition completes, in an identically sized card in the
-  same screen position.
-- **The whole night runs at low luminance.** Every screen equally dark; role text is low-contrast
-  amber on night — readable at arm's length, unreadable from across a room.
-- The T−10s night report uses one shared envelope animation. Detective, doctor, watcher, escort,
-  mafia: same flash, same size, same beat. Only the words differ.
+- The night headline is `Choose someone`. Put role-specific instructions in the smaller form
+  label and hint so the largest text does not reveal a role across the table.
+- Before night, hold a screens-away message with a countdown to role actions. Dusk contains no
+  role-specific content.
+- The hint explains the current action, including that villagers may observe visiting doctor and
+  detective roles; one sighting alone does not identify mafia.
+- Dusk lasts five seconds: the surface darkens, the moon and stars arrive during the hold, then
+  the overlay clears. All animation must finish inside that interval.
+- Dawn lasts 2.5 seconds and uses a rising sun, rising drone, and chime. Sound settings and
+  reduced-motion preferences apply.
 
 ### 5.3a The village
 
@@ -530,27 +489,14 @@ At dawn the village **replaces** the roster rather than sitting above it. Names 
 the same names in a list underneath is the same information twice on one screen, and the roster
 comes back at deliberation, where you actually need to point at somebody.
 
-**A village whose windows lit when people actually acted would end the game.** Movement being local
-— one watcher learning one bit about one person they chose — is the only thing holding §3.3 up.
-Every window lighting on every device makes villagers pointless and the mafia visible on night one.
+Village lights show the public events defined above. Night positions are shuffled so the public
+acted-count cannot identify the people who acted. Decorative flickers are excluded because players
+may interpret them as evidence.
 
-The near miss is worse than the obvious one: **lights that correlate with nothing at all.** People
-read meaning into anything that moves, and a table can lose a whole day to a lamp that meant
-nothing. False signal in a deduction game is damage, not decoration.
+### 5.3b Placement
 
-### 5.3b Where things sit
-
-Measured rather than asserted. Across a sixteen-player game with every role in the ruleset, in every
-phase, on all sixteen surfaces at once:
-
-|          |                        |
-| -------- | ---------------------- |
-| Headline | **113px**, no variants |
-| Timer    | **158px**, no variants |
-
-No role, and no lineup, moves the furniture. The one place it used to was the night: the holding
-screen put its countdown 72px below where the action screen put it, so the single element that most
-needs to be nailed down was the one that moved. They now match.
+Keep the headline and timer in the same positions across roles and between the holding and action
+screens. Role text and lineup length must not move them or disclose a private role through layout.
 
 ### 5.4 Effects
 
@@ -899,8 +845,6 @@ need active work here:
 - Colour never carries meaning alone (§5.1)
 - `prefers-reduced-motion` has a real path through every effect (§5.4)
 
----
-
 ## 6. Controls
 
 ### Host, in the lobby
@@ -973,8 +917,6 @@ tapping _ready to vote_ (§3.5).
 | Mute           | always, per device, persists across games                              |
 | Read it out    | dawn, if the elected narrator is muted                                 |
 
----
-
 ## 7. Toggles
 
 | Toggle                 | Default | Effect                                                                                                                                                                                                                                                                                                                                                                     |
@@ -998,8 +940,6 @@ tapping _ready to vote_ (§3.5).
 undercuts the mafia's _stay in_ option, because a quiet night and a saved night become
 distinguishable. The drama is worth it as a default; the toggle is there for groups who want the
 tighter game.
-
----
 
 ## 8. Balance rules the engine enforces
 

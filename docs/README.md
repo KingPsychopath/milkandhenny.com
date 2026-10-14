@@ -20,15 +20,15 @@ and historical evidence.
 
 ## Work on a feature
 
-| Area                     | Contracts                                                                                                   |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Events and tickets       | [Platform](events-platform.md) · [Transfer and refund policy](ticket-transfer-and-refund-policy.md)         |
-| Operational UI           | [Admin workspace map](admin-ux-map.md) · [CLI and control](admin-control.md)                                |
-| Media and sharing        | [Pipeline](media-pipeline.md) · [Object operations](media-object-operations.md) · [Worker](media-worker.md) |
-| Pitch Night              | [Studio and presentation](pitch-night-platform.md)                                                          |
-| Shared play              | [Room-first design](room-first-multiplayer.md) · [Multiplayer testing](multiplayer-testing.md)              |
-| Game rules and content   | [Pairs](pairs.md) · [Twin](twin.md) · [Liars](liars.md) · [Family Feud content](family-feud-content.md)     |
-| Historical event scoring | [Retention and closeout](event-scoring/operations.md) · [Implementation record](event-scoring/README.md)    |
+| Area                     | Contracts                                                                                                                                                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Events and tickets       | [Platform](events-platform.md) · [Transfer and refund policy](ticket-transfer-and-refund-policy.md)                                                                                                                     |
+| Operational UI           | [Admin workspace map](admin-ux-map.md) · [CLI and control](admin-control.md)                                                                                                                                            |
+| Media and sharing        | [Pipeline](media-pipeline.md) · [Object operations](media-object-operations.md) · [Worker](media-worker.md)                                                                                                             |
+| Pitch Night              | [Studio and presentation](pitch-night-platform.md)                                                                                                                                                                      |
+| Shared play              | [Room-first design](room-first-multiplayer.md) · [Multiplayer testing](multiplayer-testing.md)                                                                                                                          |
+| Game rules and content   | [Pairs](pairs.md) · [Twin](twin.md) · [Liars](liars.md) · [Family Feud content](family-feud-content.md)                                                                                                                 |
+| Historical event scoring | [Retention and closeout](event-scoring/operations.md) · [Implementation record](https://github.com/machineyearningengineer/milkandhenny.com/blob/b283af0b19bd581f65cacd7bb52dff4982c90b57/docs/event-scoring/README.md) |
 
 Public Things come from [`features/things/catalog.ts`](../features/things/catalog.ts).
 A module or old acceptance checklist alone does not establish that a feature is live.
@@ -62,8 +62,8 @@ or credential state; verify those before acting.
 
 ## Evidence and history
 
-[The archive](archive/README.md) holds migration snapshots, audits, review packets, and the original
-server-state proposal. These explain past decisions and checks, rather than directing current work.
+[The archive](archive/README.md) indexes migration snapshots and review packets, with links to
+retired delivery plans in Git history. Status statements apply to the dates recorded.
 
 Two incident records retain useful failure lessons:
 
